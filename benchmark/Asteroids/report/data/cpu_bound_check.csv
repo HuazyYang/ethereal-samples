@@ -1,0 +1,19 @@
+renderer,api,binding,threads,headline,frame_ms,cpu_render_ms,wait_ms,gpu_ms,gpu_timed_frame_ms,gpu_over_frame,gpu_timed_runs,half_res_frame_ms,half_res_over_full_frame,half_res_cpu_render_ms,half_res_over_full_cpu_render,half_res_runs,suspect_gpu_bound
+native,d3d12,original,1,1,2.8175,0.892,0.0035,1.11002,3.08635,0.359653,5,3.0517,1.08312,0.9831,1.10213,5,
+native,d3d12,original,8,1,1.1311,0.482,0.0039,1.12026,1.1289,0.992343,5,1.1055,0.977367,0.378,0.784232,5,gpu_ms is 99 % of frame_ms
+diligent,d3d12,tex_mut,1,1,6.0769,3.929,0,1.19296,6.5122,0.183188,5,6.3653,1.04746,4.22275,1.07476,5,
+diligent,d3d12,tex_mut,8,1,1.72075,1.093,0,1.1735,1.8978,0.61835,5,1.8533,1.07703,1.2309,1.12617,5,
+diligent,d3d12,bindless,1,1,3.34255,1.3691,0,0.683008,3.6248,0.188426,5,3.58715,1.07318,1.46825,1.07242,5,
+diligent,d3d12,bindless,8,1,1.1011,0.4996,0,0.702464,1.1993,0.585728,5,1.1143,1.01199,0.5427,1.08627,5,
+nvrhi,d3d12,tex_mut,1,1,8.1429,5.83795,0.0106,4.44314,14.2971,0.310772,5,8.705,1.06903,6.46865,1.10803,4,
+nvrhi,d3d12,tex_mut,8,1,2.06735,1.4739,0.0092,1.16941,2.4887,0.469887,5,2.27998,1.10285,1.6289,1.10516,2,
+nvrhi,d3d12,bindless,1,1,3.138,1.1368,0.0068,1.04346,3.38875,0.307918,5,3.36355,1.07188,1.24625,1.09628,4,
+nvrhi,d3d12,bindless,8,1,1.101,0.4864,0.0109,0.88576,1.1673,0.758811,5,1.1551,1.04914,0.4903,1.00802,1,
+diligent,vk,tex_mut,1,1,8.3304,3.7983,0,1.32198,6.0672,0.21789,5,6.0595,0.727396,4.1381,1.08946,5,frame_ms drops to 73 % at half resolution; 9 of 10 runs paced or not displayed: frame_ms not usable
+diligent,vk,tex_mut,8,1,,1.1681,,1.2288,1.7147,0.716627,5,1.6772,,1.2174,1.04221,5,5 of 5 runs paced or not displayed: frame_ms not usable
+diligent,vk,bindless,1,1,,2.0805,,0.79872,4.14215,0.192827,5,4.1277,,2.21175,1.06309,5,5 of 5 runs paced or not displayed: frame_ms not usable
+diligent,vk,bindless,8,1,,0.7168,,0.939008,1.1868,0.79121,5,1.102,,0.6759,0.942941,5,10 of 10 runs paced or not displayed: frame_ms not usable
+nvrhi,vk,tex_mut,1,1,13.3635,11.4918,0.1094,4.80698,15.4801,0.310526,5,15.9493,1.1935,13.4214,1.16791,5,
+nvrhi,vk,tex_mut,8,1,2.9905,2.4743,0.1117,1.63235,3.1692,0.515068,5,3.149,1.053,2.5859,1.0451,5,
+nvrhi,vk,bindless,1,1,3.3993,1.6401,0.0168,0.95968,3.685,0.260429,5,3.6352,1.0694,1.7661,1.07682,5,
+nvrhi,vk,bindless,8,1,1.02035,0.57565,0.0139,0.896864,1.0909,0.822132,5,1.0356,1.01495,0.5964,1.03605,5,gpu_ms is 82 % of frame_ms

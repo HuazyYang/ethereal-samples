@@ -1,0 +1,63 @@
+#include "ConeTracingDebugGSCommon.hlsli"
+
+/*
+* Copyright (c) 2012-2016, NVIDIA CORPORATION. All rights reserved.
+*
+* NVIDIA CORPORATION and its licensors retain all intellectual property
+* and proprietary rights in and to this software, related documentation
+* and any modifications thereto. Any use, reproduction, disclosure or
+* distribution of this software and related documentation without an express
+* license agreement from NVIDIA CORPORATION is strictly prohibited.
+*/
+cbuffer VisualizeConstants: register(b0)
+{
+float4x4 g_ViewProjMatrixDebug;
+float4 g_SmallestVoxelSize;
+float4 g_ClipmapCenterDebug;
+float4 g_ClipmapCenterAtSave;
+float4 g_ToroidalOffsetDebug;
+uint g_TotalMipLevels;
+uint g_ColorSelection;
+uint g_OnlyContributingSamples;
+int g_ConeIndexFilter;
+int g_SampleIndexFilter;
+int g_StackSizeDebug;
+int g_StackTextureSizeDebug;
+int g_PackingStrideDebug;
+};
+struct VisualizeSamples_GSOut
+{
+float4 position : SV_Position;
+float3 color    : COLOR;
+};
+struct VisualizeTexels_GSOut
+{
+float4 position : SV_Position;
+float3 color0   : COLOR0;
+float3 colorX   : COLORX;
+float3 colorY   : COLORY;
+float2 quadPos  : QUADPOS;
+};
+StructuredBuffer<ConeData> t_ConeDirections: register(t1);
+#define SV_POSITION_ATTR_OUT OUT.position
+struct VisualizeSamples_GSIn
+{
+};
+[maxvertexcount(2)]
+void main(point VisualizeSamples_GSIn dummyInput[1], uint gl_PrimitiveIDIn: SV_PrimitiveID, inout LineStream<VisualizeSamples_GSOut> outStream)
+{
+ConeData IN = t_ConeDirections[gl_PrimitiveIDIn];
+if(g_ConeIndexFilter != 0 && g_ConeIndexFilter != IN.coneIndex)
+return;
+const float lineLength = 200;
+
+VisualizeSamples_GSOut OUT;
+
+SV_POSITION_ATTR_OUT = mul(float4(IN.startPos, 1), g_ViewProjMatrixDebug);
+OUT.color = float3(0.1, 0.1, 0.1);
+outStream.Append(OUT);
+SV_POSITION_ATTR_OUT = mul(float4(IN.startPos + IN.direction * lineLength, 1), g_ViewProjMatrixDebug);
+OUT.color = IN.coneIndex < 0 ? float3(1, 1, 1) : float3(1, 1, 0);
+outStream.Append(OUT);
+outStream.RestartStrip();
+}

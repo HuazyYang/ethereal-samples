@@ -1,0 +1,27 @@
+comparison,renderer,api,binding,threads,headline,status,native_baseline,cpu_render_ms,native_cpu_render_ms,overhead_cpu_render_pct,cpu_render_present_ms,native_cpu_render_present_ms,overhead_cpu_render_present_pct,cpu_render_gc_ms,native_cpu_render_gc_ms,overhead_cpu_render_gc_pct,overhead_ns_per_draw,draw_count
+"layer overhead, per-draw texture binding on both sides (D3D11)",diligent,d3d11,dyn,1,0,ok,native D3D11,4.9531,2.40128,106.27,5.2605,2.6084,101.675,4.9531,2.40128,106.27,51.0355,50001
+"layer overhead, per-draw texture binding on both sides (D3D11)",diligent,d3d11,mut,1,0,ok,native D3D11,7.565,2.40128,215.041,7.81995,2.6084,199.799,7.565,2.40128,215.041,103.272,50001
+"layer overhead, per-draw texture binding on both sides (D3D11)",diligent,d3d11,tex_mut,1,0,ok,native D3D11,3.9242,2.40128,63.4215,4.1981,2.6084,60.9454,3.9242,2.40128,63.4215,30.4579,50001
+"layer overhead, per-draw texture binding on both sides (D3D11)",nvrhi,d3d11,mut,1,0,ok,native D3D11,11.5958,2.40128,382.902,11.8459,2.6084,354.144,11.5979,2.40128,382.989,183.887,50001
+"layer overhead, per-draw texture binding on both sides (D3D11)",nvrhi,d3d11,tex_mut,1,0,ok,native D3D11,4.2288,2.40128,76.1064,4.48855,2.6084,72.0806,4.23128,2.40128,76.2095,36.5498,50001
+"layer overhead, per-draw texture binding on both sides (D3D11)",nvrhi,d3d11,tex_mut_pc,1,0,ok,native D3D11,4.1195,2.40128,71.5547,4.37918,2.6084,67.8874,4.12207,2.40128,71.6619,34.3638,50001
+layer overhead with equivalent binding strategy,diligent,d3d12,bindless,1,1,ok,native D3D12,1.3691,0.892,53.4865,1.66205,1.1293,47.1752,1.3691,0.892,53.4865,9.54181,50001
+layer overhead with equivalent binding strategy,diligent,d3d12,bindless,2,0,ok,native D3D12,0.83055,0.54615,52.0736,1.07612,0.82355,30.6691,0.83055,0.54615,52.0736,5.68789,50001
+layer overhead with equivalent binding strategy,diligent,d3d12,bindless,4,0,ok,native D3D12,0.57175,0.3816,49.8297,0.81725,0.60005,36.197,0.57175,0.3816,49.8297,3.80292,50001
+layer overhead with equivalent binding strategy,diligent,d3d12,bindless,8,1,ok,native D3D12,0.4996,0.482,3.65145,0.77825,0.7251,7.33002,0.4996,0.482,3.65145,0.351993,50001
+layer overhead with equivalent binding strategy,diligent,d3d12,bindless,15,0,ok,native D3D12,0.5682,0.4665,21.8006,0.8852,0.77265,14.5668,0.5682,0.4665,21.8006,2.03396,50001
+layer overhead with equivalent binding strategy,nvrhi,d3d12,bindless,1,1,ok,native D3D12,1.1368,0.892,27.4439,1.4438,1.1293,27.8491,1.1418,0.892,28.0045,4.8959,50001
+layer overhead with equivalent binding strategy,nvrhi,d3d12,bindless,2,0,ok,native D3D12,0.78005,0.54615,42.8271,1.05865,0.82355,28.5471,0.786,0.54615,43.9165,4.67791,50001
+layer overhead with equivalent binding strategy,nvrhi,d3d12,bindless,4,0,ok,native D3D12,0.57415,0.3816,50.4586,0.90435,0.60005,50.7124,0.5811,0.3816,52.2799,3.85092,50001
+layer overhead with equivalent binding strategy,nvrhi,d3d12,bindless,8,1,ok,native D3D12,0.4864,0.482,0.912863,0.7456,0.7251,2.8272,0.4961,0.482,2.92531,0.0879982,50001
+layer overhead with equivalent binding strategy,nvrhi,d3d12,bindless,15,0,ok,native D3D12,0.5409,0.4665,15.9486,0.836,0.77265,8.19906,0.55895,0.4665,19.8178,1.48797,50001
+layer overhead with equivalent binding strategy,diligent,vk,bindless,1,1,ok,native D3D12 (cross-API reference),2.0805,0.892,133.24,,1.1293,,2.0805,0.892,133.24,23.7695,50001
+layer overhead with equivalent binding strategy,diligent,vk,bindless,2,0,ok,native D3D12 (cross-API reference),1.2087,0.54615,121.313,,0.82355,,1.2087,0.54615,121.313,13.2507,50001
+layer overhead with equivalent binding strategy,diligent,vk,bindless,4,0,ok,native D3D12 (cross-API reference),0.86005,0.3816,125.38,,0.60005,,0.86005,0.3816,125.38,9.56881,50001
+layer overhead with equivalent binding strategy,diligent,vk,bindless,8,1,ok,native D3D12 (cross-API reference),0.7168,0.482,48.7137,,0.7251,,0.7168,0.482,48.7137,4.69591,50001
+layer overhead with equivalent binding strategy,diligent,vk,bindless,15,0,ok,native D3D12 (cross-API reference),0.65405,0.4665,40.2036,,0.77265,,0.65405,0.4665,40.2036,3.75092,50001
+layer overhead with equivalent binding strategy,nvrhi,vk,bindless,1,1,ok,native D3D12 (cross-API reference),1.6401,0.892,83.8677,1.6853,1.1293,49.234,1.6433,0.892,84.2265,14.9617,50001
+layer overhead with equivalent binding strategy,nvrhi,vk,bindless,2,0,ok,native D3D12 (cross-API reference),0.9486,0.54615,73.6885,0.98645,0.82355,19.7802,0.9519,0.54615,74.2928,8.04884,50001
+layer overhead with equivalent binding strategy,nvrhi,vk,bindless,4,0,ok,native D3D12 (cross-API reference),0.65115,0.3816,70.6368,0.6915,0.60005,15.2404,0.655,0.3816,71.6457,5.39089,50001
+layer overhead with equivalent binding strategy,nvrhi,vk,bindless,8,1,ok,native D3D12 (cross-API reference),0.57565,0.482,19.4295,0.6459,0.7251,-10.9226,0.5836,0.482,21.0788,1.87296,50001
+layer overhead with equivalent binding strategy,nvrhi,vk,bindless,15,0,ok,native D3D12 (cross-API reference),0.5366,0.4665,15.0268,0.8095,0.77265,4.7693,0.5473,0.4665,17.3205,1.40197,50001

@@ -1,0 +1,37 @@
+{
+    "models": [
+        "../data/gltf/furnace/furnace.glb"
+    ],
+    "graph": [
+        {
+            "name": "Lights",
+            "children": []
+        },
+        {
+            "name": "Cameras",
+            "children": [
+                {
+                    "name": "Default Camera",
+                    "type": "PerspectiveCamera",
+                    "translation": [
+                        0.0,
+                        1.0,
+                        4.0
+                    ],
+                    "rotation": [
+                        0.0,
+                        0.0,
+                        0.0,
+                        1.0
+                    ],
+                    "verticalFov": 45.0,
+                    "zNear": 0.1
+                }
+            ]
+        },
+        {
+            "name": "Furnace",
+            "model": 0
+        }
+    ]
+}

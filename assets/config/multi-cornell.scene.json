@@ -1,0 +1,55 @@
+{
+    "models": [
+        "../data/gltf/multi-cornell/multi-cornell.glb"
+    ],
+    "graph": [
+        {
+            "name": "Lights",
+            "children": [
+                {
+                    "name": "Sun",
+                    "type": "DirectionalLight",
+                    "rotation": [
+                        -0.21152606074598893,
+                        -0.2917600837875709,
+                        -0.0,
+                        0.9328090796800563
+                    ],
+                    "angularSize": 1.0,
+                    "color": [
+                        1.0,
+                        1.0,
+                        1.0
+                    ],
+                    "irradiance": 1.0
+                }
+            ]
+        },
+        {
+            "name": "Cameras",
+            "children": [
+                {
+                    "name": "Default Camera",
+                    "type": "PerspectiveCamera",
+                    "translation": [
+                        -9.26,
+                        16.33,
+                        18.91
+                    ],
+                    "rotation": [
+                        -0.21514833867284663,
+                        -0.22972132206247003,
+                        -0.0521492420558795,
+                        0.9477445663833596
+                    ],
+                    "verticalFov": 45.0,
+                    "zNear": 0.1
+                }
+            ]
+        },
+        {
+            "name": "Cornell-Boxes",
+            "model": 0
+        }
+    ]
+}

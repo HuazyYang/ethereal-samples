@@ -1,0 +1,61 @@
+comparison,renderer,api,binding,threads,headline,status,native_baseline,cpu_render_ms,native_cpu_render_ms,overhead_cpu_render_pct,cpu_render_present_ms,native_cpu_render_present_ms,overhead_cpu_render_present_pct,cpu_render_gc_ms,native_cpu_render_gc_ms,overhead_cpu_render_gc_pct,overhead_ns_per_draw,draw_count
+binding-model cost,diligent,d3d12,dyn,1,0,ok,native D3D12,20.944,0.892,2247.98,21.4442,1.1293,1798.89,20.944,0.892,2247.98,401.031,50001
+binding-model cost,diligent,d3d12,dyn,2,0,ok,native D3D12,11.0996,0.54615,1932.33,11.5893,0.82355,1307.24,11.0996,0.54615,1932.33,211.064,50001
+binding-model cost,diligent,d3d12,dyn,4,0,ok,native D3D12,5.9128,0.3816,1449.48,6.321,0.60005,953.412,5.9128,0.3816,1449.48,110.622,50001
+binding-model cost,diligent,d3d12,dyn,8,0,ok,native D3D12,2.8791,0.482,497.324,3.15435,0.7251,335.023,2.8791,0.482,497.324,47.941,50001
+binding-model cost,diligent,d3d12,dyn,15,0,ok,native D3D12,1.976,0.4665,323.58,2.23125,0.77265,188.779,1.976,0.4665,323.58,30.1894,50001
+binding-model cost,diligent,d3d12,mut,1,0,ok,native D3D12,6.6283,0.892,643.083,6.9781,1.1293,517.914,6.6283,0.892,643.083,114.724,50001
+binding-model cost,diligent,d3d12,mut,2,0,ok,native D3D12,3.3486,0.54615,513.128,3.6485,0.82355,343.021,3.3486,0.54615,513.128,56.0479,50001
+binding-model cost,diligent,d3d12,mut,4,0,ok,native D3D12,2.0035,0.3816,425.026,2.27605,0.60005,279.31,2.0035,0.3816,425.026,32.4374,50001
+binding-model cost,diligent,d3d12,mut,8,0,ok,native D3D12,1.6851,0.482,249.606,1.9508,0.7251,169.039,1.6851,0.482,249.606,24.0615,50001
+binding-model cost,diligent,d3d12,mut,15,0,ok,native D3D12,1.4687,0.4665,214.834,1.7355,0.77265,124.617,1.4687,0.4665,214.834,20.0436,50001
+binding-model cost,diligent,d3d12,tex_mut,1,1,ok,native D3D12,3.929,0.892,340.471,4.257,1.1293,276.959,3.929,0.892,340.471,60.7388,50001
+binding-model cost,diligent,d3d12,tex_mut,2,0,ok,native D3D12,2.1419,0.54615,292.182,2.4322,0.82355,195.331,2.1419,0.54615,292.182,31.9144,50001
+binding-model cost,diligent,d3d12,tex_mut,4,0,ok,native D3D12,1.3164,0.3816,244.969,1.5539,0.60005,158.962,1.3164,0.3816,244.969,18.6956,50001
+binding-model cost,diligent,d3d12,tex_mut,8,1,ok,native D3D12,1.093,0.482,126.763,1.39475,0.7251,92.3528,1.093,0.482,126.763,12.2198,50001
+binding-model cost,diligent,d3d12,tex_mut,15,0,ok,native D3D12,0.921,0.4665,97.4277,1.1951,0.77265,54.6755,0.921,0.4665,97.4277,9.08982,50001
+binding-model cost,nvrhi,d3d12,mut,1,0,ok,native D3D12,9.75925,0.892,994.086,10.1461,1.1293,798.437,9.7703,0.892,995.325,177.341,50001
+binding-model cost,nvrhi,d3d12,mut,2,0,ok,native D3D12,4.81125,0.54615,780.939,5.1296,0.82355,522.864,4.81815,0.54615,782.203,85.3003,50001
+binding-model cost,nvrhi,d3d12,mut,4,0,ok,native D3D12,3.411,0.3816,793.868,3.6905,0.60005,515.032,3.4185,0.3816,795.833,60.5868,50001
+binding-model cost,nvrhi,d3d12,mut,8,0,ok,native D3D12,2.2801,0.482,373.05,2.5608,0.7251,253.165,2.2895,0.482,375,35.9613,50001
+binding-model cost,nvrhi,d3d12,mut,15,0,ok,native D3D12,1.62035,0.4665,247.342,1.8868,0.77265,144.199,1.6347,0.4665,250.418,23.0765,50001
+binding-model cost,nvrhi,d3d12,tex_mut,1,1,ok,native D3D12,5.83795,0.892,554.479,6.26215,1.1293,454.516,5.84655,0.892,555.443,98.917,50001
+binding-model cost,nvrhi,d3d12,tex_mut,2,0,ok,native D3D12,2.9862,0.54615,446.773,3.2747,0.82355,297.632,2.99257,0.54615,447.94,48.8,50001
+binding-model cost,nvrhi,d3d12,tex_mut,4,0,ok,native D3D12,1.695,0.3816,344.182,1.9393,0.60005,223.19,1.7011,0.3816,345.781,26.2675,50001
+binding-model cost,nvrhi,d3d12,tex_mut,8,1,ok,native D3D12,1.4739,0.482,205.788,1.71445,0.7251,136.443,1.482,0.482,207.469,19.8376,50001
+binding-model cost,nvrhi,d3d12,tex_mut,15,0,ok,native D3D12,1.1204,0.4665,140.171,1.4359,0.77265,85.8409,1.1351,0.4665,143.323,13.0777,50001
+binding-model cost,nvrhi,d3d12,tex_mut_pc,1,0,ok,native D3D12,5.81968,0.892,552.43,6.22158,1.1293,450.923,5.82795,0.892,553.358,98.5515,50001
+binding-model cost,nvrhi,d3d12,tex_mut_pc,2,0,ok,native D3D12,2.94885,0.54615,439.934,3.2231,0.82355,291.367,2.95425,0.54615,440.923,48.053,50001
+binding-model cost,nvrhi,d3d12,tex_mut_pc,4,0,ok,native D3D12,1.66515,0.3816,336.36,1.91528,0.60005,219.186,1.6711,0.3816,337.919,25.6705,50001
+binding-model cost,nvrhi,d3d12,tex_mut_pc,8,0,ok,native D3D12,1.4341,0.482,197.531,1.6796,0.7251,131.637,1.4427,0.482,199.315,19.0416,50001
+binding-model cost,nvrhi,d3d12,tex_mut_pc,15,0,ok,native D3D12,1.1431,0.4665,145.038,1.38685,0.77265,79.4927,1.155,0.4665,147.588,13.5317,50001
+binding-model cost,diligent,vk,dyn,1,0,ok,native D3D12 (cross-API reference),42.691,0.892,4685.99,42.8428,1.1293,3693.75,42.691,0.892,4685.99,835.964,50001
+binding-model cost,diligent,vk,dyn,2,0,ok,native D3D12 (cross-API reference),18.0136,0.54615,3198.29,18.1033,0.82355,2098.21,18.0136,0.54615,3198.29,349.342,50001
+binding-model cost,diligent,vk,dyn,4,0,ok,native D3D12 (cross-API reference),8.2675,0.3816,2066.54,8.3398,0.60005,1289.85,8.2675,0.3816,2066.54,157.715,50001
+binding-model cost,diligent,vk,dyn,8,0,ok,native D3D12 (cross-API reference),4.756,0.482,886.722,,0.7251,,4.756,0.482,886.722,85.4783,50001
+binding-model cost,diligent,vk,dyn,15,0,ok,native D3D12 (cross-API reference),2.9195,0.4665,525.831,,0.77265,,2.9195,0.4665,525.831,49.059,50001
+binding-model cost,diligent,vk,mut,1,0,ok,native D3D12 (cross-API reference),7.6767,0.892,760.617,7.76255,1.1293,587.377,7.6767,0.892,760.617,135.691,50001
+binding-model cost,diligent,vk,mut,2,0,ok,native D3D12 (cross-API reference),3.942,0.54615,621.78,,0.82355,,3.942,0.54615,621.78,67.9156,50001
+binding-model cost,diligent,vk,mut,4,0,ok,native D3D12 (cross-API reference),2.3356,0.3816,512.055,,0.60005,,2.3356,0.3816,512.055,39.0792,50001
+binding-model cost,diligent,vk,mut,8,0,ok,native D3D12 (cross-API reference),1.9473,0.482,304.004,,0.7251,,1.9473,0.482,304.004,29.3054,50001
+binding-model cost,diligent,vk,mut,15,0,ok,native D3D12 (cross-API reference),1.50895,0.4665,223.462,,0.77265,,1.50895,0.4665,223.462,20.8486,50001
+binding-model cost,diligent,vk,tex_mut,1,1,ok,native D3D12 (cross-API reference),3.7983,0.892,325.818,6.1609,1.1293,445.55,3.7983,0.892,325.818,58.1248,50001
+binding-model cost,diligent,vk,tex_mut,2,0,ok,native D3D12 (cross-API reference),2.0869,0.54615,282.111,,0.82355,,2.0869,0.54615,282.111,30.8144,50001
+binding-model cost,diligent,vk,tex_mut,4,0,ok,native D3D12 (cross-API reference),1.29507,0.3816,239.38,,0.60005,,1.29507,0.3816,239.38,18.2691,50001
+binding-model cost,diligent,vk,tex_mut,8,1,ok,native D3D12 (cross-API reference),1.1681,0.482,142.344,,0.7251,,1.1681,0.482,142.344,13.7217,50001
+binding-model cost,diligent,vk,tex_mut,15,0,ok,native D3D12 (cross-API reference),0.9203,0.4665,97.2776,,0.77265,,0.9203,0.4665,97.2776,9.07582,50001
+binding-model cost,nvrhi,vk,mut,1,0,ok,native D3D12 (cross-API reference),18.3635,0.892,1958.69,18.413,1.1293,1530.48,18.4632,0.892,1969.86,349.423,50001
+binding-model cost,nvrhi,vk,mut,2,0,ok,native D3D12 (cross-API reference),8.6214,0.54615,1478.58,8.6677,0.82355,952.48,8.722,0.54615,1497,161.502,50001
+binding-model cost,nvrhi,vk,mut,4,0,ok,native D3D12 (cross-API reference),4.89275,0.3816,1182.17,4.9389,0.60005,723.081,4.99462,0.3816,1208.86,90.2212,50001
+binding-model cost,nvrhi,vk,mut,8,0,ok,native D3D12 (cross-API reference),3.5032,0.482,626.805,3.5521,0.7251,389.877,3.61005,0.482,648.973,60.4228,50001
+binding-model cost,nvrhi,vk,mut,15,0,ok,native D3D12 (cross-API reference),2.3932,0.4665,413.012,2.44665,0.77265,216.657,2.5041,0.4665,436.785,38.5332,50001
+binding-model cost,nvrhi,vk,tex_mut,1,1,ok,native D3D12 (cross-API reference),11.4918,0.892,1188.32,11.5413,1.1293,921.983,11.5942,0.892,1199.8,211.993,50001
+binding-model cost,nvrhi,vk,tex_mut,2,0,ok,native D3D12 (cross-API reference),6.1887,0.54615,1033.15,6.23997,0.82355,657.692,6.30995,0.54615,1055.35,112.849,50001
+binding-model cost,nvrhi,vk,tex_mut,4,0,ok,native D3D12 (cross-API reference),2.8584,0.3816,649.057,2.8992,0.60005,383.16,2.9618,0.3816,676.153,49.535,50001
+binding-model cost,nvrhi,vk,tex_mut,8,1,ok,native D3D12 (cross-API reference),2.4743,0.482,413.34,2.517,0.7251,247.125,2.5798,0.482,435.228,39.8452,50001
+binding-model cost,nvrhi,vk,tex_mut,15,0,ok,native D3D12 (cross-API reference),1.6882,0.4665,261.886,1.7362,0.77265,124.707,1.8037,0.4665,286.645,24.4335,50001
+binding-model cost,nvrhi,vk,tex_mut_pc,1,0,ok,native D3D12 (cross-API reference),6.79348,0.892,661.6,6.8506,1.1293,506.624,6.79755,0.892,662.057,118.027,50001
+binding-model cost,nvrhi,vk,tex_mut_pc,2,0,ok,native D3D12 (cross-API reference),3.51195,0.54615,543.038,3.552,0.82355,331.304,3.5152,0.54615,543.633,59.3148,50001
+binding-model cost,nvrhi,vk,tex_mut_pc,4,0,ok,native D3D12 (cross-API reference),1.8761,0.3816,391.64,1.9139,0.60005,218.957,1.8791,0.3816,392.427,29.8894,50001
+binding-model cost,nvrhi,vk,tex_mut_pc,8,0,ok,native D3D12 (cross-API reference),1.8024,0.482,273.942,1.8428,0.7251,154.144,1.8071,0.482,274.917,26.4075,50001
+binding-model cost,nvrhi,vk,tex_mut_pc,15,0,ok,native D3D12 (cross-API reference),1.2375,0.4665,165.273,1.2854,0.77265,66.3625,1.2452,0.4665,166.924,15.4197,50001

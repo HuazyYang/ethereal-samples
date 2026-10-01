@@ -1,0 +1,11 @@
+renderer,api,binding,threads,variant,runs_unaffected,cpu_render_ms_unaffected,cpu_render_ms_unaffected_min,cpu_render_ms_unaffected_max,runs_affected,cpu_render_ms_affected,cpu_render_ms_affected_min,cpu_render_ms_affected_max,affected_over_unaffected,affected_command_lists_min,affected_command_lists_max,threads_recording
+nvrhi,d3d12,tex_mut,1,default,2,5.81715,5.7685,5.8658,1,10.4937,10.4937,10.4937,1.80393,1,1,1
+nvrhi,d3d12,tex_mut,1,always_set_state,2,5.95732,5.88205,6.0326,1,10.6623,10.6623,10.6623,1.78977,1,1,1
+nvrhi,d3d12,tex_mut,1,cb_page_split_force,0,,,,3,10.6377,10.5676,10.803,,1,1,1
+nvrhi,d3d12,tex_mut,1,no_auto_barriers,2,5.7604,5.7062,5.8146,1,10.376,10.376,10.376,1.80127,1,1,1
+nvrhi,d3d12,tex_mut,1,track_liveness,2,11.5071,11.3853,11.6289,1,11.9638,11.9638,11.9638,1.03969,1,1,1
+nvrhi,d3d12,tex_mut,8,default,1,1.4567,1.4567,1.4567,2,1.52625,1.4914,1.5611,1.04774,1,2,8
+nvrhi,d3d12,tex_mut,8,always_set_state,1,1.51545,1.51545,1.51545,2,1.7678,1.7491,1.7865,1.16652,2,4,8
+nvrhi,d3d12,tex_mut,8,cb_page_split_force,0,,,,3,1.8028,1.7958,1.8266,,8,8,8
+nvrhi,d3d12,tex_mut,8,no_auto_barriers,0,,,,3,1.4702,1.4651,1.6823,,1,4,8
+nvrhi,d3d12,tex_mut,8,track_liveness,1,2.10425,2.10425,2.10425,2,2.12477,2.1188,2.13075,1.00975,1,2,8

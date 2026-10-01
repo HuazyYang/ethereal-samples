@@ -1,0 +1,72 @@
+{
+    "models": [
+        "../data/gltf/sponza/Sponza.gltf"
+    ],
+    "graph": [
+        {
+            "name": "Lights",
+            "children": [
+                {
+                    "name": "Sun",
+                    "type": "DirectionalLight",
+                    "rotation": [
+                        -0.8022929282893952,
+                        -0.0,
+                        -0.0,
+                        0.5969305296404492
+                    ],
+                    "angularSize": 1.0,
+                    "color": [
+                        1.0,
+                        1.0,
+                        1.0
+                    ],
+                    "irradiance": 3.14
+                }
+            ]
+        },
+        {
+            "name": "Cameras",
+            "children": [
+                {
+                    "name": "Upper Floor",
+                    "type": "PerspectiveCamera",
+                    "translation": [
+                        7.46,
+                        5.07,
+                        0.92
+                    ],
+                    "rotation": [
+                        0.09720717504638365,
+                        -0.5320453948282855,
+                        -0.06165385701116772,
+                        -0.8388547340732853
+                    ],
+                    "verticalFov": 68.0,
+                    "zNear": 0.1
+                },
+                {
+                    "name": "Lower Floor",
+                    "type": "PerspectiveCamera",
+                    "translation": [
+                        8.74,
+                        1.21,
+                        0.41
+                    ],
+                    "rotation": [
+                        -0.070347381191922,
+                        -0.5891952425117947,
+                        0.05159971526277285,
+                        -0.8032668806478372
+                    ],
+                    "verticalFov": 68.0,
+                    "zNear": 0.1
+                }
+            ]
+        },
+        {
+            "name": "Sponza",
+            "model": 0
+        }
+    ]
+}

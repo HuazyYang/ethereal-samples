@@ -1,0 +1,9 @@
+comparison,renderer,api,binding,threads,headline,status,native_baseline,cpu_render_ms,native_cpu_render_ms,overhead_cpu_render_pct,cpu_render_present_ms,native_cpu_render_present_ms,overhead_cpu_render_present_pct,cpu_render_gc_ms,native_cpu_render_gc_ms,overhead_cpu_render_gc_pct,overhead_ns_per_draw,draw_count
+layer overhead with equivalent binding strategy,diligent,d3d12,bindless,1,1,ok,native D3D12,1.4764,0.9738,51.6122,1.8213,1.25495,45.1293,1.4764,0.9738,51.6122,10.0518,50001
+layer overhead with equivalent binding strategy,diligent,d3d12,bindless,8,1,ok,native D3D12,0.56105,0.4709,19.1442,0.834,0.6995,19.228,0.56105,0.4709,19.1442,1.80296,50001
+layer overhead with equivalent binding strategy,nvrhi,d3d12,bindless,1,1,ok,native D3D12,1.2335,0.9738,26.6687,1.573,1.25495,25.3436,1.239,0.9738,27.2335,5.1939,50001
+layer overhead with equivalent binding strategy,nvrhi,d3d12,bindless,8,1,ok,native D3D12,0.486,0.4709,3.20663,0.7831,0.6995,11.9514,0.49835,0.4709,5.82926,0.301994,50001
+layer overhead with equivalent binding strategy,diligent,vk,bindless,1,1,ok,native D3D12 (cross-API reference),2.227,0.9738,128.692,2.3189,1.25495,84.7803,2.227,0.9738,128.692,25.0635,50001
+layer overhead with equivalent binding strategy,diligent,vk,bindless,8,1,ok,native D3D12 (cross-API reference),0.7411,0.4709,57.3795,0.8191,0.6995,17.0979,0.7411,0.4709,57.3795,5.40389,50001
+layer overhead with equivalent binding strategy,nvrhi,vk,bindless,1,1,ok,native D3D12 (cross-API reference),1.80955,0.9738,85.8236,1.8632,1.25495,48.4681,1.8129,0.9738,86.1676,16.7147,50001
+layer overhead with equivalent binding strategy,nvrhi,vk,bindless,8,1,ok,native D3D12 (cross-API reference),0.6405,0.4709,36.0161,0.6948,0.6995,-0.671909,0.6496,0.4709,37.9486,3.39193,50001

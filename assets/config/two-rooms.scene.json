@@ -1,0 +1,89 @@
+{
+    "models": [
+        "../data/gltf/two-rooms/two-rooms.glb"
+    ],
+    "graph": [
+        {
+            "name": "Lights",
+            "children": [
+                {
+                    "name": "Sun",
+                    "type": "DirectionalLight",
+                    "rotation": [
+                        -0.13557016569191632,
+                        0.6132936067015262,
+                        0.0,
+                        0.7781334603737973
+                    ],
+                    "angularSize": 1.0,
+                    "color": [
+                        1.0,
+                        1.0,
+                        1.0
+                    ],
+                    "irradiance": 2.25
+                }
+            ]
+        },
+        {
+            "name": "Cameras",
+            "children": [
+                {
+                    "name": "Open Room",
+                    "type": "PerspectiveCamera",
+                    "translation": [
+                        -93.44,
+                        32.41,
+                        11.56
+                    ],
+                    "rotation": [
+                        -0.034345844116027896,
+                        -0.8407388438115488,
+                        -0.053705099660169876,
+                        0.53767492201968
+                    ],
+                    "verticalFov": 45.0,
+                    "zNear": 0.1
+                },
+                {
+                    "name": "Closed Room",
+                    "type": "PerspectiveCamera",
+                    "translation": [
+                        -42.6,
+                        36.41,
+                        -53.41
+                    ],
+                    "rotation": [
+                        -0.04756807663637627,
+                        -0.7523261193234331,
+                        -0.05465334885670446,
+                        0.6547943950031999
+                    ],
+                    "verticalFov": 45.0,
+                    "zNear": 0.1
+                },
+                {
+                    "name": "Outside",
+                    "type": "PerspectiveCamera",
+                    "translation": [
+                        324.19,
+                        96.37,
+                        104.09
+                    ],
+                    "rotation": [
+                        -0.09797416641484398,
+                        0.5305320543724913,
+                        0.061900802617072155,
+                        0.839705360608102
+                    ],
+                    "verticalFov": 45.0,
+                    "zNear": 0.1
+                }
+            ]
+        },
+        {
+            "name": "Two-Rooms",
+            "model": 0
+        }
+    ]
+}

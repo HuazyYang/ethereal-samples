@@ -1,0 +1,10 @@
+/build/
+/build-*/
+/.vscode/
+/.cache/
+
+# Asteroids benchmark: raw run output and the analysis virtual environment
+/benchmark/Asteroids/results/
+/benchmark/Asteroids/.venv/
+__pycache__/
+*.pyc

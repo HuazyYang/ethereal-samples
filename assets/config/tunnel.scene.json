@@ -1,0 +1,55 @@
+{
+    "models": [
+        "../data/gltf/tunnel/tunnel.glb"
+    ],
+    "graph": [
+        {
+            "name": "Lights",
+            "children": [
+                {
+                    "name": "Sun",
+                    "type": "DirectionalLight",
+                    "rotation": [
+                        -0.37295878613891964,
+                        -0.37295878613891964,
+                        -0.0,
+                        0.8495901880810344
+                    ],
+                    "angularSize": 1.0,
+                    "color": [
+                        1.0,
+                        1.0,
+                        1.0
+                    ],
+                    "irradiance": 2.2
+                }
+            ]
+        },
+        {
+            "name": "Cameras",
+            "children": [
+                {
+                    "name": "Default Camera",
+                    "type": "PerspectiveCamera",
+                    "translation": [
+                        55.78,
+                        8.1,
+                        5.08
+                    ],
+                    "rotation": [
+                        0.0017230323104930343,
+                        -0.6133881577392292,
+                        0.0013382074912939987,
+                        0.7897785818225522
+                    ],
+                    "verticalFov": 45.0,
+                    "zNear": 0.1
+                }
+            ]
+        },
+        {
+            "name": "Tunnel",
+            "model": 0
+        }
+    ]
+}

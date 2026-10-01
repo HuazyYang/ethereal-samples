@@ -1,0 +1,359 @@
+{
+    "scene": {
+        "filePath": "multi-cornell.scene.json",
+        "skyRadiance": [
+            0.001,
+            0.001,
+            0.001
+        ]
+    },
+    "interaction": {
+        "mouse.movementSpeed": 20.0,
+        "mouse.rotationSpeed": 2.0,
+        "mouse.invertPan": true
+    },
+    "renderers": {
+        "renderMode": "DDGI",
+        "pathTracing": {
+            "rayNormalBias": 0.0001,
+            "rayViewBias": 0.0001,
+            "numBounces": 20,
+            "samplesPerPixel": 1,
+            "antiailiasing": true
+        },
+        "rtao": {
+            "enabled": true,
+            "rayLength": 0.07,
+            "rayNormalBias": 0.01,
+            "rayViewBias": 0.01,
+            "powerLog": -1.0,
+            "filterDepthSigma": 0.3,
+            "filterDistanceSigma": 10.0
+        },
+        "postProcessing": {
+            "exposure": {
+                "enabled": true,
+                "fstops": 1.0
+            },
+            "tonemapping.enabled": true,
+            "dithering.enabled": true,
+            "gammaCorrection.enabled": true
+        },
+        "DDGI": {
+            "children": [
+                {
+                    "name": "Cornell-Box-1",
+                    "probeRelocation.enabled": true,
+                    "probeRelocation.minFrontfaceDistance": 0.1,
+                    "probeClassification.enabled": true,
+                    "probeVariability.enabled": false,
+                    "probeVariability.threshold": 0.04,
+                    "infiniteScrolling.enabled": false,
+                    "textures.rayData.format": "RG32_FLOAT",
+                    "textures.irradiance.format": "R10G10B10A2_UNORM",
+                    "textures.distance.format": "RG16_FLOAT",
+                    "textures.data.format": "RGBA16_FLOAT",
+                    "textures.variability.format": "R16_FLOAT",
+                    "origin": [
+                        0.0,
+                        2.701,
+                        0.0
+                    ],
+                    "rotation": [
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "probeCounts": [
+                        9,
+                        9,
+                        9
+                    ],
+                    "probeSpacing": [
+                        0.75,
+                        0.75,
+                        0.75
+                    ],
+                    "probeNumRays": 256,
+                    "probeNumIrradianceTexels": 8,
+                    "probeNumDistanceTexels": 16,
+                    "probeHysteresis": 0.97,
+                    "probeNormalBias": 0.02,
+                    "probeViewBias": 0.4,
+                    "probeMaxRayDistance": 50.0,
+                    "probeIrradianceThreshold": 0.2,
+                    "probeBrightnessThreshold": 1.0,
+                    "vis.probeVisType": "Default",
+                    "vis.probeRadius": 0.2,
+                    "vis.probeDistanceDivisor": 3.0,
+                    "vis.showProbes": true,
+                    "vis.texture.irradianceScale": 2.1,
+                    "vis.texture.distanceScale": 1.05,
+                    "vis.texture.probeDataScale": 16.81,
+                    "vis.texture.rayDataScale": 0.59,
+                    "vis.texture.probeVariabilityScale": 2.799
+                },
+                {
+                    "name": "Cornell-Box-2",
+                    "probeRelocation.enabled": true,
+                    "probeRelocation.minFrontfaceDistance": 0.1,
+                    "probeClassification.enabled": true,
+                    "probeVariability.enabled": false,
+                    "probeVariability.threshold": 0.04,
+                    "infiniteScrolling.enabled": false,
+                    "textures.rayData.format": "RG32_FLOAT",
+                    "textures.irradiance.format": "R10G10B10A2_UNORM",
+                    "textures.distance.format": "RG16_FLOAT",
+                    "textures.data.format": "RGBA16_FLOAT",
+                    "textures.variability.format": "R16_FLOAT",
+                    "origin": [
+                        11.662,
+                        2.581,
+                        -6.0
+                    ],
+                    "rotation": [
+                        0.0,
+                        43.0,
+                        0.0
+                    ],
+                    "probeCounts": [
+                        9,
+                        9,
+                        9
+                    ],
+                    "probeSpacing": [
+                        0.75,
+                        0.75,
+                        0.75
+                    ],
+                    "probeNumRays": 256,
+                    "probeNumIrradianceTexels": 8,
+                    "probeNumDistanceTexels": 16,
+                    "probeHysteresis": 0.97,
+                    "probeNormalBias": 0.02,
+                    "probeViewBias": 0.675,
+                    "probeMaxRayDistance": 50.0,
+                    "probeIrradianceThreshold": 0.2,
+                    "probeBrightnessThreshold": 1.0,
+                    "vis.probeVisType": "Default",
+                    "vis.probeRadius": 0.2,
+                    "vis.probeDistanceDivisor": 3.0,
+                    "vis.showProbes": true,
+                    "vis.texture.irradianceScale": 2.1,
+                    "vis.texture.distanceScale": 1.05,
+                    "vis.texture.probeDataScale": 16.81,
+                    "vis.texture.rayDataScale": 0.59,
+                    "vis.texture.probeVariabilityScale": 2.799
+                },
+                {
+                    "name": "Cornell-Box-3",
+                    "probeRelocation.enabled": true,
+                    "probeRelocation.minFrontfaceDistance": 0.1,
+                    "probeClassification.enabled": true,
+                    "probeVariability.enabled": false,
+                    "probeVariability.threshold": 0.04,
+                    "infiniteScrolling.enabled": false,
+                    "textures.rayData.format": "RG32_FLOAT",
+                    "textures.irradiance.format": "R10G10B10A2_UNORM",
+                    "textures.distance.format": "RG16_FLOAT",
+                    "textures.data.format": "RGBA16_FLOAT",
+                    "textures.variability.format": "R16_FLOAT",
+                    "origin": [
+                        -10.379,
+                        2.701,
+                        -7.488
+                    ],
+                    "rotation": [
+                        0.0,
+                        64.0,
+                        0.0
+                    ],
+                    "probeCounts": [
+                        9,
+                        9,
+                        9
+                    ],
+                    "probeSpacing": [
+                        0.75,
+                        0.75,
+                        0.75
+                    ],
+                    "probeNumRays": 256,
+                    "probeNumIrradianceTexels": 8,
+                    "probeNumDistanceTexels": 16,
+                    "probeHysteresis": 0.97,
+                    "probeNormalBias": 0.02,
+                    "probeViewBias": 0.675,
+                    "probeMaxRayDistance": 50.0,
+                    "probeIrradianceThreshold": 0.2,
+                    "probeBrightnessThreshold": 1.0,
+                    "vis.probeVisType": "Default",
+                    "vis.probeRadius": 0.2,
+                    "vis.probeDistanceDivisor": 3.0,
+                    "vis.showProbes": true,
+                    "vis.texture.irradianceScale": 2.1,
+                    "vis.texture.distanceScale": 1.05,
+                    "vis.texture.probeDataScale": 16.81,
+                    "vis.texture.rayDataScale": 0.59,
+                    "vis.texture.probeVariabilityScale": 2.799
+                },
+                {
+                    "name": "Cornell-Box-4",
+                    "probeRelocation.enabled": true,
+                    "probeRelocation.minFrontfaceDistance": 0.1,
+                    "probeClassification.enabled": true,
+                    "probeVariability.enabled": false,
+                    "probeVariability.threshold": 0.04,
+                    "infiniteScrolling.enabled": false,
+                    "textures.rayData.format": "RG32_FLOAT",
+                    "textures.irradiance.format": "R10G10B10A2_UNORM",
+                    "textures.distance.format": "RG16_FLOAT",
+                    "textures.data.format": "RGBA16_FLOAT",
+                    "textures.variability.format": "R16_FLOAT",
+                    "origin": [
+                        0.565,
+                        2.629,
+                        -12.5
+                    ],
+                    "rotation": [
+                        17.0,
+                        21.0,
+                        26.0
+                    ],
+                    "probeCounts": [
+                        9,
+                        9,
+                        9
+                    ],
+                    "probeSpacing": [
+                        0.75,
+                        0.75,
+                        0.75
+                    ],
+                    "probeNumRays": 256,
+                    "probeNumIrradianceTexels": 8,
+                    "probeNumDistanceTexels": 16,
+                    "probeHysteresis": 0.97,
+                    "probeNormalBias": 0.02,
+                    "probeViewBias": 0.675,
+                    "probeMaxRayDistance": 50.0,
+                    "probeIrradianceThreshold": 0.2,
+                    "probeBrightnessThreshold": 1.0,
+                    "vis.probeVisType": "Default",
+                    "vis.probeRadius": 0.2,
+                    "vis.probeDistanceDivisor": 3.0,
+                    "vis.showProbes": true,
+                    "vis.texture.irradianceScale": 2.1,
+                    "vis.texture.distanceScale": 1.05,
+                    "vis.texture.probeDataScale": 16.81,
+                    "vis.texture.rayDataScale": 0.59,
+                    "vis.texture.probeVariabilityScale": 2.799
+                },
+                {
+                    "name": "Cornell-Box-5",
+                    "probeRelocation.enabled": true,
+                    "probeRelocation.minFrontfaceDistance": 0.1,
+                    "probeClassification.enabled": true,
+                    "probeVariability.enabled": false,
+                    "probeVariability.threshold": 0.04,
+                    "infiniteScrolling.enabled": false,
+                    "textures.rayData.format": "RG32_FLOAT",
+                    "textures.irradiance.format": "R10G10B10A2_UNORM",
+                    "textures.distance.format": "RG16_FLOAT",
+                    "textures.data.format": "RGBA16_FLOAT",
+                    "textures.variability.format": "R16_FLOAT",
+                    "origin": [
+                        -4.456,
+                        6.386,
+                        -19.6
+                    ],
+                    "rotation": [
+                        -15.0,
+                        22.0,
+                        -22.0
+                    ],
+                    "probeCounts": [
+                        9,
+                        9,
+                        9
+                    ],
+                    "probeSpacing": [
+                        0.75,
+                        0.75,
+                        0.75
+                    ],
+                    "probeNumRays": 256,
+                    "probeNumIrradianceTexels": 8,
+                    "probeNumDistanceTexels": 16,
+                    "probeHysteresis": 0.97,
+                    "probeNormalBias": 0.02,
+                    "probeViewBias": 0.675,
+                    "probeMaxRayDistance": 50.0,
+                    "probeIrradianceThreshold": 0.2,
+                    "probeBrightnessThreshold": 1.0,
+                    "vis.probeVisType": "Hide_Inactive",
+                    "vis.probeRadius": 0.2,
+                    "vis.probeDistanceDivisor": 3.0,
+                    "vis.showProbes": true,
+                    "vis.texture.irradianceScale": 2.1,
+                    "vis.texture.distanceScale": 1.05,
+                    "vis.texture.probeDataScale": 16.81,
+                    "vis.texture.rayDataScale": 0.59,
+                    "vis.texture.probeVariabilityScale": 2.799
+                },
+                {
+                    "name": "Cornell-Box-6",
+                    "probeRelocation.enabled": true,
+                    "probeRelocation.minFrontfaceDistance": 0.1,
+                    "probeClassification.enabled": true,
+                    "probeVariability.enabled": false,
+                    "probeVariability.threshold": 0.04,
+                    "infiniteScrolling.enabled": false,
+                    "textures.rayData.format": "RG32_FLOAT",
+                    "textures.irradiance.format": "R10G10B10A2_UNORM",
+                    "textures.distance.format": "RG16_FLOAT",
+                    "textures.data.format": "RGBA16_FLOAT",
+                    "textures.variability.format": "R16_FLOAT",
+                    "origin": [
+                        11.888,
+                        2.732,
+                        -19.5
+                    ],
+                    "rotation": [
+                        33.0,
+                        36.5,
+                        -3.0
+                    ],
+                    "probeCounts": [
+                        9,
+                        9,
+                        9
+                    ],
+                    "probeSpacing": [
+                        0.75,
+                        0.75,
+                        0.75
+                    ],
+                    "probeNumRays": 256,
+                    "probeNumIrradianceTexels": 8,
+                    "probeNumDistanceTexels": 16,
+                    "probeHysteresis": 0.97,
+                    "probeNormalBias": 0.02,
+                    "probeViewBias": 0.675,
+                    "probeMaxRayDistance": 50.0,
+                    "probeIrradianceThreshold": 0.2,
+                    "probeBrightnessThreshold": 1.0,
+                    "vis.probeVisType": "Hide_Inactive",
+                    "vis.probeRadius": 0.2,
+                    "vis.probeDistanceDivisor": 3.0,
+                    "vis.showProbes": true,
+                    "vis.texture.irradianceScale": 2.1,
+                    "vis.texture.distanceScale": 1.05,
+                    "vis.texture.probeDataScale": 16.81,
+                    "vis.texture.rayDataScale": 0.59,
+                    "vis.texture.probeVariabilityScale": 2.799
+                }
+            ]
+        }
+    }
+}

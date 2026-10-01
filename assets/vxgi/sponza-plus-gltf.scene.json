@@ -1,0 +1,43 @@
+{
+    "models": [
+        "Sponza/SponzaNoFlag.gltf"
+        // "../data/gltf/sponza/Sponza.gltf"
+    ],
+    "graph": [
+        {
+            "name": "Sponza",
+            "model": 0,
+            // "scaling": 125.0
+        },
+        {
+            "name": "MainLight",
+            "type": "DirectionalLight",
+            "rotation": [
+                -0.6044216529383701,
+                0.4029477686255801,
+                0.0,
+                0.6872463613718988
+            ],
+            "angularSize": 0.53,
+            "irradiance": 10.0
+        },
+        {
+            "name": "MainCamera",
+            "type": "PerspectiveCamera",
+            "rotation": [
+                0.0,
+                -0.7071067811865475,
+                0.0,
+                0.7071067811865475
+            ],
+            "translation": [
+                0.0,
+                200.0,
+                0.0
+            ],
+            "verticalFov": 45.0,
+            "zNear": 0.1,
+            "zFar": 10000.0
+        }
+    ]
+}

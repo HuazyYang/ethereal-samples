@@ -1,0 +1,19 @@
+#ifndef SHADERS_COMMON_ABSTRACTCONETRACINGCONSTANTS_HLSLI
+#define SHADERS_COMMON_ABSTRACTCONETRACINGCONSTANTS_HLSLI
+
+#define VXGI_ACT_RESOURCE_SPACE                       1
+#define VXGI_CONE_TRACING_CB_SLOT                     2
+#define VXGI_CONE_TRACING_TRANSLATION_CB_SLOT         3
+
+#define VXGI_OPACITY_POS_SRV_SLOT                     11
+#define VXGI_OPACITY_NEG_SRV_SLOT                     12
+#define VXGI_EMITTANCE_EVEN_R_SRV_SLOT                13
+#define VXGI_EMITTANCE_EVEN_G_SRV_SLOT                14
+#define VXGI_EMITTANCE_EVEN_B_SRV_SLOT                15
+#define VXGI_EMITTANCE_ODD_R_SRV_SLOT                 16
+#define VXGI_EMITTANCE_ODD_G_SRV_SLOT                 17
+#define VXGI_EMITTANCE_ODD_B_SRV_SLOT                 18
+
+#define VXGI_VOXELTEX_SAMPLER_SLOT                    4
+
+#endif /* SHADERS_COMMON_ABSTRACTCONETRACINGCONSTANTS_HLSLI */

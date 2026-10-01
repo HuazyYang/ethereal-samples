@@ -1,0 +1,46 @@
+{
+  "session": "D:\\ps\\repo\\nvrhi-benchmark\\results\\cover-01",
+  "gpu_session": "D:\\ps\\repo\\nvrhi-benchmark\\results\\gpu-01",
+  "half_res_session": "D:\\ps\\repo\\nvrhi-benchmark\\results\\half-01",
+  "draws_per_frame": "recorded draw_count of each configuration",
+  "reference_static_scene_hash": "0x95bca375014e86d9",
+  "run_counts": {
+    "ok": 90
+  },
+  "config_status_counts": {
+    "ok": 18
+  },
+  "sensitivity_status_counts": {},
+  "paced_runs": 0,
+  "pacing_excluded_runs": 0,
+  "cb_page_split_runs": 12,
+  "errors": [],
+  "aux_session_errors": [],
+  "warnings": [
+    {
+      "severity": "warning",
+      "code": "cb_page_split_mixed",
+      "run": "nvrhi_d3d12_tex_mut_t01",
+      "message": "3 of 5 runs hit the nvrhi D3D12 page-split store (render + submit 12.051 ms against 6.407 ms): the configuration is reported from the unaffected runs, see cb_page_split.csv"
+    },
+    {
+      "severity": "warning",
+      "code": "cb_page_split_all",
+      "run": "nvrhi_d3d12_tex_mut_t08",
+      "message": "every run hit the nvrhi D3D12 page-split store: there is no unaffected run to report, see cb_page_split.csv"
+    },
+    {
+      "severity": "warning",
+      "code": "cb_page_split_mixed",
+      "run": "nvrhi_d3d12_bindless_t01",
+      "message": "2 of 5 runs hit the nvrhi D3D12 page-split store (render + submit 1.243 ms against 1.234 ms): the configuration is reported from the unaffected runs, see cb_page_split.csv"
+    },
+    {
+      "severity": "warning",
+      "code": "cb_page_split_mixed",
+      "run": "nvrhi_d3d12_bindless_t08",
+      "message": "2 of 5 runs hit the nvrhi D3D12 page-split store (render + submit 0.491 ms against 0.486 ms): the configuration is reported from the unaffected runs, see cb_page_split.csv"
+    }
+  ],
+  "runs_not_ok": []
+}

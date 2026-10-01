@@ -1,0 +1,22 @@
+#ifndef SHADERS_COMMON_VXGIPRESET_HLSLI
+#define SHADERS_COMMON_VXGIPRESET_HLSLI
+
+#define MAX_INVALIDATE_REGIONS        128
+#define MAX_STACK_LEVELS              5
+#define MAX_PAGED_LEVELS              7
+#define MAX_TOTAL_LEVELS              13
+#define MAX_CONES                     128
+#define FASTGS_COMPATIBLE             1
+#define NV_SHADER_EXTENSION_UAV_SLOT  7
+#define EMITTANCE_POSITIVE_X          0
+#define EMITTANCE_POSITIVE_Y          1
+#define EMITTANCE_POSITIVE_Z          2
+#define EMITTANCE_NEGATIVE_X          3
+#define EMITTANCE_NEGATIVE_Y          4
+#define EMITTANCE_NEGATIVE_Z          5
+#define MULTILIST_COUNTER_OFFSET      0
+#define MULTILIST_DISPATCHARGS_OFFSET 1
+#define MULTILIST_DATA_OFFSET         4
+#define TRACING_REFINEMENT_GRID_SIZE  32
+
+#endif /* SHADERS_COMMON_VXGIPRESET_HLSLI */

@@ -1,0 +1,36 @@
+{
+  "session": "D:\\ps\\repo\\nvrhi-benchmark\\results\\sens-01",
+  "gpu_session": null,
+  "half_res_session": null,
+  "draws_per_frame": "recorded draw_count of each configuration",
+  "reference_static_scene_hash": "0x95bca375014e86d9",
+  "run_counts": {
+    "ok": 60
+  },
+  "config_status_counts": {
+    "ok": 4
+  },
+  "sensitivity_status_counts": {
+    "ok": 16
+  },
+  "paced_runs": 0,
+  "pacing_excluded_runs": 0,
+  "cb_page_split_runs": 19,
+  "errors": [],
+  "aux_session_errors": [],
+  "warnings": [
+    {
+      "severity": "warning",
+      "code": "cb_page_split_mixed",
+      "run": "nvrhi_d3d12_tex_mut_t01",
+      "message": "1 of 3 runs hit the nvrhi D3D12 page-split store (render + submit 10.494 ms against 5.817 ms): the configuration is reported from the unaffected runs, see cb_page_split.csv"
+    },
+    {
+      "severity": "warning",
+      "code": "cb_page_split_mixed",
+      "run": "nvrhi_d3d12_tex_mut_t08",
+      "message": "2 of 3 runs hit the nvrhi D3D12 page-split store (render + submit 1.526 ms against 1.457 ms): the configuration is reported from the unaffected runs, see cb_page_split.csv"
+    }
+  ],
+  "runs_not_ok": []
+}

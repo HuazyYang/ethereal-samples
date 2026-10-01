@@ -1,0 +1,99 @@
+{
+    "scene": {
+        "filePath": "two-rooms.scene.json",
+        "skyRadiance": [
+            0.0,
+            0.0,
+            0.0
+        ]
+    },
+    "interaction": {
+        "mouse.movementSpeed": 200.0,
+        "mouse.rotationSpeed": 3.0,
+        "mouse.invertPan": true
+    },
+    "renderers": {
+        "renderMode": "DDGI",
+        "pathTracing": {
+            "rayNormalBias": 0.1,
+            "rayViewBias": 0.04,
+            "numBounces": 20,
+            "samplesPerPixel": 1,
+            "antiailiasing": true
+        },
+        "rtao": {
+            "enabled": true,
+            "rayLength": 2.0,
+            "rayNormalBias": 0.0001,
+            "rayViewBias": 0.0001,
+            "powerLog": -1.5,
+            "filterDepthSigma": 2.0,
+            "filterDistanceSigma": 2.0
+        },
+        "postProcessing": {
+            "exposure": {
+                "enabled": true,
+                "fstops": 1.0
+            },
+            "tonemapping.enabled": true,
+            "dithering.enabled": true,
+            "gammaCorrection.enabled": true
+        },
+        "DDGI": {
+            "children": [
+                {
+                    "name": "Rooms Volume",
+                    "probeRelocation.enabled": true,
+                    "probeRelocation.minFrontfaceDistance": 0.1,
+                    "probeClassification.enabled": true,
+                    "probeVariability.enabled": true,
+                    "probeVariability.threshold": 0.03,
+                    "infiniteScrolling.enabled": true,
+                    "textures.rayData.format": "RG32_FLOAT",
+                    "textures.irradiance.format": "R10G10B10A2_UNORM",
+                    "textures.distance.format": "RG16_FLOAT",
+                    "textures.data.format": "RGBA16_FLOAT",
+                    "textures.variability.format": "R16_FLOAT",
+                    "origin": [
+                        0.0,
+                        24.0,
+                        0.0
+                    ],
+                    "rotation": [
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "probeCounts": [
+                        32,
+                        6,
+                        32
+                    ],
+                    "probeSpacing": [
+                        11.0,
+                        11.0,
+                        11.0
+                    ],
+                    "probeNumRays": 256,
+                    "probeNumIrradianceTexels": 8,
+                    "probeNumDistanceTexels": 16,
+                    "probeHysteresis": 0.97,
+                    "probeNormalBias": 1.0,
+                    "probeViewBias": 6.0,
+                    "probeMaxRayDistance": 10000.0,
+                    "probeIrradianceThreshold": 0.2,
+                    "probeBrightnessThreshold": 0.22,
+                    "vis.probeVisType": "Hide_Inactive",
+                    "vis.probeRadius": 2.0,
+                    "vis.probeDistanceDivisor": 30.0,
+                    "vis.showProbes": true,
+                    "vis.texture.irradianceScale": 0.7,
+                    "vis.texture.distanceScale": 0.35,
+                    "vis.texture.probeDataScale": 3.0,
+                    "vis.texture.rayDataScale": 0.49,
+                    "vis.texture.probeVariabilityScale": 0.933
+                }
+            ]
+        }
+    }
+}

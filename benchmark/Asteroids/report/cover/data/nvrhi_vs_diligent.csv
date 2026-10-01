@@ -1,0 +1,9 @@
+api,binding,threads,headline,nvrhi_status,diligent_status,nvrhi_cpu_render_ms,diligent_cpu_render_ms,nvrhi_over_diligent_cpu_render,nvrhi_cpu_render_present_ms,diligent_cpu_render_present_ms,nvrhi_over_diligent_cpu_render_present,nvrhi_cpu_render_gc_ms,diligent_cpu_render_gc_ms,nvrhi_over_diligent_cpu_render_gc,nvrhi_frame_ms,diligent_frame_ms,nvrhi_over_diligent_frame
+d3d12,tex_mut,1,1,ok,ok,6.40663,4.3115,1.48594,6.78428,4.6727,1.4519,6.41425,4.3115,1.48771,8.63595,6.49,1.33065
+d3d12,tex_mut,8,1,ok,ok,1.867,1.2691,1.47112,2.1399,1.5277,1.40073,1.8768,1.2691,1.47884,2.53205,1.8992,1.33322
+d3d12,bindless,1,1,ok,ok,1.2335,1.4764,0.835478,1.573,1.8213,0.863669,1.239,1.4764,0.839203,3.362,3.6073,0.931999
+d3d12,bindless,8,1,ok,ok,0.486,0.56105,0.866233,0.7831,0.834,0.938969,0.49835,0.56105,0.888245,1.1593,1.181,0.981626
+vk,tex_mut,1,1,ok,ok,13.4606,4.1213,3.26611,13.5252,4.2225,3.20313,13.5793,4.1213,3.29491,15.5319,6.0426,2.5704
+vk,tex_mut,8,1,ok,ok,2.6031,1.2399,2.09944,2.6534,1.319,2.01168,2.7224,1.2399,2.19566,3.1695,1.7106,1.85286
+vk,bindless,1,1,ok,ok,1.80955,2.227,0.812551,1.8632,2.3189,0.803484,1.8129,2.227,0.814055,3.6988,4.1437,0.892632
+vk,bindless,8,1,ok,ok,0.6405,0.7411,0.864256,0.6948,0.8191,0.848248,0.6496,0.7411,0.876535,1.0824,1.1749,0.92127

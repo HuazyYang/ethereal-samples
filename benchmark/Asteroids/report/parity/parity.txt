@@ -1,0 +1,19 @@
+Image parity at absolute frame 30 (-capture_frame 30, 1080x720, 8 threads, tex_mut for the layers).
+static_scene_hash 0x95bca375014e86d9 and capture_dynamic_scene_hash 0x6388bee9ee979c5c are identical for all five.
+Per pair: mean absolute difference per channel (0-255), share of pixels with any channel differing by more than 8, maximum difference.
+
+native_d3d12    vs diligent_d3d12   mean 0.000  pixels>8 0.000 %  max 1
+native_d3d12    vs nvrhi_d3d12      mean 0.000  pixels>8 0.000 %  max 2
+native_d3d12    vs diligent_vk      mean 0.027  pixels>8 0.001 %  max 12
+native_d3d12    vs nvrhi_vk         mean 0.027  pixels>8 0.001 %  max 12
+diligent_d3d12  vs nvrhi_d3d12      mean 0.000  pixels>8 0.000 %  max 2
+diligent_d3d12  vs diligent_vk      mean 0.027  pixels>8 0.001 %  max 12
+diligent_d3d12  vs nvrhi_vk         mean 0.027  pixels>8 0.001 %  max 12
+nvrhi_d3d12     vs diligent_vk      mean 0.027  pixels>8 0.001 %  max 12
+nvrhi_d3d12     vs nvrhi_vk         mean 0.027  pixels>8 0.001 %  max 12
+diligent_vk     vs nvrhi_vk         mean 0.000  pixels>8 0.000 %  max 0
+native_d3d12    mean colour [28.72 23.4  20.65]  shape (720, 1080, 3)
+diligent_d3d12  mean colour [28.72 23.4  20.65]  shape (720, 1080, 3)
+nvrhi_d3d12     mean colour [28.72 23.4  20.65]  shape (720, 1080, 3)
+diligent_vk     mean colour [28.7  23.39 20.65]  shape (720, 1080, 3)
+nvrhi_vk        mean colour [28.7  23.39 20.65]  shape (720, 1080, 3)

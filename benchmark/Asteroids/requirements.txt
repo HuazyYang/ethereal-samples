@@ -1,0 +1,4 @@
+# Python packages for scripts/analyze.py (charts only; the statistics and the tests of
+# tests/analysis run on the standard library alone).
+numpy>=1.26
+matplotlib>=3.8

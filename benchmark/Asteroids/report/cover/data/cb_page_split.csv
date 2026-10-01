@@ -1,0 +1,5 @@
+renderer,api,binding,threads,variant,runs_unaffected,cpu_render_ms_unaffected,cpu_render_ms_unaffected_min,cpu_render_ms_unaffected_max,runs_affected,cpu_render_ms_affected,cpu_render_ms_affected_min,cpu_render_ms_affected_max,affected_over_unaffected,affected_command_lists_min,affected_command_lists_max,threads_recording
+nvrhi,d3d12,tex_mut,1,default,2,6.40663,6.3856,6.42765,3,12.051,11.9336,12.1071,1.88102,1,1,1
+nvrhi,d3d12,tex_mut,8,default,0,,,,5,1.867,1.82425,1.8949,,1,3,8
+nvrhi,d3d12,bindless,1,default,3,1.2335,1.2268,1.2375,2,1.24317,1.2298,1.25655,1.00784,1,1,1
+nvrhi,d3d12,bindless,8,default,3,0.486,0.4801,0.4967,2,0.4914,0.4913,0.4915,1.01111,1,1,8

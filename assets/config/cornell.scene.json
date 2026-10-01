@@ -1,0 +1,112 @@
+{
+    "models": [
+        "../data/gltf/cornell/cornell.glb"
+    ],
+    "graph": [
+        {
+            "name": "Lights",
+            "children": [
+                {
+                    "name": "Ceiling Light",
+                    "type": "PointLight",
+                    "translation": [
+                        0.0,
+                        1.9,
+                        0.0
+                    ],
+                    "color": [
+                        1.0,
+                        1.0,
+                        1.0
+                    ],
+                    "intensity": 0.0,
+                    "radius": 4.0
+                },
+                {
+                    "name": "Sun",
+                    "type": "DirectionalLight",
+                    "rotation": [
+                        -0.21152606074598893,
+                        -0.2917600837875709,
+                        -0.0,
+                        0.9328090796800563
+                    ],
+                    "angularSize": 1.0,
+                    "color": [
+                        1.0,
+                        1.0,
+                        1.0
+                    ],
+                    "irradiance": 1.0
+                },
+                {
+                    "name": "Spot Light 1",
+                    "type": "SpotLight",
+                    "translation": [
+                        0.0,
+                        1.0,
+                        0.5
+                    ],
+                    "rotation": [
+                        -0.21152606074598893,
+                        -0.2917600837875709,
+                        -0.0,
+                        0.9328090796800563
+                    ],
+                    "color": [
+                        1.0,
+                        1.0,
+                        1.0
+                    ],
+                    "intensity": 0.0,
+                    "innerAngle": 50.0,
+                    "outerAngle": 1.0,
+                    "radius": 4.0
+                }
+            ]
+        },
+        {
+            "name": "Cameras",
+            "children": [
+                {
+                    "name": "Default Camera",
+                    "type": "PerspectiveCamera",
+                    "translation": [
+                        0.1,
+                        1.0,
+                        4.0
+                    ],
+                    "rotation": [
+                        0.0,
+                        0.0,
+                        0.0,
+                        1.0
+                    ],
+                    "verticalFov": 45.0,
+                    "zNear": 0.1
+                },
+                {
+                    "name": "Camera 2",
+                    "type": "PerspectiveCamera",
+                    "translation": [
+                        -0.5,
+                        1.0,
+                        4.0
+                    ],
+                    "rotation": [
+                        -0.0028402947075896697,
+                        -0.1650469214739845,
+                        -0.00047530232692820297,
+                        0.9862815118036191
+                    ],
+                    "verticalFov": 45.0,
+                    "zNear": 0.1
+                }
+            ]
+        },
+        {
+            "name": "Cornell-Box",
+            "model": 0
+        }
+    ]
+}
