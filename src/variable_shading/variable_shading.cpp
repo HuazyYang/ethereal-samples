@@ -62,8 +62,8 @@ public:
     nvrhi::TextureHandle m_TemporalFeedback2;
     nvrhi::TextureHandle m_MotionVectors;
 
-    AutoPtr<engine::FramebufferFactory> m_HdrFramebuffer;
-    AutoPtr<engine::FramebufferFactory> m_HdrFramebufferDepth;
+    nvrhi::AutoPtr<engine::FramebufferFactory> m_HdrFramebuffer;
+    nvrhi::AutoPtr<engine::FramebufferFactory> m_HdrFramebufferDepth;
 
     int2 m_Size;
 
@@ -149,23 +149,23 @@ public:
 class VariableRateShading : public app::ApplicationBase
 {
 private:
-    AutoPtr<vfs::RootFileSystem> m_RootFS;
+    nvrhi::AutoPtr<vfs::RootFileSystem> m_RootFS;
 
     nvrhi::ShaderLibraryHandle m_ShaderLibrary;
     nvrhi::CommandListHandle m_CommandList;
     
     nvrhi::BufferHandle m_ConstantBuffer;
 
-    AutoPtr<engine::ShaderFactory> m_ShaderFactory;
-    AutoPtr<engine::Scene> m_Scene;
-    AutoPtr<render::ForwardShadingPass> m_ForwardPass;
-    AutoPtr<render::TemporalAntiAliasingPass> m_temporalPass;
+    nvrhi::AutoPtr<engine::ShaderFactory> m_ShaderFactory;
+    nvrhi::AutoPtr<engine::Scene> m_Scene;
+    nvrhi::AutoPtr<render::ForwardShadingPass> m_ForwardPass;
+    nvrhi::AutoPtr<render::TemporalAntiAliasingPass> m_temporalPass;
     std::unique_ptr<RenderTargets> m_RenderTargets;
     app::FirstPersonCamera m_Camera;
     engine::PlanarView m_View;
-    AutoPtr<engine::DirectionalLight>  m_SunLight;
-    AutoPtr<render::InstancedOpaqueDrawStrategy> m_OpaqueDrawStrategy;
-    AutoPtr<render::TransparentDrawStrategy> m_TransparentDrawStrategy;
+    nvrhi::AutoPtr<engine::DirectionalLight>  m_SunLight;
+    nvrhi::AutoPtr<render::InstancedOpaqueDrawStrategy> m_OpaqueDrawStrategy;
+    nvrhi::AutoPtr<render::TransparentDrawStrategy> m_TransparentDrawStrategy;
     std::unique_ptr<engine::BindingCache> m_BindingCache;
 
     nvrhi::ShaderHandle m_shadingRateSurfaceShader;
@@ -254,7 +254,7 @@ public:
 
     bool LoadScene(vfs::IFileSystem* fs, const std::filesystem::path& sceneFileName) override
     {
-        AutoPtr<engine::Scene> scene = MAKE_RC_OBJ_PTR(engine::Scene, GetDevice(),
+        nvrhi::AutoPtr<engine::Scene> scene = MAKE_RC_OBJ_PTR(engine::Scene, GetDevice(),
             m_ShaderFactory, fs, m_TextureCache, nullptr, nullptr);
 
         if (scene->Load(sceneFileName))
@@ -530,7 +530,7 @@ int main(int __argc, const char** __argv)
     }
 #endif
 
-    auto deviceManager = TakeOver(app::DeviceManager::Create(api));
+    auto deviceManager = nvrhi::TakeOver(app::DeviceManager::Create(api));
 
     app::DeviceCreationParameters deviceParams;
 #ifdef _DEBUG

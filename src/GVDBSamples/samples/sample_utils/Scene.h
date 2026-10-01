@@ -1,9 +1,9 @@
 #ifndef SCENE_HPP
 #define SCENE_HPP
-#include <donut/core/object/Foundation.h>
+#include <nvrhi/core/Foundation.h>
 #include <donut/core/vfs/VFS.h>
 #include <donut/core/math/math.h>
-#include <donut/core/object/AutoPtr.h>
+#include <nvrhi/core/AutoPtr.h>
 #include "SampleTypes.h"
 
 namespace SampleUtils {
@@ -11,7 +11,7 @@ namespace SampleUtils {
 class Camera;
 class Light;
 
-class Model : public donut::ObjectImpl<donut::IObject> {
+class Model : public nvrhi::ObjectImpl<nvrhi::IObject> {
  public:
     int loadObj(donut::vfs::IFileSystem *vfs, const char *filePath,
                 const dm::float3 &pos = {0.f}, const dm::quat &rot = {},
@@ -43,7 +43,7 @@ class Model : public donut::ObjectImpl<donut::IObject> {
     dm::affine3 m_matLocalToWorld;
 };
 
-class Scene : public donut::ObjectImpl<donut::IObject> {
+class Scene : public nvrhi::ObjectImpl<nvrhi::IObject> {
  public:
     Scene();
     ~Scene();
@@ -58,9 +58,9 @@ class Scene : public donut::ObjectImpl<donut::IObject> {
     Light *getLight(int idx);
 
  private:
-    std::vector<donut::AutoPtr<Model>> m_models;
-    donut::AutoPtr<Camera> m_camera;
-    std::vector<donut::AutoPtr<Light>> m_lights;
+    std::vector<nvrhi::AutoPtr<Model>> m_models;
+    nvrhi::AutoPtr<Camera> m_camera;
+    std::vector<nvrhi::AutoPtr<Light>> m_lights;
 };
 
 }  // namespace SampleUtils

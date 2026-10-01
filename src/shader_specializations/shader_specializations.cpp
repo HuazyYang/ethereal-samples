@@ -146,7 +146,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 int main(int __argc, const char** __argv)
 #endif
 {
-    auto deviceManager = TakeOver(app::DeviceManager::Create(nvrhi::GraphicsAPI::VULKAN));
+    auto deviceManager = nvrhi::TakeOver(app::DeviceManager::Create(nvrhi::GraphicsAPI::VULKAN));
 
     app::DeviceCreationParameters deviceParams;
 #ifdef _DEBUG

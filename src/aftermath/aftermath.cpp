@@ -56,7 +56,7 @@ private:
     nvrhi::BindingLayoutHandle m_BindingLayout;
     nvrhi::BindingSetHandle m_BindingSet;
     nvrhi::CommandListHandle m_CommandList;
-    AutoPtr<engine::ShaderFactory> m_ShaderFactory;
+    nvrhi::AutoPtr<engine::ShaderFactory> m_ShaderFactory;
     nvrhi::BufferHandle m_Buffer;
     bool m_WaitingForCrash;
     CrashType m_CrashType;
@@ -69,7 +69,7 @@ public:
         m_CrashType = c;
     }
 
-    AutoPtr<engine::ShaderFactory> GetShaderFactory()
+    nvrhi::AutoPtr<engine::ShaderFactory> GetShaderFactory()
     {
         return m_ShaderFactory;
     }
@@ -244,7 +244,7 @@ int main(int __argc, const char** __argv)
 #endif
 {
     nvrhi::GraphicsAPI api = app::GetGraphicsAPIFromCommandLine(__argc, __argv);
-    auto deviceManager = TakeOver(app::DeviceManager::Create(api));
+    auto deviceManager = nvrhi::TakeOver(app::DeviceManager::Create(api));
 
     app::DeviceCreationParameters deviceParams;
 #ifdef _DEBUG

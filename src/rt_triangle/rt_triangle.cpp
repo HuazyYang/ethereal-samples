@@ -48,7 +48,7 @@ private:
     nvrhi::rt::AccelStructHandle m_BottomLevelAS;
     nvrhi::rt::AccelStructHandle m_TopLevelAS;
     nvrhi::TextureHandle m_RenderTarget;
-    AutoPtr<engine::CommonRenderPasses> m_CommonPasses;
+    nvrhi::AutoPtr<engine::CommonRenderPasses> m_CommonPasses;
     std::unique_ptr<engine::BindingCache> m_BindingCache;
 
 public:
@@ -61,11 +61,11 @@ public:
         std::filesystem::path frameworkShaderPath = app::GetDirectoryWithExecutable() / "shaders/framework" / app::GetShaderTypeName(GetDevice()->getGraphicsAPI());
         std::filesystem::path appShaderPath = app::GetDirectoryWithExecutable() / "shaders/rt_triangle" / app::GetShaderTypeName(GetDevice()->getGraphicsAPI());
         
-		AutoPtr<vfs::RootFileSystem> rootFS = MAKE_RC_OBJ_PTR(vfs::RootFileSystem);
+		nvrhi::AutoPtr<vfs::RootFileSystem> rootFS = MAKE_RC_OBJ_PTR(vfs::RootFileSystem);
 		rootFS->mount("/shaders/donut", frameworkShaderPath);
 		rootFS->mount("/shaders/app", appShaderPath);
 
-        AutoPtr<engine::ShaderFactory> shaderFactory = MAKE_RC_OBJ_PTR(engine::ShaderFactory, GetDevice(), rootFS, "/shaders");
+        nvrhi::AutoPtr<engine::ShaderFactory> shaderFactory = MAKE_RC_OBJ_PTR(engine::ShaderFactory, GetDevice(), rootFS, "/shaders");
         m_ShaderLibrary = shaderFactory->CreateShaderLibrary("app/rt_triangle.hlsl", nullptr);
 
         if (!m_ShaderLibrary)
@@ -231,7 +231,7 @@ int main(int __argc, const char** __argv)
 #endif
 {
     nvrhi::GraphicsAPI api = app::GetGraphicsAPIFromCommandLine(__argc, __argv);
-    auto deviceManager = TakeOver(app::DeviceManager::Create(api));
+    auto deviceManager = nvrhi::TakeOver(app::DeviceManager::Create(api));
 
     app::DeviceCreationParameters deviceParams;
     deviceParams.enableRayTracingExtensions = true;

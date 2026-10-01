@@ -8,7 +8,7 @@ struct CUDADeviceDesc {
     IMessageCallback *messageCallback;
 };
 
-FRESULT createCUDADevice(const CUDADeviceDesc &desc, IDevice **device);
+nvrhi::FRESULT createCUDADevice(const CUDADeviceDesc &desc, IDevice **device);
 
 }
 

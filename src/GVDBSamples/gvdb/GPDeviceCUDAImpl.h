@@ -8,8 +8,8 @@
 #include <string>
 #include <vector>
 #include <map>
-#include <donut/core/object/Foundation.h>
-#include <donut/core/object/AutoPtr.h>
+#include <nvrhi/core/Foundation.h>
+#include <nvrhi/core/AutoPtr.h>
 #include <mutex>
 
 
@@ -61,11 +61,11 @@ struct GraphicsInteropSemaphoreDesc {
 };
 
 template<typename T>
-struct DeviceChild: public ObjectImpl<T> {
-    DONUT_BEGIN_INTERFACE_TABLE_INLINE(DeviceChild)
-    DONUT_IMPLEMENTS_INTERFACE(IDeviceChild)
-    DONUT_IMPLEMENTS_ROUTE_PARENT(ObjectImpl<T>)
-    DONUT_END_INTERFACE_TABLE()
+struct DeviceChild: public nvrhi::ObjectImpl<T> {
+    NVRHI_BEGIN_INTERFACE_TABLE_INLINE(DeviceChild)
+    NVRHI_IMPLEMENTS_INTERFACE(IDeviceChild)
+    NVRHI_IMPLEMENTS_ROUTE_PARENT(nvrhi::ObjectImpl<T>)
+    NVRHI_END_INTERFACE_TABLE()
 
     IDevice *getDevice() override final {
         return m_context.device;
@@ -78,11 +78,11 @@ struct DeviceChild: public ObjectImpl<T> {
 };
 
 struct Buffer: public DeviceChild<IBuffer> {
-    DONUT_BEGIN_INTERFACE_TABLE_INLINE(Buffer)
-    DONUT_IMPLEMENTS_INTERFACE(IBuffer)
-    DONUT_IMPLEMENTS_INTERFACE(IResource)
-    DONUT_IMPLEMENTS_ROUTE_PARENT(DeviceChild<IBuffer>)
-    DONUT_END_INTERFACE_TABLE()
+    NVRHI_BEGIN_INTERFACE_TABLE_INLINE(Buffer)
+    NVRHI_IMPLEMENTS_INTERFACE(IBuffer)
+    NVRHI_IMPLEMENTS_INTERFACE(IResource)
+    NVRHI_IMPLEMENTS_ROUTE_PARENT(DeviceChild<IBuffer>)
+    NVRHI_END_INTERFACE_TABLE()
 
     const BufferDesc *getDesc() override;
     NativeHandle getNativeHandle() override;
@@ -104,11 +104,11 @@ struct Buffer: public DeviceChild<IBuffer> {
 };
 
 struct Texture: public DeviceChild<ITexture> {
-    DONUT_BEGIN_INTERFACE_TABLE_INLINE(Texture)
-    DONUT_IMPLEMENTS_INTERFACE(ITexture)
-    DONUT_IMPLEMENTS_INTERFACE(IResource)
-    DONUT_IMPLEMENTS_ROUTE_PARENT(DeviceChild<ITexture>)
-    DONUT_END_INTERFACE_TABLE()
+    NVRHI_BEGIN_INTERFACE_TABLE_INLINE(Texture)
+    NVRHI_IMPLEMENTS_INTERFACE(ITexture)
+    NVRHI_IMPLEMENTS_INTERFACE(IResource)
+    NVRHI_IMPLEMENTS_ROUTE_PARENT(DeviceChild<ITexture>)
+    NVRHI_END_INTERFACE_TABLE()
 
     const TextureDesc *getDesc() override;
     NativeHandle getMemoryHandle() override;
@@ -138,12 +138,12 @@ struct Texture: public DeviceChild<ITexture> {
 struct Kernel;
 
 struct Module: public DeviceChild<IModule> {
-    DONUT_BEGIN_INTERFACE_TABLE_INLINE(Module)
-    DONUT_IMPLEMENTS_INTERFACE(IModule)
-    DONUT_IMPLEMENTS_ROUTE_PARENT(DeviceChild<IModule>)
-    DONUT_END_INTERFACE_TABLE()
+    NVRHI_BEGIN_INTERFACE_TABLE_INLINE(Module)
+    NVRHI_IMPLEMENTS_INTERFACE(IModule)
+    NVRHI_IMPLEMENTS_ROUTE_PARENT(DeviceChild<IModule>)
+    NVRHI_END_INTERFACE_TABLE()
 
-    FRESULT getKernel(const char *sysName, IKernel **ppKernel) override;
+    nvrhi::FRESULT getKernel(const char *sysName, IKernel **ppKernel) override;
 
     // Implements
     Module(Context &context, const ModuleDesc &desc,
@@ -165,19 +165,19 @@ struct Module: public DeviceChild<IModule> {
     std::vector<ConstantInfo> m_constants;
 };
 
-struct Kernel: public DelegatingObjectImpl<IKernel> {
-    DONUT_BEGIN_INTERFACE_TABLE_INLINE(Kernel)
-    DONUT_IMPLEMENTS_INTERFACE(IKernel)
-    DONUT_IMPLEMENTS_INTERFACE(IDeviceChild)
-    DONUT_IMPLEMENTS_INTERFACE(IObject)
-    DONUT_END_INTERFACE_TABLE()
+struct Kernel: public nvrhi::DelegatingObjectImpl<IKernel> {
+    NVRHI_BEGIN_INTERFACE_TABLE_INLINE(Kernel)
+    NVRHI_IMPLEMENTS_INTERFACE(IKernel)
+    NVRHI_IMPLEMENTS_INTERFACE(IDeviceChild)
+    NVRHI_IMPLEMENTS_INTERFACE(nvrhi::IObject)
+    NVRHI_END_INTERFACE_TABLE()
 
     IDevice *getDevice() override;
     IModule *getModule() override;
     const char *getName() override;
 
     // Implements
-    Kernel(IObject *pOwner, Context &context, const char *funcName, CUfunction func);
+    Kernel(nvrhi::IObject *pOwner, Context &context, const char *funcName, CUfunction func);
     ~Kernel();
 
     Context &m_context;
@@ -187,14 +187,14 @@ struct Kernel: public DelegatingObjectImpl<IKernel> {
 
 struct StagingBufferInfo {
     uint64_t syncPoint;
-    AutoPtr<Buffer> buffer;
+    nvrhi::AutoPtr<Buffer> buffer;
 };
 
 struct GraphicsInteropSemaphore : public DeviceChild<IGraphicsInteropSemaphore> {
-    DONUT_BEGIN_INTERFACE_TABLE_INLINE(GraphicsInteropSemaphore)
-    DONUT_IMPLEMENTS_INTERFACE(IGraphicsInteropSemaphore)
-    DONUT_IMPLEMENTS_ROUTE_PARENT(DeviceChild<IGraphicsInteropSemaphore>)
-    DONUT_END_INTERFACE_TABLE()
+    NVRHI_BEGIN_INTERFACE_TABLE_INLINE(GraphicsInteropSemaphore)
+    NVRHI_IMPLEMENTS_INTERFACE(IGraphicsInteropSemaphore)
+    NVRHI_IMPLEMENTS_ROUTE_PARENT(DeviceChild<IGraphicsInteropSemaphore>)
+    NVRHI_END_INTERFACE_TABLE()
 
     // Implements
     GraphicsInteropSemaphore(Context &context, const GraphicsInteropSemaphoreDesc &desc);
@@ -204,44 +204,44 @@ struct GraphicsInteropSemaphore : public DeviceChild<IGraphicsInteropSemaphore> 
 };
 
 struct DeviceQueue: public DeviceChild<IDeviceQueue> {
-    DONUT_BEGIN_INTERFACE_TABLE_INLINE(DeviceQueue)
-    DONUT_IMPLEMENTS_INTERFACE(IDeviceQueue)
-    DONUT_IMPLEMENTS_ROUTE_PARENT(DeviceChild<IDeviceQueue>)
-    DONUT_END_INTERFACE_TABLE()
+    NVRHI_BEGIN_INTERFACE_TABLE_INLINE(DeviceQueue)
+    NVRHI_IMPLEMENTS_INTERFACE(IDeviceQueue)
+    NVRHI_IMPLEMENTS_ROUTE_PARENT(DeviceChild<IDeviceQueue>)
+    NVRHI_END_INTERFACE_TABLE()
 
-    FRESULT setConstantBuffer(IKernel *pKernel, const char *symName, void *data, size_t dataSize) override;
-    FRESULT setConstantBuffer2(IKernel *pKernel, const char *symName, IBuffer *pBuffer,
+    nvrhi::FRESULT setConstantBuffer(IKernel *pKernel, const char *symName, void *data, size_t dataSize) override;
+    nvrhi::FRESULT setConstantBuffer2(IKernel *pKernel, const char *symName, IBuffer *pBuffer,
                                uint64_t offset) override;
-    FRESULT launch(IKernel *pKernel, const dim3 &gridDim, const dim3 &blockDim,
+    nvrhi::FRESULT launch(IKernel *pKernel, const dim3 &gridDim, const dim3 &blockDim,
                    const KernelArg *args, size_t argc) override;
 
-    FRESULT synchronizeQueue(IDeviceQueue *other) override;
+    nvrhi::FRESULT synchronizeQueue(IDeviceQueue *other) override;
 
-    FRESULT clearBufferUint(IBuffer *buffer, uint32_t clearValue) override;
-    FRESULT writeBuffer(IBuffer *buffer, const void *data, uint64_t bytes, uint64_t destOffsetBytes) override;
-    FRESULT copyBufferRegion(IBuffer *dest, uint64_t destOffsetBytes, IBuffer *src,
+    nvrhi::FRESULT clearBufferUint(IBuffer *buffer, uint32_t clearValue) override;
+    nvrhi::FRESULT writeBuffer(IBuffer *buffer, const void *data, uint64_t bytes, uint64_t destOffsetBytes) override;
+    nvrhi::FRESULT copyBufferRegion(IBuffer *dest, uint64_t destOffsetBytes, IBuffer *src,
                              uint64_t srcOffsetBytes, uint64_t dataSizeBytes) override;
 
-    FRESULT copyResource(IResource *dst, IResource *src) override;
+    nvrhi::FRESULT copyResource(IResource *dst, IResource *src) override;
     
-    FRESULT copyTextureRegion(const TextureCopyLocation &dst, uint32_t dstX, uint32_t dstY,
+    nvrhi::FRESULT copyTextureRegion(const TextureCopyLocation &dst, uint32_t dstX, uint32_t dstY,
                               uint32_t dstZ, const TextureCopyLocation &src,
                               /*optional*/ const GPBox *srcBox) override;
 
-    FRESULT writeTextureRegion(IResource *dstResource, uint32_t dstSubresource,
+    nvrhi::FRESULT writeTextureRegion(IResource *dstResource, uint32_t dstSubresource,
                                const void *srcData, const SubresourceFootprint &footprint,
                                uint32_t dstX, uint32_t dstY, uint32_t dstZ,
                                /* opt */ const GPBox *srcBox) override;
 
-    FRESULT acquireInteropKeyedMutexes(
+    nvrhi::FRESULT acquireInteropKeyedMutexes(
         const GraphicsInteropKeyedMutexWaitParams *waitParamsArray,
         uint32_t numParamsArray) override;
-    FRESULT releaseInteropKeyedMutexes(
+    nvrhi::FRESULT releaseInteropKeyedMutexes(
         const GraphicsInteropKeyedMutexSignalParams *signalParamsArray,
         uint32_t numParamsArray) override;
 
-    FRESULT signalInteropSemaphore(IGraphicsInteropSemaphore *semaphore, uint64_t value) override;
-    FRESULT waitInteropSemaphoreAsync(IGraphicsInteropSemaphore *semaphore, uint64_t value) override;
+    nvrhi::FRESULT signalInteropSemaphore(IGraphicsInteropSemaphore *semaphore, uint64_t value) override;
+    nvrhi::FRESULT waitInteropSemaphoreAsync(IGraphicsInteropSemaphore *semaphore, uint64_t value) override;
 
     // Implements
     DeviceQueue(Context &context, const DeviceQueueDesc &desc);
@@ -262,50 +262,50 @@ struct SyncPointInfo {
     bool syncWithQueue;
 };
 
-struct Device : public ObjectImpl<IDevice> {
-    DONUT_BEGIN_INTERFACE_TABLE_INLINE(Device)
-    DONUT_IMPLEMENTS_INTERFACE(IDevice)
-    DONUT_IMPLEMENTS_ROUTE_PARENT(ObjectImpl<IDevice>)
-    DONUT_END_INTERFACE_TABLE()
+struct Device : public nvrhi::ObjectImpl<IDevice> {
+    NVRHI_BEGIN_INTERFACE_TABLE_INLINE(Device)
+    NVRHI_IMPLEMENTS_INTERFACE(IDevice)
+    NVRHI_IMPLEMENTS_ROUTE_PARENT(nvrhi::ObjectImpl<IDevice>)
+    NVRHI_END_INTERFACE_TABLE()
 
-    FRESULT createBuffer(const BufferDesc &desc, IBuffer **buffer) override;
-    FRESULT createTexture(const TextureDesc &desc, ITexture **texture) override;
-    FRESULT createModule(const ModuleDesc &desc, const void *data, size_t dataSize,
+    nvrhi::FRESULT createBuffer(const BufferDesc &desc, IBuffer **buffer) override;
+    nvrhi::FRESULT createTexture(const TextureDesc &desc, ITexture **texture) override;
+    nvrhi::FRESULT createModule(const ModuleDesc &desc, const void *data, size_t dataSize,
                          IModule **lib) override;
-    FRESULT createDeviceQueue(const DeviceQueueDesc &desc, IDeviceQueue **queue) override;
+    nvrhi::FRESULT createDeviceQueue(const DeviceQueueDesc &desc, IDeviceQueue **queue) override;
 
     void commitQueue(IDeviceQueue *queue) override;
-    FRESULT waitForQueue(IDeviceQueue *queue) override;
+    nvrhi::FRESULT waitForQueue(IDeviceQueue *queue) override;
     void waitForIdle() override;
 
-    FRESULT mapBuffer(IBuffer *buffer, void **data) override;
+    nvrhi::FRESULT mapBuffer(IBuffer *buffer, void **data) override;
     void unmapBuffer(IBuffer *buffer) override;
 
-    FRESULT createInteropD3D11Buffer(ID3D11Resource *d3d11Buffer, uint64_t mappedOffset,
+    nvrhi::FRESULT createInteropD3D11Buffer(ID3D11Resource *d3d11Buffer, uint64_t mappedOffset,
                                      uint64_t mappedSize, IBuffer **buffer) override;
 
-    FRESULT createInteropD3D12Buffer(ID3D12Resource *d3d12Buffer, uint64_t mappedOffset,
+    nvrhi::FRESULT createInteropD3D12Buffer(ID3D12Resource *d3d12Buffer, uint64_t mappedOffset,
                                      uint64_t mappedSize, IBuffer **buffer) override;
 
-    FRESULT createInteropVulkanBuffer(void *vkBuffer, void *vkMemory, void *vkDevice,
+    nvrhi::FRESULT createInteropVulkanBuffer(void *vkBuffer, void *vkMemory, void *vkDevice,
                                       uint64_t mappedOffset, uint64_t mappedSize,
                                       IBuffer **buffer) override;
 
-    FRESULT createInteropD3D11Texture(ID3D11Resource *d3d11Texture,
+    nvrhi::FRESULT createInteropD3D11Texture(ID3D11Resource *d3d11Texture,
                                       ITexture **texture) override;
 
-    FRESULT createInteropD3D12Texture(ID3D12Resource *d3d12Texture,
+    nvrhi::FRESULT createInteropD3D12Texture(ID3D12Resource *d3d12Texture,
                                       ITexture **texture) override;
 
-    FRESULT createInteropVulkanTexture(void *vkImage, void *vkMemory, void *vkDevice,
+    nvrhi::FRESULT createInteropVulkanTexture(void *vkImage, void *vkMemory, void *vkDevice,
                                        const TextureDesc &textureDesc,
                                        ITexture **texture) override;
 
-    FRESULT createInteropD3D11Fence(ID3D11Fence *d3d11Fence,
+    nvrhi::FRESULT createInteropD3D11Fence(ID3D11Fence *d3d11Fence,
                                     IGraphicsInteropSemaphore **semaphore) override;
-    FRESULT createInteropD3D12Fence(ID3D12Fence *d3d12Fence,
+    nvrhi::FRESULT createInteropD3D12Fence(ID3D12Fence *d3d12Fence,
                                     IGraphicsInteropSemaphore **semaphore) override;
-    FRESULT createInteropVulkanSemaphore(void *vkSemaphore, void *vkDevice,
+    nvrhi::FRESULT createInteropVulkanSemaphore(void *vkSemaphore, void *vkDevice,
                                          IGraphicsInteropSemaphore **semaphore) override;
 
     // Details

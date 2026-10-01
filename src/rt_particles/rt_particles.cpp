@@ -119,7 +119,7 @@ struct UIData
 class RayTracedParticles : public app::ApplicationBase
 {
 private:
-	AutoPtr<vfs::RootFileSystem> m_RootFS;
+	nvrhi::AutoPtr<vfs::RootFileSystem> m_RootFS;
 
     nvrhi::ShaderHandle m_ComputeShader;
     nvrhi::ComputePipelineHandle m_ComputePipeline;
@@ -132,29 +132,29 @@ private:
 
     nvrhi::BufferHandle m_ConstantBuffer;
 
-    AutoPtr<engine::ShaderFactory> m_ShaderFactory;
-    AutoPtr<engine::DescriptorTableManager> m_DescriptorTable;
-    AutoPtr<engine::Scene> m_Scene;
+    nvrhi::AutoPtr<engine::ShaderFactory> m_ShaderFactory;
+    nvrhi::AutoPtr<engine::DescriptorTableManager> m_DescriptorTable;
+    nvrhi::AutoPtr<engine::Scene> m_Scene;
     nvrhi::TextureHandle m_ColorBuffer;
     app::ThirdPersonCamera m_Camera;
     engine::PlanarView m_View;
-    AutoPtr<engine::DirectionalLight> m_SunLight;
+    nvrhi::AutoPtr<engine::DirectionalLight> m_SunLight;
     std::unique_ptr<engine::BindingCache> m_BindingCache;
     
-    AutoPtr<engine::BufferGroup> m_ParticleBuffers;
-    AutoPtr<engine::MeshGeometry> m_ParticleGeometry;
-    AutoPtr<engine::MeshInfo> m_ParticleMesh;
-    AutoPtr<engine::MeshInstance> m_ParticleInstance;
-    AutoPtr<engine::Material> m_ParticleMaterial;
+    nvrhi::AutoPtr<engine::BufferGroup> m_ParticleBuffers;
+    nvrhi::AutoPtr<engine::MeshGeometry> m_ParticleGeometry;
+    nvrhi::AutoPtr<engine::MeshInfo> m_ParticleMesh;
+    nvrhi::AutoPtr<engine::MeshInstance> m_ParticleInstance;
+    nvrhi::AutoPtr<engine::Material> m_ParticleMaterial;
     nvrhi::BufferHandle m_ParticleInfoBuffer;
     nvrhi::rt::AccelStructHandle m_ParticleIntersectionBLAS;
     
     std::vector<ParticleEntity> m_Particles;
     std::vector<ParticleInfo> m_ParticleInfoData;
 
-    AutoPtr<engine::LoadedTexture> m_EnvironmentMap;
-    AutoPtr<engine::LoadedTexture> m_SmokeTexture;
-    AutoPtr<engine::LoadedTexture> m_LogoTexture;
+    nvrhi::AutoPtr<engine::LoadedTexture> m_EnvironmentMap;
+    nvrhi::AutoPtr<engine::LoadedTexture> m_SmokeTexture;
+    nvrhi::AutoPtr<engine::LoadedTexture> m_LogoTexture;
 
     UIData* m_ui;
     float m_WallclockTime = 0.f;
@@ -455,7 +455,7 @@ public:
 
     bool LoadScene(vfs::IFileSystem* fs, const std::filesystem::path& sceneFileName) override 
     {
-        AutoPtr<engine::Scene> scene = MAKE_RC_OBJ_PTR(engine::Scene, GetDevice(),
+        nvrhi::AutoPtr<engine::Scene> scene = MAKE_RC_OBJ_PTR(engine::Scene, GetDevice(),
             m_ShaderFactory, fs, m_TextureCache, m_DescriptorTable, nullptr);
 
         if (scene->Load(sceneFileName))
@@ -498,7 +498,7 @@ public:
         return true;
     }
 
-    AutoPtr<engine::ShaderFactory> GetShaderFactory() const
+    nvrhi::AutoPtr<engine::ShaderFactory> GetShaderFactory() const
     {
         return m_ShaderFactory;
     }
@@ -854,7 +854,7 @@ int main(int __argc, const char** __argv)
 #endif
 {
     nvrhi::GraphicsAPI api = app::GetGraphicsAPIFromCommandLine(__argc, __argv);
-    auto deviceManager = TakeOver(app::DeviceManager::Create(api));
+    auto deviceManager = nvrhi::TakeOver(app::DeviceManager::Create(api));
 
     app::DeviceCreationParameters deviceParams;
     deviceParams.enableRayTracingExtensions = true;

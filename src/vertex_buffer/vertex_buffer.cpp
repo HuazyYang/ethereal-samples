@@ -126,11 +126,11 @@ public:
         std::filesystem::path frameworkShaderPath = app::GetDirectoryWithExecutable() / "shaders/framework" / app::GetShaderTypeName(GetDevice()->getGraphicsAPI());
         std::filesystem::path appShaderPath = app::GetDirectoryWithExecutable() / "shaders/vertex_buffer" / app::GetShaderTypeName(GetDevice()->getGraphicsAPI());
         
-		AutoPtr<vfs::RootFileSystem> rootFS = MAKE_RC_OBJ_PTR(vfs::RootFileSystem);
+		nvrhi::AutoPtr<vfs::RootFileSystem> rootFS = MAKE_RC_OBJ_PTR(vfs::RootFileSystem);
 		rootFS->mount("/shaders/donut", frameworkShaderPath);
 		rootFS->mount("/shaders/app", appShaderPath);
 
-        AutoPtr<engine::ShaderFactory> shaderFactory = MAKE_RC_OBJ_PTR(engine::ShaderFactory, GetDevice(), rootFS, "/shaders");
+        nvrhi::AutoPtr<engine::ShaderFactory> shaderFactory = MAKE_RC_OBJ_PTR(engine::ShaderFactory, GetDevice(), rootFS, "/shaders");
         m_VertexShader = shaderFactory->CreateShader("app/shaders.hlsl", "main_vs", nullptr, nvrhi::ShaderType::Vertex);
         m_PixelShader = shaderFactory->CreateShader("app/shaders.hlsl", "main_ps", nullptr, nvrhi::ShaderType::Pixel);
 
@@ -188,7 +188,7 @@ public:
         m_CommandList->setPermanentBufferState(m_IndexBuffer, nvrhi::ResourceStates::IndexBuffer);
 
         std::filesystem::path textureFileName = app::GetDirectoryWithExecutable().parent_path() / "media/nvidia-logo.png";
-        AutoPtr<engine::LoadedTexture> texture = textureCache.LoadTextureFromFile(textureFileName, true, nullptr, m_CommandList);
+        nvrhi::AutoPtr<engine::LoadedTexture> texture = textureCache.LoadTextureFromFile(textureFileName, true, nullptr, m_CommandList);
         m_Texture = texture->texture;
 
         m_CommandList->close();
@@ -315,7 +315,7 @@ int main(int __argc, const char** __argv)
 #endif
 {
     nvrhi::GraphicsAPI api = app::GetGraphicsAPIFromCommandLine(__argc, __argv);
-    auto deviceManager = TakeOver(app::DeviceManager::Create(api));
+    auto deviceManager = nvrhi::TakeOver(app::DeviceManager::Create(api));
 
     app::DeviceCreationParameters deviceParams;
 #ifdef _DEBUG

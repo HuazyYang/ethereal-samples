@@ -2,7 +2,7 @@
 #include <cctype>
 #include <optional>
 #include <string.h>
-#include <donut/core/object/AutoPtr.h>
+#include <nvrhi/core/AutoPtr.h>
 
 namespace SampleUtils {
 
@@ -57,7 +57,7 @@ inline std::optional<int> read_index(char** ptr) {
         // Handle the case when there is no texture coordinate
         if (*base != '/') {
             int tidx = static_cast<int>(std::strtol(base, &base, 10));
-            DONUT_ASSERT(tidx == vidx);
+            NVRHI_ASSERT(tidx == vidx);
         }
 
         base = strip_spaces(base);
@@ -65,7 +65,7 @@ inline std::optional<int> read_index(char** ptr) {
         if (*base == '/') {
             base++;
             int nidx = static_cast<int>(std::strtol(base, &base, 10));
-            DONUT_ASSERT(nidx == vidx);
+            NVRHI_ASSERT(nidx == vidx);
         }
     }
 
@@ -73,7 +73,7 @@ inline std::optional<int> read_index(char** ptr) {
     return std::make_optional(vidx);
 }
 
-inline TriangleMesh load_from_stream(donut::IDataBlob* blob) {
+inline TriangleMesh load_from_stream(nvrhi::IDataBlob* blob) {
     static constexpr size_t max_line = 1024;
     char line[max_line];
 
@@ -118,7 +118,7 @@ inline TriangleMesh load_from_stream(donut::IDataBlob* blob) {
                     for (int i = 0;; ++i) {
                         if (auto index = read_index(&ptr)) {
                             int j = *index < 0 ? mesh.positions.size() + *index : *index - 1;
-                            DONUT_ASSERT(j < mesh.positions.size());
+                            NVRHI_ASSERT(j < mesh.positions.size());
                             if (i <= 2) {
                                 vidx[i] = j;
                                 if (i == 2)
@@ -161,7 +161,7 @@ inline TriangleMesh load_from_stream(donut::IDataBlob* blob) {
             auto e0 = v1 - v0;
             auto e1 = v2 - v0;
             auto gn = dm::normalize(dm::cross(e0, e1));
-            DONUT_ASSERT(!std::isnan(gn.x) && !std::isnan(gn.y) && !std::isnan(gn.z));
+            NVRHI_ASSERT(!std::isnan(gn.x) && !std::isnan(gn.y) && !std::isnan(gn.z));
             mesh.normals[tri.x] += gn;
             mesh.normals[tri.y] += gn;
             mesh.normals[tri.z] += gn;
@@ -188,9 +188,9 @@ inline TriangleMesh load_from_stream(donut::IDataBlob* blob) {
 }
 
 TriangleMesh ObjLoader::operator()(donut::vfs::IFileSystem* pFS, const char* filename) const {
-    donut::AutoPtr<donut::IDataBlob> blob;
+    nvrhi::AutoPtr<nvrhi::IDataBlob> blob;
     auto fr = pFS->readFile(filename, &blob);
-    if (FFAILED(fr)) return {};
+    if (NVRHI_FAILED(fr)) return {};
 
     return load_from_stream(blob);
 }

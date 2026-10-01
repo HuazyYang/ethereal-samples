@@ -1,7 +1,7 @@
 #include <gvdb/GVDB.h>
-#include <donut/core/object/Foundation.h>
-#include <donut/core/object/Foundation.h>
-#include <donut/core/object/AutoPtr.h>
+#include <nvrhi/core/Foundation.h>
+#include <nvrhi/core/Foundation.h>
+#include <nvrhi/core/AutoPtr.h>
 #include <donut/core/vfs/VFS.h>
 #include <gvdb/GVDB.h>
 #include "SampleTypes.h"
@@ -35,7 +35,7 @@ enum class BufferName : int32_t {
 using BN = BufferName;
 
 // TODO(migration): dropped - base `ethereal::UserAllocated` exists in the old
-// ethereal fork; donut::UserAllocated has protected operator new/delete.
+// ethereal fork; nvrhi::UserAllocated has protected operator new/delete.
 struct NamedBuffers {
     NamedBuffers(gp::IDevice *device) : m_device{device} {}
 
@@ -54,8 +54,8 @@ struct NamedBuffers {
     }
 
  private:
-    AutoPtr<gp::IDevice> m_device;
-    AutoPtr<gp::IBuffer> m_buffers[(int)BufferName::NUM_BUFFERNAMES];
+    nvrhi::AutoPtr<gp::IDevice> m_device;
+    nvrhi::AutoPtr<gp::IBuffer> m_buffers[(int)BufferName::NUM_BUFFERNAMES];
 };
 
 enum class KN {
@@ -131,7 +131,7 @@ enum class KN {
     NUM_KN
 };
 
-class NamedKernels : public donut::ObjectImpl<donut::IObject> {
+class NamedKernels : public nvrhi::ObjectImpl<nvrhi::IObject> {
  public:
     void load(donut::vfs::IFileSystem *vfs, donut::gp::IDevice *device);
     ~NamedKernels();
@@ -140,7 +140,7 @@ class NamedKernels : public donut::ObjectImpl<donut::IObject> {
     donut::gp::IKernel *get() const;
 
  private:
-    donut::AutoPtr<donut::gp::IKernel> m_kernels[(int)KN::NUM_KN];
+    nvrhi::AutoPtr<donut::gp::IKernel> m_kernels[(int)KN::NUM_KN];
 };
 
 template <KN I>
@@ -150,13 +150,13 @@ inline donut::gp::IKernel *NamedKernels::get() const {
 }
 
 void NamedKernels::load(donut::vfs::IFileSystem *vfs, donut::gp::IDevice *device) {
-    donut::AutoPtr<donut::IDataBlob> pLibBlob;
+    nvrhi::AutoPtr<nvrhi::IDataBlob> pLibBlob;
     UT_V_GP(vfs->readFile("sample_utils/kernels/cuda_gvdb_particles.cu", &pLibBlob));
     size_t libBlobSize = pLibBlob->GetSize();
     pLibBlob->Resize(libBlobSize + 1);
     ((uint8_t *)pLibBlob->GetDataPtr())[libBlobSize] = 0;
 
-    donut::AutoPtr<donut::gp::IModule> gvdbModule;
+    nvrhi::AutoPtr<donut::gp::IModule> gvdbModule;
     UT_V_GP(device->createModule({}, pLibBlob->GetDataPtr(), pLibBlob->GetSize(),
                                  &gvdbModule));
 
@@ -229,13 +229,13 @@ void NamedKernels::load(donut::vfs::IFileSystem *vfs, donut::gp::IDevice *device
 
 NamedKernels::~NamedKernels() {}
 
-struct Voxelizer : public donut::ObjectImpl<IVoxelizer> {
-    DONUT_BEGIN_INTERFACE_TABLE_INLINE(Voxelizer)
-    DONUT_IMPLEMENTS_INTERFACE(IVoxelizer)
-    DONUT_IMPLEMENTS_INTERFACE(donut::IObject)
-    DONUT_END_INTERFACE_TABLE()
+struct Voxelizer : public nvrhi::ObjectImpl<IVoxelizer> {
+    NVRHI_BEGIN_INTERFACE_TABLE_INLINE(Voxelizer)
+    NVRHI_IMPLEMENTS_INTERFACE(IVoxelizer)
+    NVRHI_IMPLEMENTS_INTERFACE(nvrhi::IObject)
+    NVRHI_END_INTERFACE_TABLE()
 
-    donut::FRESULT solidVoxelize(gvdb::GVDB *pGVDB, int channel,
+    nvrhi::FRESULT solidVoxelize(gvdb::GVDB *pGVDB, int channel,
                                     donut::gp::IBuffer *pVertBuffer,
                                     donut::gp::IBuffer *pIndexBuffer,
                                     int numIndices, const dm::box3 &modelBounds,
@@ -256,8 +256,8 @@ struct Voxelizer : public donut::ObjectImpl<IVoxelizer> {
     uint32_t voxelizeNode(gvdb::GVDB *pGVDB, gvdb::Node *node, float bdiv, float valSurface,
                           float valInside, float valVoidThreshold);
 
-    donut::AutoPtr<donut::gp::IDevice> m_device;
-    donut::AutoPtr<donut::gp::IDeviceQueue> m_queue;
+    nvrhi::AutoPtr<donut::gp::IDevice> m_device;
+    nvrhi::AutoPtr<donut::gp::IDeviceQueue> m_queue;
     NamedKernels m_kernels;
     NamedBuffers m_buffers;
 
@@ -299,7 +299,7 @@ void Voxelizer::computeIndexspaceBounds(const dm::box3 &modelBounds,
     m_matModelToVolume = dm::affineToHomogeneous(matModelToIndexspace);
 }
 
-donut::FRESULT Voxelizer::solidVoxelize(
+nvrhi::FRESULT Voxelizer::solidVoxelize(
     gvdb::GVDB *pGVDB, int channel, donut::gp::IBuffer *pVertBuffer,
     donut::gp::IBuffer *pIndexBuffer, int numIndices,
     const dm::box3 &modelBounds, const dm::affine3 &matModelToVolume, float valSurface,
@@ -347,7 +347,7 @@ donut::FRESULT Voxelizer::solidVoxelize(
     m_device->commitQueue(m_queue);
     m_device->waitForQueue(m_queue);
 
-    return donut::FS_OK;
+    return nvrhi::FS_OK;
 }
 
 dm::int3 Voxelizer::insertTriangles(float ybdiv) {
@@ -380,7 +380,7 @@ dm::int3 Voxelizer::insertTriangles(float ybdiv) {
     // prefix sum for bin offsets
     prefixSum(m_buffers.get<BN::BIN_COUNT>(), m_buffers.get<BN::BIN_OFFSET>(), ybins);
 
-    AutoPtr<gp::IBuffer> auxReadbackBuffer;
+    nvrhi::AutoPtr<gp::IBuffer> auxReadbackBuffer;
     gp::BufferDesc auxBufDesc;
     auxBufDesc.byteSize = m_buffers.get<BN::BIN_COUNT>()->getDesc()->byteSize;
     auxBufDesc.isStaging = true;
@@ -423,7 +423,7 @@ dm::int3 Voxelizer::insertTriangles(float ybdiv) {
 
 void Voxelizer::prefixSum(gp::IBuffer *inBuffer, gp::IBuffer *outBuffer,
                               uint32_t numElem) {
-    DONUT_ASSERT(numElem < (1 << 30) && "Element number exceed maximum bound");
+    NVRHI_ASSERT(numElem < (1 << 30) && "Element number exceed maximum bound");
     constexpr int naux = GVDB_SCAN_BLOCKSIZE << 1;  // must be 1024
     int grid1 = dm::div_ceil(int(numElem), naux);
     int grid2 = dm::div_ceil(grid1, naux);
@@ -520,7 +520,7 @@ uint32_t Voxelizer::voxelizeNode(gvdb::GVDB *pGVDB, gvdb::Node *node, float bdiv
     } else {
         // retrieve children voxel values
         gp::BufferDesc bufDesc;
-        AutoPtr<gp::IBuffer> voxValBuff;
+        nvrhi::AutoPtr<gp::IBuffer> voxValBuff;
         bufDesc.byteSize = m_buffers.get<BN::AUX_VOXELIZE>()->getDesc()->byteSize;
         bufDesc.isStaging = true;
         UT_V_GP(m_device->createBuffer(bufDesc, &voxValBuff));
@@ -551,11 +551,11 @@ uint32_t Voxelizer::voxelizeNode(gvdb::GVDB *pGVDB, gvdb::Node *node, float bdiv
     return cnt;
 }
 
-donut::FRESULT createVoxelizer(donut::gp::IDevice *device,
+nvrhi::FRESULT createVoxelizer(donut::gp::IDevice *device,
                                   donut::vfs::IFileSystem *vfs, IVoxelizer **ppVoxelizer) {
     auto pVoxelizer = MAKE_RC_OBJ(Voxelizer, device, vfs);
     if (ppVoxelizer) *ppVoxelizer = pVoxelizer;
-    return donut::FS_OK;
+    return nvrhi::FS_OK;
 }
 
 }  // namespace SampleUtils

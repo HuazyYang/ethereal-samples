@@ -1,5 +1,5 @@
 #include "GVDBAllocator.h"
-#include <donut/core/object/Memory.h>
+#include <nvrhi/core/Memory.h>
 #include <donut/core/log.h>
 
 namespace gvdb {
@@ -7,17 +7,17 @@ namespace gvdb {
 static void *GVDBPoolAllocate(size_t size) {
     if (size == 0) return nullptr;
 
-    // NOTE(migration): the old fork had DefaultMemoryAllocator::Get() and a
-    // file/line-tracking Allocate() overload; donut has GetDefaultMemAllocator()
+    // NOTE(migration): the old fork had nvrhi::DefaultMemoryAllocator::Get() and a
+    // file/line-tracking Allocate() overload; donut has nvrhi::GetDefaultMemAllocator()
     // and Allocate(size) only, so allocation-site tracking is dropped.
-    auto p = donut::GetDefaultMemAllocator()->Allocate(size);
+    auto p = nvrhi::GetDefaultMemAllocator()->Allocate(size);
     if (!p) throw std::bad_alloc();
 
     return p;
 }
 
 static void GVDBPoolFree(void *p) {
-    if (p) donut::GetDefaultMemAllocator()->Free(p);
+    if (p) nvrhi::GetDefaultMemAllocator()->Free(p);
 }
 
 GVDBAllocator::GVDBAllocator() {}
@@ -96,7 +96,7 @@ void *GVDBAllocator::poolData(uint8_t grp, uint8_t lev) { return m_pools[grp][le
 
 void GVDBAllocator::poolSetSize(uint8_t grp, uint8_t lev, uint64_t size) {
     auto &allocation = m_pools[grp][lev];
-    DONUT_ASSERT(allocation.numReserved >= size);
+    NVRHI_ASSERT(allocation.numReserved >= size);
     allocation.numUsed = size;
 }
 

@@ -1,8 +1,8 @@
 #include <donut/app/DeviceManager.h>
-#include <donut/core/object/AutoPtr.h>
+#include <nvrhi/core/AutoPtr.h>
 #include <donut/app/ApplicationBase.h>
 #include <donut/core/log.h>
-#include <donut/core/object/Foundation.h>
+#include <nvrhi/core/Foundation.h>
 #include <sample_utils/AppUtils.h>
 #include <donut/core/vfs/VFS.h>
 #include <donut/engine/ShaderFactory.h>
@@ -27,14 +27,14 @@ struct SimpleCommon {
     dm::float4 specularFactor;
 };
 
-DONUT_CCLSID(DepthMapPass, "1d9c1a44-0af0-4810-80b6-8ae4f3bac3ce")
+NVRHI_CCLSID(DepthMapPass, "1d9c1a44-0af0-4810-80b6-8ae4f3bac3ce")
 class DepthMapPass : public donut::app::IRenderPass {
-    DONUT_DECLARE_UUID_TRAITS(DepthMapPass)
+    NVRHI_DECLARE_UUID_TRAITS(DepthMapPass)
 public:
-    DONUT_BEGIN_INTERFACE_TABLE_INLINE(DepthMapPass)
-    DONUT_IMPLEMENTS_INTERFACE(DepthMapPass)
-    DONUT_IMPLEMENTS_ROUTE_PARENT(donut::app::IRenderPass)
-    DONUT_END_INTERFACE_TABLE()
+    NVRHI_BEGIN_INTERFACE_TABLE_INLINE(DepthMapPass)
+    NVRHI_IMPLEMENTS_INTERFACE(DepthMapPass)
+    NVRHI_IMPLEMENTS_ROUTE_PARENT(donut::app::IRenderPass)
+    NVRHI_END_INTERFACE_TABLE()
 
  public:
     DepthMapPass(donut::app::DeviceManager *deviceManager): IRenderPass{deviceManager} {}
@@ -44,7 +44,7 @@ public:
         m_rotationEulerAngles = dm::float3{0.f};
         m_bias = 1.f;
 
-        m_vfs = TakeOver(MAKE_RC_OBJ(donut::vfs::RootFileSystem));
+        m_vfs = nvrhi::TakeOver(MAKE_RC_OBJ(donut::vfs::RootFileSystem));
         auto binaryPath = donut::app::GetDirectoryWithExecutable();
         m_vfs->mount("gvdb/kernels", binaryPath);
         m_vfs->mount("app/shaders",
@@ -53,7 +53,7 @@ public:
         m_vfs->mount("app/asset", binaryPath / "asset");
 
         m_shaderFactory =
-            TakeOver(MAKE_RC_OBJ(donut::engine::ShaderFactory, GetDevice(), m_vfs, ""));
+            nvrhi::TakeOver(MAKE_RC_OBJ(donut::engine::ShaderFactory, GetDevice(), m_vfs, ""));
 
         donut::gp::CUDADeviceDesc cudaDeviceDesc = {};
         cudaDeviceDesc.messageCallback = MAKE_RC_OBJ(GPDeviceMessageCallback);
@@ -74,8 +74,8 @@ public:
 
         m_voxelizer->configAtlas({16u}, 1);
 
-        m_scene = donut::TakeOver(MAKE_RC_OBJ(gvdb::GVDBScene));
-        auto model = donut::TakeOver(MAKE_RC_OBJ(gvdb::GVDBModel));
+        m_scene = nvrhi::TakeOver(MAKE_RC_OBJ(gvdb::GVDBScene));
+        auto model = nvrhi::TakeOver(MAKE_RC_OBJ(gvdb::GVDBModel));
         model->loadObj(m_vfs, "app/asset/lucy.obj", dm::float3::zero(), dm::quat{}, dm::float3{100.f});
         m_scene->addModel(model);
 
@@ -543,16 +543,16 @@ public:
     }
 
  private:
-    donut::AutoPtr<donut::vfs::RootFileSystem> m_vfs;
-    donut::AutoPtr<donut::engine::ShaderFactory> m_shaderFactory;
-    donut::AutoPtr<donut::gp::IDevice> m_gpDevice;
-    donut::AutoPtr<donut::gp::IDeviceQueue> m_gpQueue;
-    donut::AutoPtr<donut::IGPAndNVRHIInteropDevice> m_interopDevice;
+    nvrhi::AutoPtr<donut::vfs::RootFileSystem> m_vfs;
+    nvrhi::AutoPtr<donut::engine::ShaderFactory> m_shaderFactory;
+    nvrhi::AutoPtr<donut::gp::IDevice> m_gpDevice;
+    nvrhi::AutoPtr<donut::gp::IDeviceQueue> m_gpQueue;
+    nvrhi::AutoPtr<donut::IGPAndNVRHIInteropDevice> m_interopDevice;
     nvrhi::CommandListHandle m_commandList;
 
     std::unique_ptr<gvdb::GVDBVoxelizer> m_voxelizer;
     std::unique_ptr<gvdb::GVDBRenderer> m_volumeRenderer;
-    donut::AutoPtr<gvdb::GVDBScene> m_scene;
+    nvrhi::AutoPtr<gvdb::GVDBScene> m_scene;
 
     dm::float3 m_rotationEulerAngles;
     dm::float3 m_translation;
@@ -575,13 +575,13 @@ public:
     nvrhi::BindingSetHandle m_fullscreenBindingSet;
     nvrhi::SamplerHandle m_fullscreenSampler;
 
-    donut::AutoPtr<donut::gp::ITexture> m_depthColorTextureGP;
+    nvrhi::AutoPtr<donut::gp::ITexture> m_depthColorTextureGP;
     uint32_t m_depthColorTextureMutexIndex = 0;
-    donut::AutoPtr<donut::gp::IBuffer> m_depthBufferGP;
+    nvrhi::AutoPtr<donut::gp::IBuffer> m_depthBufferGP;
 
-    donut::AutoPtr<donut::gp::IBuffer> m_volumeRenderBufferGP;
+    nvrhi::AutoPtr<donut::gp::IBuffer> m_volumeRenderBufferGP;
     nvrhi::TextureHandle m_volumeRenderTexture;
-    donut::AutoPtr<donut::gp::ITexture> m_volumeRenderTextureGP;
+    nvrhi::AutoPtr<donut::gp::ITexture> m_volumeRenderTextureGP;
     uint32_t m_volumeRenderTextureMutexIndex = 0;
 };
 
@@ -592,7 +592,7 @@ int main(int argc, char *argv[]) {
     // (<ethereal/core/object/UserAllocated.h>) exists in the old ethereal fork but not in donut.
 
     nvrhi::GraphicsAPI api = donut::app::GetGraphicsAPIFromCommandLine(argc, argv);
-    auto deviceManager = donut::TakeOver(donut::app::DeviceManager::Create(api));
+    auto deviceManager = nvrhi::TakeOver(donut::app::DeviceManager::Create(api));
 
     donut::app::DeviceCreationParameters deviceParams = {};
 #ifdef _DEBUG
@@ -608,7 +608,7 @@ int main(int argc, char *argv[]) {
         return -1;
     }
 
-    auto pass = donut::TakeOver(MAKE_RC_OBJ(DepthMapPass, deviceManager));
+    auto pass = nvrhi::TakeOver(MAKE_RC_OBJ(DepthMapPass, deviceManager));
     if(!pass->Init()) {
         donut::log::fatal("Failed to init DepthMapPass");
         return -1;

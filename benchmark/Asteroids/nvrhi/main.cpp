@@ -258,7 +258,7 @@ int main(int argc, char** argv)
     deviceParams.resizeWindowWithDisplayScale = false;
     deviceParams.infoLogSeverity      = donut::log::Severity::Debug;
 
-    donut::AutoPtr<donut::app::DeviceManager> deviceManager = donut::TakeOver(donut::app::DeviceManager::Create(api));
+    nvrhi::AutoPtr<donut::app::DeviceManager> deviceManager = nvrhi::TakeOver(donut::app::DeviceManager::Create(api));
     if (!deviceManager)
         Benchmark::Fail("Donut has no device manager for -api " + config.api);
 

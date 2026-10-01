@@ -75,7 +75,7 @@ static void vlog(IMessageCallback *pcb, MessageSeverity logLevel, const char *fi
     pcb->message(logLevel, s2.c_str());
 }
 
-FRESULT createCUDADevice(const CUDADeviceDesc &desc, IDevice **_device) {
+nvrhi::FRESULT createCUDADevice(const CUDADeviceDesc &desc, IDevice **_device) {
     cuda::Context context;
     context.msgCallback = desc.messageCallback;
 
@@ -95,7 +95,7 @@ FRESULT createCUDADevice(const CUDADeviceDesc &desc, IDevice **_device) {
         device->AddRef();
     }
     device->Release();
-    return FS_OK;
+    return nvrhi::FS_OK;
 }
 
 void memset32(void *dst, uint32_t src, size_t sz) {
@@ -325,7 +325,7 @@ static const CUDAFormatInfo &getFormatInfo(Format format) {
     if (idx >= int(Format::NUM_FORMAT)) return g_CUDAFormatInfos[0];
 
     auto &info = g_CUDAFormatInfos[idx];
-    DONUT_ASSERT(info.format == format);
+    NVRHI_ASSERT(info.format == format);
 
     return info;
 }
@@ -341,7 +341,7 @@ static const CUaddress_mode getSamplerAddressMode(SamplerAddressMode mode) {
         case SamplerAddressMode::Mirror:
             return CU_TR_ADDRESS_MODE_MIRROR;
         default:
-            DONUT_ASSERT(0);
+            NVRHI_ASSERT(0);
     }
     return CU_TR_ADDRESS_MODE_CLAMP;
 }
@@ -526,7 +526,7 @@ Texture::Texture(Context &context, const TextureDesc &desc)
         }
         break;
         default:
-            DONUT_ASSERT(0);
+            NVRHI_ASSERT(0);
     }
 
     CUDA_RESOURCE_DESC resDesc = {};
@@ -642,7 +642,7 @@ Texture::Texture(Context &context, const GraphicsInteropTextureDesc &interopDesc
             arrayDesc.Depth = m_desc.depthOrArraySize;
         }
         default:
-            DONUT_ASSERT(0);
+            NVRHI_ASSERT(0);
     }
 
     mipmapDesc.arrayDesc = arrayDesc;
@@ -752,9 +752,9 @@ CUdeviceptr Buffer::getDeviceAddress() {
 const BufferDesc *Buffer::getDesc() { return &m_desc; }
 
 
-FRESULT DeviceQueue::launch(IKernel *pKernel, const dim3 &gridDim, const dim3 &blockDim,
+nvrhi::FRESULT DeviceQueue::launch(IKernel *pKernel, const dim3 &gridDim, const dim3 &blockDim,
                             const KernelArg *args, size_t argc) {
-    if (pKernel == nullptr) return FE_INVALID_ARGS;
+    if (pKernel == nullptr) return nvrhi::FE_INVALID_ARGS;
 
     int auxPtrCnt = 0;
     for (size_t i = 0; i < argc; ++i) {
@@ -791,7 +791,7 @@ FRESULT DeviceQueue::launch(IKernel *pKernel, const dim3 &gridDim, const dim3 &b
             case KernelArgType::Texture_UAV: {
                 auto pTexture = checked_cast<Texture>(arg.uav.texture);
                 if (pTexture) {
-                    DONUT_ASSERT(arg.uav.mipSlice < pTexture->m_desc.mipLevels);
+                    NVRHI_ASSERT(arg.uav.mipSlice < pTexture->m_desc.mipLevels);
                     cuArgs[i] = &pTexture->m_surfaces[arg.uav.mipSlice];
                 } else
                     cuArgs[i] = nullptr;
@@ -807,28 +807,28 @@ FRESULT DeviceQueue::launch(IKernel *pKernel, const dim3 &gridDim, const dim3 &b
         cuLaunchKernel(pKernelCUDA->m_cuFunc, gridDim.x, gridDim.y, gridDim.z, blockDim.x,
                        blockDim.y, blockDim.z, 0, m_cuStream, &cuArgs[0], nullptr);
     V_CUDA(m_context, cures);
-    if (cures != CUDA_SUCCESS) return FE_GENERIC_ERROR;
+    if (cures != CUDA_SUCCESS) return nvrhi::FE_GENERIC_ERROR;
 
-    return FS_OK;
+    return nvrhi::FS_OK;
 }
 
-FRESULT DeviceQueue::synchronizeQueue(IDeviceQueue *_other) {
+nvrhi::FRESULT DeviceQueue::synchronizeQueue(IDeviceQueue *_other) {
     auto otherQueue = checked_cast<DeviceQueue>(_other);
-    if (otherQueue == nullptr) return FE_INVALID_ARGS;
+    if (otherQueue == nullptr) return nvrhi::FE_INVALID_ARGS;
 
     auto syncPoint = m_context.device->allocateSyncPoint(this, true);
     V_CUDA(m_context, cuEventRecord(syncPoint.event, otherQueue->m_cuStream));
     m_lastSyncPoint = syncPoint.point;
     V_CUDA(m_context,
            cuStreamWaitEvent(m_cuStream, syncPoint.event, CU_EVENT_WAIT_DEFAULT));
-    return FS_OK;
+    return nvrhi::FS_OK;
 }
 
-FRESULT DeviceQueue::clearBufferUint(IBuffer *_buffer, uint32_t clearValue) {
+nvrhi::FRESULT DeviceQueue::clearBufferUint(IBuffer *_buffer, uint32_t clearValue) {
     Buffer *buffer = checked_cast<Buffer>(_buffer);
     if (buffer == nullptr || buffer->m_desc.byteSize == 0 ||
         (buffer->m_desc.byteSize & 3) != 0)
-        return FE_INVALID_ARGS;
+        return nvrhi::FE_INVALID_ARGS;
 
     if (buffer->m_desc.isStaging) {
 
@@ -837,15 +837,15 @@ FRESULT DeviceQueue::clearBufferUint(IBuffer *_buffer, uint32_t clearValue) {
         V_CUDA(m_context, cuMemsetD32Async(buffer->m_cuBuffer, clearValue,
                                            buffer->m_desc.byteSize >> 2, m_cuStream));
     }
-    return FS_OK;
+    return nvrhi::FS_OK;
 }
 
-FRESULT DeviceQueue::writeBuffer(IBuffer *_buffer, const void *data, uint64_t bytes,
+nvrhi::FRESULT DeviceQueue::writeBuffer(IBuffer *_buffer, const void *data, uint64_t bytes,
                                  uint64_t destOffsetBytes) {
     Buffer *buffer = checked_cast<Buffer>(_buffer);
     if (buffer == nullptr || buffer->m_desc.byteSize == 0 || data == nullptr ||
         bytes == 0 || bytes + destOffsetBytes > buffer->m_desc.byteSize)
-        return FE_INVALID_ARGS;
+        return nvrhi::FE_INVALID_ARGS;
 
     if (buffer->m_desc.isStaging)
         memcpy((uint8_t *)buffer->m_cuBuffer + destOffsetBytes, data, bytes);
@@ -855,16 +855,16 @@ FRESULT DeviceQueue::writeBuffer(IBuffer *_buffer, const void *data, uint64_t by
         bufDesc.byteSize = bytes;
         auto stagingBuffer = MAKE_RC_OBJ(Buffer, m_context, bufDesc);
         memcpy((void *)stagingBuffer->m_cuBuffer, data, bytes);
-        m_stagingBuffers.push_back({m_lastSyncPoint, TakeOver(stagingBuffer)});
+        m_stagingBuffers.push_back({m_lastSyncPoint, nvrhi::TakeOver(stagingBuffer)});
 
         CUdeviceptr dstPtr = (CUdeviceptr)((uint8_t *)buffer->m_cuBuffer + destOffsetBytes);
         V_CUDA(m_context, cuMemcpyHtoDAsync(dstPtr, (void *)stagingBuffer->m_cuBuffer,
                                             bytes, m_cuStream));
     }
-    return FS_OK;
+    return nvrhi::FS_OK;
 }
 
-FRESULT DeviceQueue::copyBufferRegion(IBuffer *_dest, uint64_t destOffsetBytes,
+nvrhi::FRESULT DeviceQueue::copyBufferRegion(IBuffer *_dest, uint64_t destOffsetBytes,
                                       IBuffer *_src, uint64_t srcOffsetBytes,
                                       uint64_t dataSizeBytes) {
     auto dest = checked_cast<Buffer>(_dest);
@@ -877,7 +877,7 @@ FRESULT DeviceQueue::copyBufferRegion(IBuffer *_dest, uint64_t destOffsetBytes,
         src->m_desc.byteSize == 0 ||
         destOffsetBytes + dataSizeBytes > dest->m_desc.byteSize ||
         srcOffsetBytes + dataSizeBytes > src->m_desc.byteSize)
-        return FE_INVALID_ARGS;
+        return nvrhi::FE_INVALID_ARGS;
 
     void *destPtr = (uint8_t *)dest->m_cuBuffer + destOffsetBytes;
     void *srcPtr = (uint8_t *)src->m_cuBuffer + srcOffsetBytes;
@@ -898,64 +898,64 @@ FRESULT DeviceQueue::copyBufferRegion(IBuffer *_dest, uint64_t destOffsetBytes,
                                             dataSizeBytes, m_cuStream));
         }
     }
-    return FS_OK;
+    return nvrhi::FS_OK;
 }
 
-FRESULT DeviceQueue::copyResource(IResource *dst, IResource *src) {
-    if (!dst || !src) return FE_INVALID_ARGS;
+nvrhi::FRESULT DeviceQueue::copyResource(IResource *dst, IResource *src) {
+    if (!dst || !src) return nvrhi::FE_INVALID_ARGS;
     {
-        AutoPtr<IBuffer> srcBuffer, dstBuffer;
+        nvrhi::AutoPtr<IBuffer> srcBuffer, dstBuffer;
 
-        if (FSUCCEEDED(dst->QueryInterface(FIID_PPV_ARGS(&dstBuffer)))) {
-            if (FFAILED(src->QueryInterface(FIID_PPV_ARGS(&srcBuffer))))
-                return FE_INVALID_ARGS;
+        if (NVRHI_SUCCEEDED(dst->QueryInterface(NVRHI_IID_PPV_ARGS(&dstBuffer)))) {
+            if (NVRHI_FAILED(src->QueryInterface(NVRHI_IID_PPV_ARGS(&srcBuffer))))
+                return nvrhi::FE_INVALID_ARGS;
             size_t numBytes = srcBuffer->getDesc()->byteSize;
-            if (numBytes != dstBuffer->getDesc()->byteSize) return FE_INVALID_ARGS;
+            if (numBytes != dstBuffer->getDesc()->byteSize) return nvrhi::FE_INVALID_ARGS;
 
             Buffer *srcBuffer1 = checked_cast<Buffer>(srcBuffer.Get());
             Buffer *dstBuffer1 = checked_cast<Buffer>(dstBuffer.Get());
             V_CUDA(m_context, cuMemcpyAsync(dstBuffer1->m_cuBuffer, srcBuffer1->m_cuBuffer,
                                             numBytes, m_cuStream));
-            return FS_OK;
+            return nvrhi::FS_OK;
         }
     }
 
     {
-        AutoPtr<ITexture> srcTexture, dstTexture;
-        if (FSUCCEEDED(dst->QueryInterface(FIID_PPV_ARGS(&dstTexture)))) {
-            if (FFAILED(src->QueryInterface(FIID_PPV_ARGS(&srcTexture))))
-                return FE_INVALID_ARGS;
+        nvrhi::AutoPtr<ITexture> srcTexture, dstTexture;
+        if (NVRHI_SUCCEEDED(dst->QueryInterface(NVRHI_IID_PPV_ARGS(&dstTexture)))) {
+            if (NVRHI_FAILED(src->QueryInterface(NVRHI_IID_PPV_ARGS(&srcTexture))))
+                return nvrhi::FE_INVALID_ARGS;
 
             Texture *dstTexture1 = checked_cast<Texture>(dstTexture.Get());
             Texture *srcTexture1 = checked_cast<Texture>(srcTexture.Get());
             const auto dstDesc = dstTexture1->getDesc();
             const auto srcDesc = srcTexture1->getDesc();
-            if (dstDesc->dimension != srcDesc->dimension) return FE_INVALID_ARGS;
+            if (dstDesc->dimension != srcDesc->dimension) return nvrhi::FE_INVALID_ARGS;
 
             uint32_t dstElemWidth = getFormatInfo(dstDesc->format).bytesPerBlock;
             uint32_t srcElemWidth = getFormatInfo(srcDesc->format).bytesPerBlock;
 
-            if (dstElemWidth != srcElemWidth) return FE_INVALID_ARGS;
+            if (dstElemWidth != srcElemWidth) return nvrhi::FE_INVALID_ARGS;
 
             switch (dstDesc->dimension) {
                 case TextureDimension::Texture1D:
                     if (dstDesc->width != srcDesc->width ||
                         dstDesc->depthOrArraySize != srcDesc->depthOrArraySize ||
                         dstDesc->mipLevels != srcDesc->mipLevels)
-                        return FE_INVALID_ARGS;
+                        return nvrhi::FE_INVALID_ARGS;
                     break;
                 case TextureDimension::Texture2D:
                     if (dstDesc->width != srcDesc->width ||
                         dstDesc->height != srcDesc->height ||
                         dstDesc->depthOrArraySize != srcDesc->depthOrArraySize ||
                         dstDesc->mipLevels != srcDesc->mipLevels)
-                        return FE_INVALID_ARGS;
+                        return nvrhi::FE_INVALID_ARGS;
                     break;
                 case TextureDimension::Texture3D:
                     if (dstDesc->width != srcDesc->width ||
                         dstDesc->height != srcDesc->height ||
                         dstDesc->depthOrArraySize != srcDesc->depthOrArraySize)
-                        return FE_INVALID_ARGS;
+                        return nvrhi::FE_INVALID_ARGS;
             }
 
             CUDA_MEMCPY3D copyInfo = {};
@@ -983,35 +983,35 @@ FRESULT DeviceQueue::copyResource(IResource *dst, IResource *src) {
         }
     }
 
-    return FS_OK;
+    return nvrhi::FS_OK;
 }
 
-FRESULT DeviceQueue::copyTextureRegion(const TextureCopyLocation &dst, uint32_t dstX,
+nvrhi::FRESULT DeviceQueue::copyTextureRegion(const TextureCopyLocation &dst, uint32_t dstX,
                                        uint32_t dstY, uint32_t dstZ,
                                        const TextureCopyLocation &src,
                                        const GPBox *srcBox) {
 
     if (!dst.resource || !src.resource)
-        return FE_INVALID_ARGS;
+        return nvrhi::FE_INVALID_ARGS;
 
     if (dst.type == TextureCopyType::PlacedFootprint) {
-        AutoPtr<IBuffer> dstBuffer;
-        if(FFAILED(dst.resource->QueryInterface(FIID_PPV_ARGS(&dstBuffer))))
-            return FE_INVALID_ARGS;
+        nvrhi::AutoPtr<IBuffer> dstBuffer;
+        if(NVRHI_FAILED(dst.resource->QueryInterface(NVRHI_IID_PPV_ARGS(&dstBuffer))))
+            return nvrhi::FE_INVALID_ARGS;
         
         if (src.type == TextureCopyType::PlacedFootprint) {
             // Copy buffer to buffer
-            AutoPtr<IBuffer> srcBuffer;
-            if (FFAILED(src.resource->QueryInterface(FIID_PPV_ARGS(&srcBuffer))))
-                return FE_INVALID_ARGS;
+            nvrhi::AutoPtr<IBuffer> srcBuffer;
+            if (NVRHI_FAILED(src.resource->QueryInterface(NVRHI_IID_PPV_ARGS(&srcBuffer))))
+                return nvrhi::FE_INVALID_ARGS;
 
             return copyBufferRegion(dstBuffer, dst.placeFootprint.offset, srcBuffer,
                              src.placeFootprint.offset, src.placeFootprint.width);
         } else {
             // Copy texture to buffer
-            AutoPtr<ITexture> srcTexture;
-            if(FFAILED(src.resource->QueryInterface(FIID_PPV_ARGS(&srcTexture))))
-                return FE_INVALID_ARGS;
+            nvrhi::AutoPtr<ITexture> srcTexture;
+            if(NVRHI_FAILED(src.resource->QueryInterface(NVRHI_IID_PPV_ARGS(&srcTexture))))
+                return nvrhi::FE_INVALID_ARGS;
 
             auto srcTexture1 = checked_cast<Texture>(srcTexture.Get());
             auto dstBuffer1 = checked_cast<Buffer>(dstBuffer.Get());
@@ -1054,7 +1054,7 @@ FRESULT DeviceQueue::copyTextureRegion(const TextureCopyLocation &dst, uint32_t 
                         srcBox1.right > arrayDesc.Width ||
                         srcBox1.front >= srcBox1.back ||
                         srcBox1.bottom > arrayDesc.Depth)
-                        return FE_INVALID_ARGS;
+                        return nvrhi::FE_INVALID_ARGS;
                     break;
                 case TextureDimension::Texture2D:
                     srcBox1.front = arrayIndex;
@@ -1101,9 +1101,9 @@ FRESULT DeviceQueue::copyTextureRegion(const TextureCopyLocation &dst, uint32_t 
             V_CUDA(m_context, cuMemcpy3DAsync(&copyInfo, m_cuStream));
         }
     } else {
-        AutoPtr<ITexture> dstTexture;
-        if(FFAILED(dst.resource->QueryInterface(FIID_PPV_ARGS(&dstTexture))))
-            return FE_INVALID_ARGS;
+        nvrhi::AutoPtr<ITexture> dstTexture;
+        if(NVRHI_FAILED(dst.resource->QueryInterface(NVRHI_IID_PPV_ARGS(&dstTexture))))
+            return nvrhi::FE_INVALID_ARGS;
 
         Texture *dstTexture1 = checked_cast<Texture>(dstTexture.Get());
 
@@ -1128,9 +1128,9 @@ FRESULT DeviceQueue::copyTextureRegion(const TextureCopyLocation &dst, uint32_t 
 
         if(src.type == TextureCopyType::PlacedFootprint) {
             // Copy buffer to texture
-            AutoPtr<IBuffer> srcBuffer;
-            if(FFAILED(src.resource->QueryInterface(FIID_PPV_ARGS(&srcBuffer))))
-                return FE_INVALID_ARGS;
+            nvrhi::AutoPtr<IBuffer> srcBuffer;
+            if(NVRHI_FAILED(src.resource->QueryInterface(NVRHI_IID_PPV_ARGS(&srcBuffer))))
+                return nvrhi::FE_INVALID_ARGS;
 
             Buffer *srcBuffer1 = checked_cast<Buffer>(srcBuffer.Get());
 
@@ -1186,16 +1186,16 @@ FRESULT DeviceQueue::copyTextureRegion(const TextureCopyLocation &dst, uint32_t 
             V_CUDA(m_context, cuMemcpy3DAsync(&copyInfo, m_cuStream));
         } else {
             // Copy texture to texture
-            AutoPtr<ITexture> srcTexture;
-            if (FFAILED(src.resource->QueryInterface(FIID_PPV_ARGS(&srcTexture))))
-                return FE_INVALID_ARGS;
+            nvrhi::AutoPtr<ITexture> srcTexture;
+            if (NVRHI_FAILED(src.resource->QueryInterface(NVRHI_IID_PPV_ARGS(&srcTexture))))
+                return nvrhi::FE_INVALID_ARGS;
 
             Texture *srcTexture1 = checked_cast<Texture>(srcTexture.Get());
             auto srcDesc = srcTexture1->getDesc();
             uint32_t srcElementBytes = getFormatInfo(dstDesc->format).bytesPerBlock;
 
             if(srcDesc->dimension != dstDesc->dimension || srcElementBytes != dstElementBytes)
-                return FE_INVALID_ARGS;
+                return nvrhi::FE_INVALID_ARGS;
 
             uint32_t srcMipIndex, srcArrayIndex;
             CUarray srcArray;
@@ -1258,10 +1258,10 @@ FRESULT DeviceQueue::copyTextureRegion(const TextureCopyLocation &dst, uint32_t 
         }
     }
 
-    return FS_OK;
+    return nvrhi::FS_OK;
 }
 
-FRESULT DeviceQueue::writeTextureRegion(IResource *dstResource, uint32_t dstSubresource,
+nvrhi::FRESULT DeviceQueue::writeTextureRegion(IResource *dstResource, uint32_t dstSubresource,
                                         const void *srcData,
                                         const SubresourceFootprint &footprint,
                                         uint32_t dstX, uint32_t dstY, uint32_t dstZ,
@@ -1269,15 +1269,15 @@ FRESULT DeviceQueue::writeTextureRegion(IResource *dstResource, uint32_t dstSubr
     if(dstResource == nullptr || srcData == nullptr ||
         footprint.format == Format::UNKNOWN || footprint.width == 0 ||
         footprint.height == 0 || footprint.depth == 0)
-        return FE_INVALID_ARGS;
+        return nvrhi::FE_INVALID_ARGS;
 
-    donut::AutoPtr<IBuffer> stagingBuffer;
-    FRESULT fr;
+    nvrhi::AutoPtr<IBuffer> stagingBuffer;
+    nvrhi::FRESULT fr;
 
     BufferDesc bufDesc = {};
     bufDesc.byteSize = uint64_t(footprint.rowPitch) * footprint.height * footprint.depth;
     bufDesc.isStaging = true;
-    if (FFAILED(fr = m_context.device->createBuffer(bufDesc, &stagingBuffer))) return fr;
+    if (NVRHI_FAILED(fr = m_context.device->createBuffer(bufDesc, &stagingBuffer))) return fr;
 
     auto buffer = checked_cast<Buffer>(stagingBuffer.Get());
     m_stagingBuffers.push_back({m_lastSyncPoint, buffer});
@@ -1299,10 +1299,10 @@ FRESULT DeviceQueue::writeTextureRegion(IResource *dstResource, uint32_t dstSubr
     return copyTextureRegion(dstLocation, dstX, dstY, dstZ, srcLocation, srcBox);
 }
 
-FRESULT DeviceQueue::acquireInteropKeyedMutexes(
+nvrhi::FRESULT DeviceQueue::acquireInteropKeyedMutexes(
     const GraphicsInteropKeyedMutexWaitParams *waitParamsArray, uint32_t numParamsArray) {
 #ifdef _WIN32
-    if (numParamsArray == 0) return FS_OK;
+    if (numParamsArray == 0) return nvrhi::FS_OK;
 
     std::vector<CUexternalSemaphore> mutexes;
     std::vector<CUDA_EXTERNAL_SEMAPHORE_WAIT_PARAMS> paramsSet;
@@ -1310,12 +1310,12 @@ FRESULT DeviceQueue::acquireInteropKeyedMutexes(
 
     for (uint32_t i = 0; i < numParamsArray; ++i) {
         auto _resource = waitParamsArray[i].resource;
-        AutoPtr<IBuffer> buffer;
-        AutoPtr<ITexture> texture;
-        if (FFAILED(_resource->QueryInterface(FIID_PPV_ARGS(&buffer))) &&
-            FFAILED(_resource->QueryInterface(FIID_PPV_ARGS(&texture)))) {
+        nvrhi::AutoPtr<IBuffer> buffer;
+        nvrhi::AutoPtr<ITexture> texture;
+        if (NVRHI_FAILED(_resource->QueryInterface(NVRHI_IID_PPV_ARGS(&buffer))) &&
+            NVRHI_FAILED(_resource->QueryInterface(NVRHI_IID_PPV_ARGS(&texture)))) {
             VERROR(m_context, "IResource is not any kind of IBuffer or ITexture");
-            return FE_INVALID_ARGS;
+            return nvrhi::FE_INVALID_ARGS;
         }
         if(buffer) {
             auto buffer2 = checked_cast<Buffer>(buffer.Get());
@@ -1352,20 +1352,20 @@ FRESULT DeviceQueue::acquireInteropKeyedMutexes(
         CUresult cr = cuWaitExternalSemaphoresAsync(mutexes.data(), paramsSet.data(),
                                                     mutexes.size(), m_cuStream);
         if (cr == CUDA_ERROR_TIMEOUT)
-            return FE_WAIT_TIMEOUT;
+            return nvrhi::FE_WAIT_TIMEOUT;
         else if (cr != CUDA_SUCCESS) {
             V_CUDA(m_context, cr);
-            return FE_INVALID_ARGS;
+            return nvrhi::FE_INVALID_ARGS;
         }
     }
 #endif
 
-    return FS_OK;
+    return nvrhi::FS_OK;
 }
 
-FRESULT DeviceQueue::releaseInteropKeyedMutexes(const GraphicsInteropKeyedMutexSignalParams *signalParamsArray, uint32_t numParamsArray) {
+nvrhi::FRESULT DeviceQueue::releaseInteropKeyedMutexes(const GraphicsInteropKeyedMutexSignalParams *signalParamsArray, uint32_t numParamsArray) {
 #ifdef _WIN32
-    if (numParamsArray == 0) return FS_OK;
+    if (numParamsArray == 0) return nvrhi::FS_OK;
 
     std::vector<CUexternalSemaphore> mutexes;
     std::vector<CUDA_EXTERNAL_SEMAPHORE_SIGNAL_PARAMS> paramsSet;
@@ -1373,12 +1373,12 @@ FRESULT DeviceQueue::releaseInteropKeyedMutexes(const GraphicsInteropKeyedMutexS
 
     for (uint32_t i = 0; i < numParamsArray; ++i) {
         auto _resource = signalParamsArray[i].resource;
-        AutoPtr<IBuffer> buffer;
-        AutoPtr<ITexture> texture;
-        if (FFAILED(_resource->QueryInterface(FIID_PPV_ARGS(&buffer))) &&
-            FFAILED(_resource->QueryInterface(FIID_PPV_ARGS(&texture)))) {
+        nvrhi::AutoPtr<IBuffer> buffer;
+        nvrhi::AutoPtr<ITexture> texture;
+        if (NVRHI_FAILED(_resource->QueryInterface(NVRHI_IID_PPV_ARGS(&buffer))) &&
+            NVRHI_FAILED(_resource->QueryInterface(NVRHI_IID_PPV_ARGS(&texture)))) {
             VERROR(m_context, "IResource is not any kind of IBuffer or ITexture");
-            return FE_INVALID_ARGS;
+            return nvrhi::FE_INVALID_ARGS;
         }
         if (buffer) {
             auto buffer2 = checked_cast<Buffer>(buffer.Get());
@@ -1413,16 +1413,16 @@ FRESULT DeviceQueue::releaseInteropKeyedMutexes(const GraphicsInteropKeyedMutexS
                                                     mutexes.size(), m_cuStream);
         if (cr != CUDA_SUCCESS) {
             V_CUDA(m_context, cr);
-            return FE_INVALID_ARGS;
+            return nvrhi::FE_INVALID_ARGS;
         }
     }
 #endif
 
-    return FS_OK;
+    return nvrhi::FS_OK;
 }
 
-FRESULT DeviceQueue::signalInteropSemaphore(IGraphicsInteropSemaphore *_semaphore, uint64_t value) {
-    if (!_semaphore) return FE_INVALID_ARGS;
+nvrhi::FRESULT DeviceQueue::signalInteropSemaphore(IGraphicsInteropSemaphore *_semaphore, uint64_t value) {
+    if (!_semaphore) return nvrhi::FE_INVALID_ARGS;
 
     auto semaphore = checked_cast<GraphicsInteropSemaphore>(_semaphore);
 
@@ -1433,14 +1433,14 @@ FRESULT DeviceQueue::signalInteropSemaphore(IGraphicsInteropSemaphore *_semaphor
         cuSignalExternalSemaphoresAsync(&semaphore->m_cuSemaphore, &params, 1, m_cuStream);
     if(cr != CUDA_SUCCESS) {
         V_CUDA(m_context, cr);
-        return FE_GENERIC_ERROR;
+        return nvrhi::FE_GENERIC_ERROR;
     }
 
-    return FS_OK;
+    return nvrhi::FS_OK;
 }
 
-FRESULT DeviceQueue::waitInteropSemaphoreAsync(IGraphicsInteropSemaphore *_semaphore, uint64_t value) {
-    if (!_semaphore) return FE_INVALID_ARGS;
+nvrhi::FRESULT DeviceQueue::waitInteropSemaphoreAsync(IGraphicsInteropSemaphore *_semaphore, uint64_t value) {
+    if (!_semaphore) return nvrhi::FE_INVALID_ARGS;
 
     auto semaphore = checked_cast<GraphicsInteropSemaphore>(_semaphore);
 
@@ -1451,10 +1451,10 @@ FRESULT DeviceQueue::waitInteropSemaphoreAsync(IGraphicsInteropSemaphore *_semap
         cuWaitExternalSemaphoresAsync(&semaphore->m_cuSemaphore, &params, 1, m_cuStream);
     if(cr != CUDA_SUCCESS) {
         V_CUDA(m_context, cr);
-        return FE_GENERIC_ERROR;
+        return nvrhi::FE_GENERIC_ERROR;
     }
 
-    return FS_OK;
+    return nvrhi::FS_OK;
 }
 
 DeviceQueue::DeviceQueue(Context &context, const DeviceQueueDesc &desc)
@@ -1512,27 +1512,27 @@ Device::~Device() {
     m_context.msgCallback->Release();
 }
 
-FRESULT Device::createBuffer(const BufferDesc &desc, IBuffer **_buffer) {
+nvrhi::FRESULT Device::createBuffer(const BufferDesc &desc, IBuffer **_buffer) {
     auto buffer = MAKE_RC_OBJ(Buffer, m_context, desc);
     if (_buffer) {
         *_buffer = buffer;
         buffer->AddRef();
     }
     buffer->Release();
-    return FS_OK;
+    return nvrhi::FS_OK;
 }
 
-FRESULT Device::createTexture(const TextureDesc &desc, ITexture **_texture) {
+nvrhi::FRESULT Device::createTexture(const TextureDesc &desc, ITexture **_texture) {
     auto texture = MAKE_RC_OBJ(Texture, m_context, desc);
     if (_texture) {
         *_texture = texture;
         texture->AddRef();
     }
     texture->Release();
-    return FS_OK;
+    return nvrhi::FS_OK;
 }
 
-FRESULT Device::createModule(const ModuleDesc &desc, const void *data, size_t dataSize,
+nvrhi::FRESULT Device::createModule(const ModuleDesc &desc, const void *data, size_t dataSize,
                              IModule **_lib) {
     auto pModule = MAKE_RC_OBJ(Module, m_context, desc, data, dataSize);
     if (_lib) {
@@ -1540,17 +1540,17 @@ FRESULT Device::createModule(const ModuleDesc &desc, const void *data, size_t da
         pModule->AddRef();
     }
     pModule->Release();
-    return FS_OK;
+    return nvrhi::FS_OK;
 }
 
-FRESULT Device::createDeviceQueue(const DeviceQueueDesc &desc, IDeviceQueue **_queue) {
+nvrhi::FRESULT Device::createDeviceQueue(const DeviceQueueDesc &desc, IDeviceQueue **_queue) {
     auto pQueue = MAKE_RC_OBJ(DeviceQueue, m_context, desc);
     if (_queue) {
         *_queue = pQueue;
         pQueue->AddRef();
     }
     pQueue->Release();
-    return FS_OK;
+    return nvrhi::FS_OK;
 }
 
 void Device::commitQueue(IDeviceQueue *_queue) {
@@ -1562,15 +1562,15 @@ void Device::commitQueue(IDeviceQueue *_queue) {
     V_CUDA(m_context, cuEventRecord(syncPoint.event, queue->m_cuStream));
 }
 
-FRESULT Device::waitForQueue(IDeviceQueue *_queue) {
+nvrhi::FRESULT Device::waitForQueue(IDeviceQueue *_queue) {
     auto queue = checked_cast<DeviceQueue>(_queue);
-    if (!queue) return FE_INVALID_ARGS;
+    if (!queue) return nvrhi::FE_INVALID_ARGS;
 
     if (queue->m_lastSyncPoint == 0) {
         // No commitQueue called
         V_CUDA(m_context, cuStreamSynchronize(queue->m_cuStream));
         queue->clearStagingResources(m_lastSyncPoint);
-        return FS_OK;
+        return nvrhi::FS_OK;
     } else {
         std::lock_guard<std::mutex> guard{m_syncEventAllocMtx};
         for (auto it = m_syncEvents.begin(); it != m_syncEvents.end();) {
@@ -1583,7 +1583,7 @@ FRESULT Device::waitForQueue(IDeviceQueue *_queue) {
         }
         queue->clearStagingResources(queue->m_lastSyncPoint);
     }
-    return FS_OK;
+    return nvrhi::FS_OK;
 }
 
 void Device::waitForIdle() { V_CUDA(m_context, cuCtxSynchronize()); }
@@ -1600,8 +1600,8 @@ Module::~Module() {
     }
 }
 
-FRESULT Module::getKernel(const char *sysName, IKernel **ppKernel) {
-    if (sysName == nullptr) return FE_INVALID_ARGS;
+nvrhi::FRESULT Module::getKernel(const char *sysName, IKernel **ppKernel) {
+    if (sysName == nullptr) return nvrhi::FE_INVALID_ARGS;
 
     auto it = m_kernelLibs.find(sysName);
     if (it != m_kernelLibs.end()) {
@@ -1609,16 +1609,16 @@ FRESULT Module::getKernel(const char *sysName, IKernel **ppKernel) {
             *ppKernel = &it->second;
             it->second.AddRef();
         }
-        return FS_OK;
+        return nvrhi::FS_OK;
     }
 
     CUfunction func;
     CUresult rc = cuModuleGetFunction(&func, m_cuModule, sysName);
     if (rc != CUDA_SUCCESS) {
         V_CUDA(m_context, rc);
-        return FE_NOT_FOUND;
+        return nvrhi::FE_NOT_FOUND;
     }
-    // NOTE(migration): donut's DelegatingObjectImpl deletes its copy/move constructors
+    // NOTE(migration): donut's nvrhi::DelegatingObjectImpl deletes its copy/move constructors
     // (the old ethereal fork did not), so Kernel can no longer be moved into the map.
     // Construct it in place instead - semantics are unchanged.
     auto itres = m_kernelLibs.try_emplace(sysName, this, m_context, sysName, func);
@@ -1627,7 +1627,7 @@ FRESULT Module::getKernel(const char *sysName, IKernel **ppKernel) {
         *ppKernel = &itres.first->second;
         (*ppKernel)->AddRef();
     }
-    return FS_OK;
+    return nvrhi::FS_OK;
 }
 
 bool Module::getConstant(const char *name, CUdeviceptr *dptr, size_t *bytes) {
@@ -1648,8 +1648,8 @@ bool Module::getConstant(const char *name, CUdeviceptr *dptr, size_t *bytes) {
     return true;
 }
 
-Kernel::Kernel(IObject *pOwner, Context &context, const char *funcName, CUfunction func)
-    : DelegatingObjectImpl<IKernel>(pOwner),
+Kernel::Kernel(nvrhi::IObject *pOwner, Context &context, const char *funcName, CUfunction func)
+    : nvrhi::DelegatingObjectImpl<IKernel>(pOwner),
       m_context(context),
       m_funcName(funcName),
       m_cuFunc(func) {}
@@ -1665,19 +1665,19 @@ IModule *Kernel::getModule() {
 
 const char *Kernel::getName() { return m_funcName; }
 
-FRESULT DeviceQueue::setConstantBuffer(IKernel *pKernel, const char *symName, void *data,
+nvrhi::FRESULT DeviceQueue::setConstantBuffer(IKernel *pKernel, const char *symName, void *data,
                                  size_t dataSize) {
-    if (pKernel == nullptr || data == nullptr || dataSize == 0) return FE_INVALID_ARGS;
+    if (pKernel == nullptr || data == nullptr || dataSize == 0) return nvrhi::FE_INVALID_ARGS;
 
     auto pKernelCUDA = checked_cast<Kernel>(pKernel);
 
-    FRESULT res;
+    nvrhi::FRESULT res;
     auto pModule = static_cast<Module *>(pKernelCUDA->getModule());
     CUdeviceptr dptr;
     size_t dsize;
-    if (!pModule->getConstant(symName, &dptr, &dsize)) return FE_NOT_FOUND;
+    if (!pModule->getConstant(symName, &dptr, &dsize)) return nvrhi::FE_NOT_FOUND;
 
-    if (dataSize < dsize) return FE_INVALID_ARGS;
+    if (dataSize < dsize) return nvrhi::FE_INVALID_ARGS;
 
     BufferDesc stagingBufferDesc;
     stagingBufferDesc.isStaging = true;
@@ -1693,35 +1693,35 @@ FRESULT DeviceQueue::setConstantBuffer(IKernel *pKernel, const char *symName, vo
         cuMemcpyHtoDAsync(dptr, (void *)stagingBuffer->m_cuBuffer, dsize, m_cuStream);
     if (cures != CUDA_SUCCESS) {
         V_CUDA(m_context, cures);
-        return FE_GENERIC_ERROR;
+        return nvrhi::FE_GENERIC_ERROR;
     }
 
-    return FS_OK;
+    return nvrhi::FS_OK;
 }
 
-FRESULT DeviceQueue::setConstantBuffer2(IKernel *pKernel, const char *symName,
+nvrhi::FRESULT DeviceQueue::setConstantBuffer2(IKernel *pKernel, const char *symName,
                                         IBuffer *_buffer, uint64_t offset) {
     if (pKernel == nullptr || _buffer == nullptr
-        || _buffer->getDesc()->byteSize <= offset) return FE_INVALID_ARGS;
+        || _buffer->getDesc()->byteSize <= offset) return nvrhi::FE_INVALID_ARGS;
 
     auto buffer = checked_cast<Buffer>(_buffer);
     auto pKernelCUDA = checked_cast<Kernel>(pKernel);
 
-    FRESULT res;
+    nvrhi::FRESULT res;
     auto pModule = static_cast<Module *>(pKernelCUDA->getModule());
     CUdeviceptr dptr;
     size_t dsize;
-    if (!pModule->getConstant(symName, &dptr, &dsize)) return FE_NOT_FOUND;
+    if (!pModule->getConstant(symName, &dptr, &dsize)) return nvrhi::FE_NOT_FOUND;
 
-    if (offset + dsize > buffer->getDesc()->byteSize) return FE_INVALID_ARGS;
+    if (offset + dsize > buffer->getDesc()->byteSize) return nvrhi::FE_INVALID_ARGS;
 
     CUresult cures =
         cuMemcpyAsync(dptr, (CUdeviceptr)((uint8_t *)buffer->m_cuBuffer + offset), dsize, m_cuStream);
     if (cures != CUDA_SUCCESS) {
         V_CUDA(m_context, cures);
-        return FE_GENERIC_ERROR;
+        return nvrhi::FE_GENERIC_ERROR;
     }
-    return FS_OK;
+    return nvrhi::FS_OK;
 }
 
 SyncPointInfo Device::allocateSyncPoint(DeviceQueue *queue, bool syncWithQueue) {
@@ -1737,34 +1737,34 @@ SyncPointInfo Device::allocateSyncPoint(DeviceQueue *queue, bool syncWithQueue) 
     }
 }
 
-FRESULT Device::mapBuffer(IBuffer *_buffer, void **data) {
+nvrhi::FRESULT Device::mapBuffer(IBuffer *_buffer, void **data) {
     auto buffer = checked_cast<Buffer>(_buffer);
-    if (buffer == nullptr || !buffer->m_desc.isStaging) return FE_INVALID_ARGS;
+    if (buffer == nullptr || !buffer->m_desc.isStaging) return nvrhi::FE_INVALID_ARGS;
 
     if (data) *data = (void *)buffer->m_cuBuffer;
-    return FS_OK;
+    return nvrhi::FS_OK;
 }
 
 void Device::unmapBuffer(IBuffer *_buffer) {}
 
-FRESULT Device::createInteropD3D11Buffer(ID3D11Resource *_buffer, uint64_t mappedOffset,
+nvrhi::FRESULT Device::createInteropD3D11Buffer(ID3D11Resource *_buffer, uint64_t mappedOffset,
                                          uint64_t mappedSize, IBuffer **ppBuffer) {
-    AutoPtr<ID3D11Buffer> d3d11Buffer;
+    nvrhi::AutoPtr<ID3D11Buffer> d3d11Buffer;
     if (!_buffer || FAILED(_buffer->QueryInterface(IID_PPV_ARGS(&d3d11Buffer))))
-        return FE_INVALID_ARGS;
+        return nvrhi::FE_INVALID_ARGS;
 
     D3D11_BUFFER_DESC d3d11BufDesc;
     d3d11Buffer->GetDesc(&d3d11BufDesc);
     if (!(d3d11BufDesc.MiscFlags & D3D11_RESOURCE_MISC_SHARED_NTHANDLE) ||
         mappedOffset >= d3d11BufDesc.ByteWidth ||
         (mappedOffset + mappedSize) > d3d11BufDesc.ByteWidth)
-        return FE_INVALID_ARGS;
+        return nvrhi::FE_INVALID_ARGS;
 
     HRESULT hr;
-    AutoPtr<IDXGIResource1> dxgiResource;
+    nvrhi::AutoPtr<IDXGIResource1> dxgiResource;
     if (FAILED(hr = d3d11Buffer->QueryInterface(IID_PPV_ARGS(&dxgiResource)))) {
         VERROR(m_context, "[GPDevice] ID3D11Buffer query IDXGIResource1 error: %#08X", hr);
-        return FE_GENERIC_ERROR;
+        return nvrhi::FE_GENERIC_ERROR;
     }
 
     HANDLE sharedHandle;
@@ -1772,7 +1772,7 @@ FRESULT Device::createInteropD3D11Buffer(ID3D11Resource *_buffer, uint64_t mappe
                    NULL, DXGI_SHARED_RESOURCE_READ | DXGI_SHARED_RESOURCE_WRITE, NULL,
                    &sharedHandle))) {
         VERROR(m_context, "[GPDevice] ID3D11Buffer CreateSharedHandle error: %#08X", hr);
-        return FE_GENERIC_ERROR;
+        return nvrhi::FE_GENERIC_ERROR;
     }
 
     if (mappedSize == 0) mappedSize = d3d11BufDesc.ByteWidth - mappedOffset;
@@ -1792,35 +1792,35 @@ FRESULT Device::createInteropD3D11Buffer(ID3D11Resource *_buffer, uint64_t mappe
     }
     buffer->Release();
 
-    return FS_OK;
+    return nvrhi::FS_OK;
 }
 
-FRESULT Device::createInteropD3D12Buffer(ID3D12Resource *d3d12Buffer, uint64_t mappedOffset,
+nvrhi::FRESULT Device::createInteropD3D12Buffer(ID3D12Resource *d3d12Buffer, uint64_t mappedOffset,
                                          uint64_t mappedSize, IBuffer **ppBuffer) {
-    if (!d3d12Buffer) return FE_INVALID_ARGS;
+    if (!d3d12Buffer) return nvrhi::FE_INVALID_ARGS;
 
     D3D12_RESOURCE_DESC d3d12BufDesc = d3d12Buffer->GetDesc();
-    AutoPtr<ID3D12Device> d3d12Device;
+    nvrhi::AutoPtr<ID3D12Device> d3d12Device;
     d3d12Buffer->GetDevice(IID_PPV_ARGS(&d3d12Device));
     auto allocInfo = d3d12Device->GetResourceAllocationInfo(0, 1, &d3d12BufDesc);
 
     if ((mappedOffset % allocInfo.Alignment) != 0 ||
         mappedOffset >= allocInfo.SizeInBytes ||
         (mappedOffset + mappedSize) >= allocInfo.SizeInBytes)
-        return FE_INVALID_ARGS;
+        return nvrhi::FE_INVALID_ARGS;
 
     HRESULT hr;
-    AutoPtr<IDXGIResource1> dxgiResource;
+    nvrhi::AutoPtr<IDXGIResource1> dxgiResource;
     if (FAILED(hr = d3d12Buffer->QueryInterface(IID_PPV_ARGS(&dxgiResource)))) {
         VERROR(m_context, "[GPDevice] ID3D11Buffer query IDXGIResource1 error: %#08X", hr);
-        return FE_GENERIC_ERROR;
+        return nvrhi::FE_GENERIC_ERROR;
     }
 
     HANDLE sharedHandle;
     if (FAILED(hr = d3d12Device->CreateSharedHandle(d3d12Buffer, NULL, GENERIC_ALL, 0,
                                                     &sharedHandle))) {
         VERROR(m_context, "[GPDevice] ID3D11Buffer CreateSharedHandle error: %#08X", hr);
-        return FE_GENERIC_ERROR;
+        return nvrhi::FE_GENERIC_ERROR;
     }
 
     if (mappedSize == 0) mappedSize = allocInfo.SizeInBytes - mappedOffset;
@@ -1839,13 +1839,13 @@ FRESULT Device::createInteropD3D12Buffer(ID3D12Resource *d3d12Buffer, uint64_t m
     }
     buffer->Release();
 
-    return FS_OK;
+    return nvrhi::FS_OK;
 }
 
-FRESULT Device::createInteropVulkanBuffer(void *_vkBuffer, void *_vkMemory, void *_vkDevice,
+nvrhi::FRESULT Device::createInteropVulkanBuffer(void *_vkBuffer, void *_vkMemory, void *_vkDevice,
                                           uint64_t mappedOffset, uint64_t mappedSize,
                                           IBuffer **ppBuffer) {
-    if (!_vkBuffer || !_vkMemory || !_vkDevice) return FE_INVALID_ARGS;
+    if (!_vkBuffer || !_vkMemory || !_vkDevice) return nvrhi::FE_INVALID_ARGS;
 
     vk::Buffer vkBuffer{(VkBuffer)_vkBuffer};
     vk::DeviceMemory vkMemory{(VkDeviceMemory)_vkMemory};
@@ -1855,7 +1855,7 @@ FRESULT Device::createInteropVulkanBuffer(void *_vkBuffer, void *_vkMemory, void
     vkDevice.getBufferMemoryRequirements(vkBuffer, &memReq);
     if (mappedOffset >= memReq.size || (mappedOffset % memReq.alignment) != 0 ||
         mappedOffset + mappedSize > memReq.size)
-        return FE_INVALID_ARGS;
+        return nvrhi::FE_INVALID_ARGS;
 
     void *opaqueHandle;
 
@@ -1870,7 +1870,7 @@ FRESULT Device::createInteropVulkanBuffer(void *_vkBuffer, void *_vkMemory, void
         vk::Result::eSuccess) {
         VERROR(m_context, "[GPDevice] vkGetMemoryWin32HandleKHR failed: %u",
                (uint32_t)vkRet);
-        return FE_GENERIC_ERROR;
+        return nvrhi::FE_GENERIC_ERROR;
     }
     opaqueHandle = (void *)win32Handle;
 #elif defined(__unix__) || defined(__linux__)
@@ -1884,7 +1884,7 @@ FRESULT Device::createInteropVulkanBuffer(void *_vkBuffer, void *_vkMemory, void
 
     if ((vkRet = vkGetMemoryFdKHR(vkDevice, &memHandleInfo, &fd)) != VK_SUCCESS) {
         VERROR(m_context, "[GPDevice] vkGetMemoryFdKHR failed: %u", (uint32_t)vkRet);
-        return FE_GENERIC_ERROR;
+        return nvrhi::FE_GENERIC_ERROR;
     }
     opaqueHandle = (void *)fd;
 #else
@@ -1906,16 +1906,16 @@ FRESULT Device::createInteropVulkanBuffer(void *_vkBuffer, void *_vkMemory, void
         buffer->AddRef();
     }
     buffer->Release();
-    return FS_OK;
+    return nvrhi::FS_OK;
 }
 
-FRESULT Device::createInteropD3D11Texture(ID3D11Resource *_d3d11Resource,
+nvrhi::FRESULT Device::createInteropD3D11Texture(ID3D11Resource *_d3d11Resource,
                                           ITexture **ppTexture) {
-    if (!_d3d11Resource) return FE_INVALID_ARGS;
+    if (!_d3d11Resource) return nvrhi::FE_INVALID_ARGS;
 
-    AutoPtr<ID3D11Texture1D> d3d11Tex1D;
-    AutoPtr<ID3D11Texture2D> d3d11Tex2D;
-    AutoPtr<ID3D11Texture3D> d3d11Tex3D;
+    nvrhi::AutoPtr<ID3D11Texture1D> d3d11Tex1D;
+    nvrhi::AutoPtr<ID3D11Texture2D> d3d11Tex2D;
+    nvrhi::AutoPtr<ID3D11Texture3D> d3d11Tex3D;
     HRESULT hr;
 
     if (FAILED(hr = _d3d11Resource->QueryInterface(IID_PPV_ARGS(&d3d11Tex1D))) &&
@@ -1923,10 +1923,10 @@ FRESULT Device::createInteropD3D11Texture(ID3D11Resource *_d3d11Resource,
         FAILED(hr = _d3d11Resource->QueryInterface(IID_PPV_ARGS(&d3d11Tex3D)))) {
         VERROR(m_context, "Failed to query interface of ID3D11Texture[123]D, hr = %#08X",
                hr);
-        return FE_GENERIC_ERROR;
+        return nvrhi::FE_GENERIC_ERROR;
     }
 
-    AutoPtr<IDXGIResource1> dxgiResource;
+    nvrhi::AutoPtr<IDXGIResource1> dxgiResource;
     TextureDesc texDesc;
     DXGI_FORMAT dxgiFormat;
     uint64_t memSize;
@@ -1967,7 +1967,7 @@ FRESULT Device::createInteropD3D11Texture(ID3D11Resource *_d3d11Resource,
 
     if (!getFormatFromDXGIFormat(dxgiFormat, &texDesc.format)) {
         VERROR(m_context, "DXGI format can not map to GPDevice format");
-        return FE_GENERIC_ERROR;
+        return nvrhi::FE_GENERIC_ERROR;
     }
 
     auto &formatInfo = getFormatInfo(texDesc.format);
@@ -1975,14 +1975,14 @@ FRESULT Device::createInteropD3D11Texture(ID3D11Resource *_d3d11Resource,
 
     if (FAILED(hr = _d3d11Resource->QueryInterface(IID_PPV_ARGS(&dxgiResource)))) {
         VERROR(m_context, "Failed to query interface of IDXGIResource1, hr = %#08X", hr);
-        return FE_GENERIC_ERROR;
+        return nvrhi::FE_GENERIC_ERROR;
     }
 
     HANDLE win32Handle;
     if (FAILED(
             hr = dxgiResource->CreateSharedHandle(NULL, GENERIC_ALL, NULL, &win32Handle))) {
         VERROR(m_context, "IDXGIResource1::CreateSharedResource failed, hr=%#08X", hr);
-        return FE_GENERIC_ERROR;
+        return nvrhi::FE_GENERIC_ERROR;
     }
 
     GraphicsInteropTextureDesc interopDesc = {};
@@ -2000,12 +2000,12 @@ FRESULT Device::createInteropD3D11Texture(ID3D11Resource *_d3d11Resource,
     }
     texture->Release();
 
-    return FS_OK;
+    return nvrhi::FS_OK;
 }
 
-FRESULT Device::createInteropD3D12Texture(ID3D12Resource *d3d12Texture,
+nvrhi::FRESULT Device::createInteropD3D12Texture(ID3D12Resource *d3d12Texture,
                                           ITexture **ppTexture) {
-    if (!d3d12Texture) return FE_INVALID_ARGS;
+    if (!d3d12Texture) return nvrhi::FE_INVALID_ARGS;
 
     D3D12_RESOURCE_DESC d3d12ResDesc = d3d12Texture->GetDesc();
     ID3D12Device *d3d12Device;
@@ -2018,7 +2018,7 @@ FRESULT Device::createInteropD3D12Texture(ID3D12Resource *d3d12Texture,
     if (FAILED(hr = d3d12Device->CreateSharedHandle(d3d12Texture, NULL, GENERIC_ALL, NULL,
                                                     &win32Handle))) {
         VERROR(m_context, "ID3D12Device::CreateSharedHandle failed, hr=%#08X", hr);
-        return FE_GENERIC_ERROR;
+        return nvrhi::FE_GENERIC_ERROR;
     }
 
     auto allocationInfo = d3d12Device->GetResourceAllocationInfo(0, 1, &d3d12ResDesc);
@@ -2048,12 +2048,12 @@ FRESULT Device::createInteropD3D12Texture(ID3D12Resource *d3d12Texture,
             break;
         default:
             VERROR(m_context, "ID3D12Resource is not kind of Texture[123]D");
-            return FE_GENERIC_ERROR;
+            return nvrhi::FE_GENERIC_ERROR;
     }
 
     if (!getFormatFromDXGIFormat(d3d12ResDesc.Format, &texDesc.format)) {
         VERROR(m_context, "DXGI format cannot map to a GPDevice format");
-        return FE_GENERIC_ERROR;
+        return nvrhi::FE_GENERIC_ERROR;
     }
 
     auto texture = MAKE_RC_OBJ(Texture, m_context, interopDesc, texDesc);
@@ -2062,13 +2062,13 @@ FRESULT Device::createInteropD3D12Texture(ID3D12Resource *d3d12Texture,
         texture->AddRef();
     }
     texture->Release();
-    return FS_OK;
+    return nvrhi::FS_OK;
 }
 
-FRESULT Device::createInteropVulkanTexture(void *_vkImage, void *_vkMemory, void *_vkDevice,
+nvrhi::FRESULT Device::createInteropVulkanTexture(void *_vkImage, void *_vkMemory, void *_vkDevice,
                                            const TextureDesc &textureDesc,
                                            ITexture **ppTexture) {
-    if (!_vkImage || !_vkMemory || !_vkDevice) return FE_INVALID_ARGS;
+    if (!_vkImage || !_vkMemory || !_vkDevice) return nvrhi::FE_INVALID_ARGS;
 
     vk::Image vkImage{(VkImage)_vkImage};
     vk::DeviceMemory vkMemory{(VkDeviceMemory)_vkMemory};
@@ -2090,7 +2090,7 @@ FRESULT Device::createInteropVulkanTexture(void *_vkImage, void *_vkMemory, void
         vk::Result::eSuccess) {
         VERROR(m_context, "[GPDevice] vkGetMemoryWin32HandleKHR failed: %u",
                (uint32_t)vkRet);
-        return FE_GENERIC_ERROR;
+        return nvrhi::FE_GENERIC_ERROR;
     }
     opaqueHandle = (void *)win32Handle;
 #elif defined(__unix__) || defined(__linux__)
@@ -2104,7 +2104,7 @@ FRESULT Device::createInteropVulkanTexture(void *_vkImage, void *_vkMemory, void
 
     if ((vkRet = vkGetMemoryFdKHR(vkDevice, &memHandleInfo, &fd)) != VK_SUCCESS) {
         VERROR(m_context, "[GPDevice] vkGetMemoryFdKHR failed: %u", (uint32_t)vkRet);
-        return FE_GENERIC_ERROR;
+        return nvrhi::FE_GENERIC_ERROR;
     }
     opaqueHandle = (void *)fd;
 #else
@@ -2125,19 +2125,19 @@ FRESULT Device::createInteropVulkanTexture(void *_vkImage, void *_vkMemory, void
     }
     texture->Release();
 
-    return FS_OK;
+    return nvrhi::FS_OK;
 }
 
-FRESULT Device::createInteropD3D11Fence(ID3D11Fence *d3d11Fence,
+nvrhi::FRESULT Device::createInteropD3D11Fence(ID3D11Fence *d3d11Fence,
                                         IGraphicsInteropSemaphore **_semaphore) {
-    if (!d3d11Fence) return FE_INVALID_ARGS;
+    if (!d3d11Fence) return nvrhi::FE_INVALID_ARGS;
 
     HANDLE sharedHandle;
     HRESULT hr;
 
     if(FAILED(hr = d3d11Fence->CreateSharedHandle(NULL, GENERIC_ALL, NULL, &sharedHandle))) {
         VERROR(m_context, "ID3D11Fence::CreateSharedHandle failed, hr=%#08X", hr);
-        return FE_GENERIC_ERROR;
+        return nvrhi::FE_GENERIC_ERROR;
     }
 
     GraphicsInteropSemaphoreDesc desc = {};
@@ -2151,12 +2151,12 @@ FRESULT Device::createInteropD3D11Fence(ID3D11Fence *d3d11Fence,
         semaphore->AddRef();
     }
     semaphore->Release();
-    return FS_OK;
+    return nvrhi::FS_OK;
 }
 
-FRESULT Device::createInteropD3D12Fence(ID3D12Fence *d3d12Fence,
+nvrhi::FRESULT Device::createInteropD3D12Fence(ID3D12Fence *d3d12Fence,
                                         IGraphicsInteropSemaphore **_semaphore) {
-    if (!d3d12Fence) return FE_INVALID_ARGS;
+    if (!d3d12Fence) return nvrhi::FE_INVALID_ARGS;
 
     HANDLE sharedHandle;
     HRESULT hr;
@@ -2166,7 +2166,7 @@ FRESULT Device::createInteropD3D12Fence(ID3D12Fence *d3d12Fence,
 
     if(FAILED(hr = d3d12Device->CreateSharedHandle(d3d12Fence, NULL, GENERIC_ALL, NULL, &sharedHandle))) {
         VERROR(m_context, "ID3D12Device::CreateSharedHandle failed, hr=%#08X", hr);
-        return FE_GENERIC_ERROR;
+        return nvrhi::FE_GENERIC_ERROR;
     }
 
     GraphicsInteropSemaphoreDesc desc = {};
@@ -2180,12 +2180,12 @@ FRESULT Device::createInteropD3D12Fence(ID3D12Fence *d3d12Fence,
         semaphore->AddRef();
     }
     semaphore->Release();
-    return FS_OK;
+    return nvrhi::FS_OK;
 }
 
-FRESULT Device::createInteropVulkanSemaphore(void *_vkSemaphore, void *_vkDevice,
+nvrhi::FRESULT Device::createInteropVulkanSemaphore(void *_vkSemaphore, void *_vkDevice,
                                              IGraphicsInteropSemaphore **_semaphore) {
-    if (!_vkSemaphore || !_vkDevice) return FE_INVALID_ARGS;
+    if (!_vkSemaphore || !_vkDevice) return nvrhi::FE_INVALID_ARGS;
 
     vk::Device vkDevice((VkDevice)_vkDevice);
     vk::Semaphore vkSemaphore((VkSemaphore)_vkSemaphore);
@@ -2202,7 +2202,7 @@ FRESULT Device::createInteropVulkanSemaphore(void *_vkSemaphore, void *_vkDevice
     vkRet = vkDevice.getSemaphoreWin32HandleKHR(&win32HandleInfo, &win32Handle);
     if (vkRet != vk::Result::eSuccess) {
         VERROR(m_context, "vkGetSemaphoreWin32HandleKHR failed, error code=%u\n", vkRet);
-        return FE_GENERIC_ERROR;
+        return nvrhi::FE_GENERIC_ERROR;
     }
 
     desc.handle = (void *)win32Handle;
@@ -2216,7 +2216,7 @@ FRESULT Device::createInteropVulkanSemaphore(void *_vkSemaphore, void *_vkDevice
     vkRet = vkDevice.getSemaphoreFdKHR(&fdInfo, &fd);
     if (vkRet != vk::Result::eSuccess) {
         VERROR(m_context, "vkGetSemaphoreFdKHR failed, error code=%u\n", vkRet);
-        return FE_GENERIC_ERROR;
+        return nvrhi::FE_GENERIC_ERROR;
     }
 
     desc.handle = (void *)fd;
@@ -2230,7 +2230,7 @@ FRESULT Device::createInteropVulkanSemaphore(void *_vkSemaphore, void *_vkDevice
         semaphore->AddRef();
     }
     semaphore->Release();
-    return FS_OK;
+    return nvrhi::FS_OK;
 }
 
 GraphicsInteropSemaphore::GraphicsInteropSemaphore(

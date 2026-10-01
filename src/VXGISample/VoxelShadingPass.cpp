@@ -69,9 +69,9 @@ void VoxelShadingPass::Init(const CreateParameters& params) {
     m_VoxelRenderer = MAKE_RC_OBJ_PTR(VoxelRenderer, m_Device, m_ShaderFactory);
     Status rc;
     if (VXGI_FAILED(rc = m_VoxelRenderer->createNewTracer(&m_GIViewTracer, false)))
-        DONUT_ASSERT(0);
+        NVRHI_ASSERT(0);
     if(VXGI_FAILED(rc = m_VoxelRenderer->createNewTracer(&m_AOViewTracer, true)))
-        DONUT_ASSERT(0);
+        NVRHI_ASSERT(0);
 }
 
 void VoxelShadingPass::ResetBindingCache() {
@@ -84,7 +84,7 @@ void VoxelShadingPass::SetVoxelizationParameters(const vxgi::VoxelizationParamet
     Status rc;
     bool invalidated;
     if(VXGI_FAILED(rc = m_VoxelRenderer->setVoxelizationParameters(params, &invalidated))) {
-        DONUT_ASSERT(0);
+        NVRHI_ASSERT(0);
         return;
     }
 
@@ -108,7 +108,7 @@ void VoxelShadingPass::GetVoxelizationViewMatrix(dm::float4x4& viewMatrix) {
 bool VoxelShadingPass::GetInvalidatedRegions(uint numMaxRegions, uint* numRegions, box3* regions) {
     Status rc;
     if (VXGI_FAILED(rc = m_VoxelRenderer->getInvalidatedRegion(regions, numMaxRegions, numRegions))) {
-        DONUT_ASSERT(0);
+        NVRHI_ASSERT(0);
         return false;
     }
     return true;
@@ -123,7 +123,7 @@ void VoxelShadingPass::FinalizeVoxelization(nvrhi::ICommandList* commandList) {
 void VoxelShadingPass::RenderDebug(nvrhi::ICommandList* commandList, const DebugRenderParameters& params) {
     Status rc;
     if (VXGI_FAILED(rc = m_VoxelRenderer->renderDebug(commandList, &params))) {
-        DONUT_ASSERT(0);
+        NVRHI_ASSERT(0);
         return;
     }
 }
@@ -136,7 +136,7 @@ void VoxelShadingPass::ComputeDiffuseChannel(nvrhi::ICommandList* commandList,
     Status rc;
     if (VXGI_FAILED(rc = m_GIViewTracer->computeDiffuseChannel(commandList, params, indirectDiffuse,
                                                                inputBuffers, inputBuffersPreviousFrame))) {
-        DONUT_ASSERT(0);
+        NVRHI_ASSERT(0);
         return;
     }
     return;
@@ -150,7 +150,7 @@ void VoxelShadingPass::ComputeAmbientChannel(nvrhi::ICommandList* commandList,
     Status rc;
     if (VXGI_FAILED(rc = m_AOViewTracer->computeDiffuseChannel(commandList, params, ambientTexture,
                                                                inputBuffers, inputBuffersPreviousFrame))) {
-        DONUT_ASSERT(0);
+        NVRHI_ASSERT(0);
         return;
     }
     return;
@@ -164,7 +164,7 @@ void VoxelShadingPass::ComputeSpecularChannel(nvrhi::ICommandList* commandList,
     Status rc;
     if (VXGI_FAILED(rc = m_GIViewTracer->computeSpecularChannel(commandList, params, indirectSpecular,
                                                                 inputBuffers, inputBuffersPreviousFrame))) {
-        DONUT_ASSERT(0);
+        NVRHI_ASSERT(0);
         return;
     }
     return;
@@ -369,7 +369,7 @@ nvrhi::GraphicsPipelineHandle VoxelShadingPass::CreateGraphicsPipeline(
     return m_Device->createGraphicsPipeline(pipelineDesc, framebufferInfo);
 }
 
-donut::AutoPtr<MaterialBindingCache> VoxelShadingPass::CreateMaterialBindingCache(
+nvrhi::AutoPtr<MaterialBindingCache> VoxelShadingPass::CreateMaterialBindingCache(
     CommonRenderPasses& commonPasses) {
     std::vector<MaterialResourceBinding> materialBindings = {
         {MaterialResource::ConstantBuffer,      FORWARD_BINDING_MATERIAL_CONSTANTS        },
@@ -407,9 +407,9 @@ void VoxelShadingPass::SetupView(GeometryPassContext& abstractContext,
 
 void VoxelShadingPass::PrepareLights(
     Context& context, nvrhi::ICommandList* commandList,
-    const std::vector<donut::AutoPtr<Light>>& lights, dm::float3 ambientColorTop,
+    const std::vector<nvrhi::AutoPtr<Light>>& lights, dm::float3 ambientColorTop,
     dm::float3 ambientColorBottom,
-    const std::vector<donut::AutoPtr<LightProbe>>& lightProbes) {
+    const std::vector<nvrhi::AutoPtr<LightProbe>>& lightProbes) {
     nvrhi::ITexture* shadowMapTexture = nullptr;
     int2 shadowMapTextureSize = 0;
     for (const auto& light : lights) {

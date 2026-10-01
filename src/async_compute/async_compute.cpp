@@ -81,8 +81,8 @@ private:
     nvrhi::GraphicsPipelineHandle m_GraphicsPipeline;
     nvrhi::ComputePipelineHandle m_ComputePipeline;
 
-    MonoPtr<engine::BindingCache> m_DrawBindings;
-    MonoPtr<engine::BindingCache> m_ComputeBindings;
+    nvrhi::MonoPtr<engine::BindingCache> m_DrawBindings;
+    nvrhi::MonoPtr<engine::BindingCache> m_ComputeBindings;
 
     nvrhi::CommandListLifetimeTrackerHandle m_CommandListLifetimeTracker;
 
@@ -149,8 +149,8 @@ public:
 			.addBindingLayout(m_ComputeBindingLayout);
         m_ComputePipeline = GetDevice()->createComputePipeline(psoDesc);
 
-        m_DrawBindings = MakeMono<engine::BindingCache>(GetDevice());
-        m_ComputeBindings = MakeMono<engine::BindingCache>(GetDevice());
+        m_DrawBindings = nvrhi::MakeMono<engine::BindingCache>(GetDevice());
+        m_ComputeBindings = nvrhi::MakeMono<engine::BindingCache>(GetDevice());
 
         m_CommandListLifetimeTracker = GetDevice()->createCommandListLifetimeTracker(nvrhi::CommandQueue::Compute);
 
@@ -304,7 +304,7 @@ int main(int __argc, const char** __argv)
 #endif
 {
     nvrhi::GraphicsAPI api = app::GetGraphicsAPIFromCommandLine(__argc, __argv);
-    auto deviceManager = TakeOver(app::DeviceManager::Create(api));
+    auto deviceManager = nvrhi::TakeOver(app::DeviceManager::Create(api));
 
     app::DeviceCreationParameters deviceParams;
     deviceParams.enableComputeQueue = true;

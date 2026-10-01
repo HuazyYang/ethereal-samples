@@ -54,8 +54,8 @@ public:
     nvrhi::TextureHandle m_GBufferEmissive;
     nvrhi::TextureHandle m_HdrColor;
 
-    AutoPtr<engine::FramebufferFactory> m_HdrFramebuffer;
-    AutoPtr<engine::FramebufferFactory> m_GBufferFramebuffer;
+    nvrhi::AutoPtr<engine::FramebufferFactory> m_HdrFramebuffer;
+    nvrhi::AutoPtr<engine::FramebufferFactory> m_GBufferFramebuffer;
     
     int2 m_Size;
     
@@ -136,7 +136,7 @@ public:
 class RayTracedShadows : public app::ApplicationBase
 {
 private:
-	AutoPtr<vfs::RootFileSystem> m_RootFS;
+	nvrhi::AutoPtr<vfs::RootFileSystem> m_RootFS;
 
     nvrhi::ShaderLibraryHandle m_ShaderLibrary;
     nvrhi::rt::PipelineHandle m_Pipeline;
@@ -145,20 +145,20 @@ private:
     nvrhi::BindingLayoutHandle m_BindingLayout;
     nvrhi::BindingSetHandle m_BindingSet;
 
-    std::unordered_map<AutoPtr<engine::MeshInfo>, nvrhi::rt::AccelStructHandle> m_MeshAccelStructs;
+    std::unordered_map<nvrhi::AutoPtr<engine::MeshInfo>, nvrhi::rt::AccelStructHandle> m_MeshAccelStructs;
     nvrhi::rt::AccelStructHandle m_BottomLevelAS;
     nvrhi::rt::AccelStructHandle m_TopLevelAS;
 
     nvrhi::BufferHandle m_ConstantBuffer;
 
-    AutoPtr<engine::ShaderFactory> m_ShaderFactory;
-    AutoPtr<engine::Scene> m_Scene;
-    AutoPtr<render::GBufferFillPass> m_GBufferPass;
+    nvrhi::AutoPtr<engine::ShaderFactory> m_ShaderFactory;
+    nvrhi::AutoPtr<engine::Scene> m_Scene;
+    nvrhi::AutoPtr<render::GBufferFillPass> m_GBufferPass;
     std::unique_ptr<RenderTargets> m_RenderTargets;
     app::FirstPersonCamera m_Camera;
     engine::PlanarView m_View;
-    AutoPtr<engine::DirectionalLight> m_SunLight;
-    AutoPtr<render::InstancedOpaqueDrawStrategy> m_OpaqueDrawStrategy;
+    nvrhi::AutoPtr<engine::DirectionalLight> m_SunLight;
+    nvrhi::AutoPtr<render::InstancedOpaqueDrawStrategy> m_OpaqueDrawStrategy;
     std::unique_ptr<engine::BindingCache> m_BindingCache;
 
 public:
@@ -218,7 +218,7 @@ public:
 
     bool LoadScene(vfs::IFileSystem* fs, const std::filesystem::path& sceneFileName) override 
     {
-        AutoPtr<engine::Scene> scene = MAKE_RC_OBJ_PTR(engine::Scene, GetDevice(),
+        nvrhi::AutoPtr<engine::Scene> scene = MAKE_RC_OBJ_PTR(engine::Scene, GetDevice(),
             m_ShaderFactory, fs, m_TextureCache, nullptr, nullptr);
 
         if (scene->Load(sceneFileName))
@@ -444,7 +444,7 @@ int main(int __argc, const char** __argv)
 #endif
 {
     nvrhi::GraphicsAPI api = app::GetGraphicsAPIFromCommandLine(__argc, __argv);
-    auto deviceManager = TakeOver(app::DeviceManager::Create(api));
+    auto deviceManager = nvrhi::TakeOver(app::DeviceManager::Create(api));
 
     app::DeviceCreationParameters deviceParams;
     deviceParams.enableRayTracingExtensions = true;

@@ -137,7 +137,7 @@ class VoxelShadingPass : public donut::render::IGeometryPass {
 
  protected:
     nvrhi::IDevice *m_Device;
-    donut::AutoPtr<donut::engine::ShaderFactory> m_ShaderFactory;
+    nvrhi::AutoPtr<donut::engine::ShaderFactory> m_ShaderFactory;
 
     nvrhi::InputLayoutHandle m_InputLayout;
     nvrhi::ShaderHandle m_VoxelizeVS;
@@ -161,12 +161,12 @@ class VoxelShadingPass : public donut::render::IGeometryPass {
         m_ShadingBindingSets;
     std::unordered_map<const donut::engine::BufferGroup*, nvrhi::BindingSetHandle> m_InputBindingSets;
 
-    donut::AutoPtr<donut::engine::CommonRenderPasses> m_CommonPasses;
-    donut::AutoPtr<donut::engine::MaterialBindingCache> m_MaterialBindings;
+    nvrhi::AutoPtr<donut::engine::CommonRenderPasses> m_CommonPasses;
+    nvrhi::AutoPtr<donut::engine::MaterialBindingCache> m_MaterialBindings;
 
-    donut::AutoPtr<VoxelRenderer> m_VoxelRenderer;
-    donut::AutoPtr<ViewTracer> m_GIViewTracer;
-    donut::AutoPtr<ViewTracer> m_AOViewTracer;
+    nvrhi::AutoPtr<VoxelRenderer> m_VoxelRenderer;
+    nvrhi::AutoPtr<ViewTracer> m_GIViewTracer;
+    nvrhi::AutoPtr<ViewTracer> m_AOViewTracer;
 
     virtual nvrhi::ShaderHandle CreateVertexShader(const CreateParameters& params);
     virtual nvrhi::InputLayoutHandle CreateInputLayout(nvrhi::IShader* vertexShader,
@@ -180,7 +180,7 @@ class VoxelShadingPass : public donut::render::IGeometryPass {
     virtual nvrhi::BindingLayoutHandle CreateInputBindingLayout();
     virtual nvrhi::BindingSetHandle CreateInputBindingSet(
         const donut::engine::BufferGroup* bufferGroup);
-    virtual donut::AutoPtr<donut::engine::MaterialBindingCache> CreateMaterialBindingCache(
+    virtual nvrhi::AutoPtr<donut::engine::MaterialBindingCache> CreateMaterialBindingCache(
         donut::engine::CommonRenderPasses& commonPasses);
     virtual nvrhi::GraphicsPipelineHandle CreateGraphicsPipeline(
         VXGIShadingPassPipelineKey const& key,
@@ -219,9 +219,9 @@ class VoxelShadingPass : public donut::render::IGeometryPass {
                                 const ViewTracerInputBuffers* inputBuffersPreviousFrame);
 
     virtual void PrepareLights(Context& context, nvrhi::ICommandList* commandList,
-                               const std::vector<donut::AutoPtr<donut::engine::Light>>& lights,
+                               const std::vector<nvrhi::AutoPtr<donut::engine::Light>>& lights,
                                dm::float3 ambientColorTop, dm::float3 ambientColorBottom,
-                               const std::vector<donut::AutoPtr<donut::engine::LightProbe>>& lightProbes);
+                               const std::vector<nvrhi::AutoPtr<donut::engine::LightProbe>>& lightProbes);
 
     // IGeometryPass implementation
 

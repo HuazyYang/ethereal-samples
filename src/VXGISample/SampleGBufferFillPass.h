@@ -10,7 +10,7 @@ class SampleGBufferFillPass : public donut::render::GBufferFillPass {
  protected:
     nvrhi::ShaderHandle CreatePixelShader(donut::engine::ShaderFactory& shaderFactory, const CreateParameters& params,
                                           bool alphaTested);
-    donut::AutoPtr<donut::engine::MaterialBindingCache> CreateMaterialBindingCache(
+    nvrhi::AutoPtr<donut::engine::MaterialBindingCache> CreateMaterialBindingCache(
         donut::engine::CommonRenderPasses& commonPasses) override;
 };
 

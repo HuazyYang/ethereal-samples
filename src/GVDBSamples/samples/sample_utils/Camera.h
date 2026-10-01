@@ -1,6 +1,6 @@
 #ifndef GVDBCAMERA_H
 #define GVDBCAMERA_H
-#include <donut/core/object/Foundation.h>
+#include <nvrhi/core/Foundation.h>
 #include <donut/core/math/math.h>
 #include <cmath>
 
@@ -15,7 +15,7 @@ inline dm::quat axisAngleQuat(const dm::float3 &axis, float radians) {
     return dm::quat::fromWXYZ(std::cos(0.5f * radians), axis * sinHalf);
 }
 
-class Camera: public donut::ObjectImpl<donut::IObject>  {
+class Camera: public nvrhi::ObjectImpl<nvrhi::IObject>  {
 public:
    /**
     * @brief specify the rotation convention of WCS, VCS, HCS
@@ -228,7 +228,7 @@ public:
             // NOT equivalent (it maps depth to [-1,1] instead of [0,1]), so the
             // right-handed projection path is dropped rather than silently substituted.
             // m_projMatrix = dm::perspectiveFovRH(m_fovY, float(m_windowWidth) / m_windowHeight, m_zNear, m_zFar);
-            DONUT_ASSERT(0 && "right-handed projection dropped during ethereal->donut migration");
+            NVRHI_ASSERT(0 && "right-handed projection dropped during ethereal->donut migration");
             m_projMatrix = dm::float4x4::identity();
         } else {
             // dm::perspProjD3DStyle() is bit-for-bit the old fork's dm::perspectiveFovLH()

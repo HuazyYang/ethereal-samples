@@ -1,6 +1,6 @@
 #include <donut/app/DeviceManager.h>
 #include <donut/app/ApplicationBase.h>
-#include <donut/core/object/AutoPtr.h>
+#include <nvrhi/core/AutoPtr.h>
 #include <donut/core/vfs/VFS.h>
 #include <donut/engine/ShaderFactory.h>
 #include <donut/engine/BindingCache.h>
@@ -35,7 +35,7 @@ class VoxelizePass : public donut::app::IRenderPass {
     VoxelizePass(donut::app::DeviceManager *pDeviceManager) : IRenderPass(pDeviceManager) {}
 
     bool Init() {
-        m_vfs = donut::TakeOver(MAKE_RC_OBJ(donut::vfs::RootFileSystem));
+        m_vfs = nvrhi::TakeOver(MAKE_RC_OBJ(donut::vfs::RootFileSystem));
         auto binaryPath = donut::app::GetDirectoryWithExecutable();
         m_vfs->mount("app/asset", binaryPath / "asset");
         m_vfs->mount("app/shaders",
@@ -45,7 +45,7 @@ class VoxelizePass : public donut::app::IRenderPass {
         m_vfs->mount("sample_utils/kernels", binaryPath);
 
         m_shaderFactory =
-            donut::TakeOver(MAKE_RC_OBJ(donut::engine::ShaderFactory, GetDevice(), m_vfs, ""));
+            nvrhi::TakeOver(MAKE_RC_OBJ(donut::engine::ShaderFactory, GetDevice(), m_vfs, ""));
 
         {
             donut::gp::CUDADeviceDesc cudaDeviceDesc;
@@ -65,8 +65,8 @@ class VoxelizePass : public donut::app::IRenderPass {
             m_volumeRenderer.reset(new SampleUtils::VolRenderer{m_gpDevice, m_vfs});
         }
 
-        m_scene = TakeOver(MAKE_RC_OBJ(gvdb::GVDBScene));
-        auto model = TakeOver(MAKE_RC_OBJ(gvdb::GVDBModel));
+        m_scene = nvrhi::TakeOver(MAKE_RC_OBJ(gvdb::GVDBScene));
+        auto model = nvrhi::TakeOver(MAKE_RC_OBJ(gvdb::GVDBModel));
         model->loadObj(m_vfs, "app/asset/lucy.obj");
         m_scene->addModel(model);
         m_voxelizer->commitGeometry(model);
@@ -92,14 +92,14 @@ class VoxelizePass : public donut::app::IRenderPass {
         m_volumeRenderer->commitTransferFunc();
         m_volumeRenderer->setBackgroundColor({0.1f, 0.2f, 0.4f, 1.f});
 
-        auto camera = TakeOver(MAKE_RC_OBJ(gvdb::GVDBCamera));
+        auto camera = nvrhi::TakeOver(MAKE_RC_OBJ(gvdb::GVDBCamera));
         camera->setProjectionRH(true);
         camera->setViewParamsSpherical(m_pivot * m_partSize, 150.f, dm::radians(60.f),
                                        dm::radians(-45.f));
         camera->setProjectParams(dm::radians(50.f), 0.1f, 5000.f);
         m_scene->setCamera(camera);
 
-        auto mainLight = TakeOver(MAKE_RC_OBJ(gvdb::GVDBLight));
+        auto mainLight = nvrhi::TakeOver(MAKE_RC_OBJ(gvdb::GVDBLight));
         mainLight->setProjectionRH(true);
         mainLight->setViewParamsSpherical(m_pivot * m_partSize * dm::float3{1.3f, 1.f, 1.f},
                                           200.f, dm::radians(32.7f), dm::radians(299.f));
@@ -581,32 +581,32 @@ class VoxelizePass : public donut::app::IRenderPass {
         }
     }
 
-    donut::AutoPtr<donut::vfs::RootFileSystem> m_vfs;
-    donut::AutoPtr<donut::gp::IDevice> m_gpDevice;
-    donut::AutoPtr<donut::gp::IDeviceQueue> m_gpQueue;
+    nvrhi::AutoPtr<donut::vfs::RootFileSystem> m_vfs;
+    nvrhi::AutoPtr<donut::gp::IDevice> m_gpDevice;
+    nvrhi::AutoPtr<donut::gp::IDeviceQueue> m_gpQueue;
 
-    donut::AutoPtr<SampleUtils::Scene> m_scene;
-    donut::AutoPtr<gvdb::GVDB> m_gvdb;
-    donut::AutoPtr<SampleUtils::IVoxelizer> m_voxelizer;
+    nvrhi::AutoPtr<SampleUtils::Scene> m_scene;
+    nvrhi::AutoPtr<gvdb::GVDB> m_gvdb;
+    nvrhi::AutoPtr<SampleUtils::IVoxelizer> m_voxelizer;
     std::unique_ptr<SampleUtils::VolRenderer> m_volumeRenderer;
 
     nvrhi::TextureHandle m_screenTexture;
     nvrhi::TextureHandle m_sectionTexture;
-    donut::AutoPtr<donut::gp::ITexture> m_screenTextureGP;
-    donut::AutoPtr<donut::gp::ITexture> m_sectionTextureGP;
+    nvrhi::AutoPtr<donut::gp::ITexture> m_screenTextureGP;
+    nvrhi::AutoPtr<donut::gp::ITexture> m_sectionTextureGP;
     uint32_t m_screenTextureKeyMutexIndex;
-    donut::AutoPtr<donut::gp::IBuffer> m_renderBufferGP;
-    donut::AutoPtr<donut::gp::IBuffer> m_renderSectionBufferGP;
+    nvrhi::AutoPtr<donut::gp::IBuffer> m_renderBufferGP;
+    nvrhi::AutoPtr<donut::gp::IBuffer> m_renderSectionBufferGP;
     uint32_t m_sectionTextureKeyMutexIndex;
 
     nvrhi::CommandListHandle m_commandList;
-    donut::AutoPtr<donut::engine::ShaderFactory> m_shaderFactory;
+    nvrhi::AutoPtr<donut::engine::ShaderFactory> m_shaderFactory;
     nvrhi::GraphicsPipelineHandle m_fullscreenPSO;
     nvrhi::BindingLayoutHandle m_fullscreenBindingLayout;
     nvrhi::BindingSetHandle m_fullscreenBinding;
     nvrhi::BindingSetHandle m_sectionBinding;
     nvrhi::SamplerHandle m_fullscreenSampler;
-    donut::AutoPtr<donut::IGPAndNVRHIInteropDevice> m_interopDevice;
+    nvrhi::AutoPtr<donut::IGPAndNVRHIInteropDevice> m_interopDevice;
 
     std::vector<TopologyInstanceData> m_topologyInstanceData;
     nvrhi::BufferHandle m_topologyInstanceBuffer;
@@ -699,7 +699,7 @@ int main(int argc, char *argv[]) {
     // (<ethereal/core/object/UserAllocated.h>) exists in the old ethereal fork but not in donut.
 
     auto api = donut::app::GetGraphicsAPIFromCommandLine(argc, argv);
-    auto deviceManager = donut::TakeOver(donut::app::DeviceManager::Create(api));
+    auto deviceManager = nvrhi::TakeOver(donut::app::DeviceManager::Create(api));
 
     donut::app::DeviceCreationParameters deviceParams;
 #ifdef _DEBUG
@@ -716,7 +716,7 @@ int main(int argc, char *argv[]) {
         return -1;
     }
     {
-        auto pass = donut::TakeOver(MAKE_RC_OBJ(VoxelizePass, deviceManager));
+        auto pass = nvrhi::TakeOver(MAKE_RC_OBJ(VoxelizePass, deviceManager));
         if (!pass->Init()) {
             donut::log::error("VoxelizePass init failed");
             return -1;
@@ -724,7 +724,7 @@ int main(int argc, char *argv[]) {
         deviceManager->AddRenderPassToBack(pass);
 
         auto imguiPass =
-            donut::TakeOver(MAKE_RC_OBJ(VoxelizeGUIPass, deviceManager, pass));
+            nvrhi::TakeOver(MAKE_RC_OBJ(VoxelizeGUIPass, deviceManager, pass));
         if (!imguiPass->Init()) {
             donut::log::error("VoxelizeGuiPass init failed");
             return -1;

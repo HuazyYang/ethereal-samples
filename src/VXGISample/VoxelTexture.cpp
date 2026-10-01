@@ -86,7 +86,7 @@ VoxelTexture::VoxelTexture(VoxelRenderer *renderer) {
         6 * PackingStride, params->mapSize,
         std::max<uint>(emittanceOffsetEven, emittanceOffsetOdd)};
 
-    m_BindingCache = donut::MakeMono<donut::engine::BindingCache>(m_Device);
+    m_BindingCache = nvrhi::MakeMono<donut::engine::BindingCache>(m_Device);
 }
 
 VoxelTexture::~VoxelTexture() {}
@@ -231,7 +231,7 @@ Status VoxelTexture::AllocateResources(nvrhi::ICommandList *commandList) {
                 nvrhi::BindingLayoutItem::Texture_SRV(3),
                 nvrhi::BindingLayoutItem::Texture_SRV(4)};
             m_DebugBindingLayout = m_Device->createBindingLayout(bindingLayoutDesc);
-            DONUT_ASSERT(m_DebugBindingLayout);
+            NVRHI_ASSERT(m_DebugBindingLayout);
         }
 
         nvrhi::SamplerDesc samplerDesc;
@@ -2006,7 +2006,7 @@ void VoxelTexture::RenderDebugOpacity(nvrhi::ICommandList *commandList,
 
         m_OpacityRaycastPSO = m_Device->createGraphicsPipeline(
             psoDesc, state.framebuffer->getFramebufferInfo());
-        DONUT_ASSERT(m_OpacityRaycastPSO);
+        NVRHI_ASSERT(m_OpacityRaycastPSO);
     }
 
     if (level < params->totalLevels) {
@@ -2088,7 +2088,7 @@ void VoxelTexture::RenderDebugEmittance(nvrhi::ICommandList *commandList,
 
         m_EmittanceRaycastPSO = m_Device->createGraphicsPipeline(
             psoDesc, state.framebuffer->getFramebufferInfo());
-        DONUT_ASSERT(m_EmittanceRaycastPSO);
+        NVRHI_ASSERT(m_EmittanceRaycastPSO);
     }
 
     if (level < params->totalLevels &&
@@ -2175,7 +2175,7 @@ void VoxelTexture::RenderDebugIrradiance(
 
         m_IrradianceRaycastPSO = m_Device->createGraphicsPipeline(
             psoDesc, state.framebuffer->getFramebufferInfo());
-        DONUT_ASSERT(m_IrradianceRaycastPSO);
+        NVRHI_ASSERT(m_IrradianceRaycastPSO);
     }
 
     auto params = GetVoxelizationParameters();

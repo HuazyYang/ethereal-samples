@@ -1,14 +1,14 @@
 #ifndef SRC_GVDBVOLUME_H
 #define SRC_GVDBVOLUME_H
 #include <gvdb/GPDevice.h>
-#include <donut/core/object/Foundation.h>
-#include <donut/core/object/AutoPtr.h>
+#include <nvrhi/core/Foundation.h>
+#include <nvrhi/core/AutoPtr.h>
 #include <donut/core/math/math.h>
 #include <donut/core/log.h>
 #include <vector>
 
 namespace donut {
-struct IDataBlob;
+struct nvrhi::IDataBlob;
 }
 namespace donut::vfs {
 class IFileSystem;
@@ -137,7 +137,7 @@ struct GVDBAtlasResourceDesc {
 struct AtlasMapping;
 class GVDBAllocator;
 
-class GVDB: public donut::ObjectImpl<donut::IObject> {
+class GVDB: public nvrhi::ObjectImpl<nvrhi::IObject> {
  public:
     GVDB(donut::gp::IDeviceQueue *queue, donut::vfs::IFileSystem *vfs);
     ~GVDB();
@@ -204,9 +204,9 @@ class GVDB: public donut::ObjectImpl<donut::IObject> {
 
     void convertBitmaskToNonBitmask();
 
-    donut::FRESULT loadVBXC(donut::IDataBlob *pVBXC);
+    nvrhi::FRESULT loadVBXC(nvrhi::IDataBlob *pVBXC);
 
-    donut::FRESULT storeVBXC(donut::IDataBlob **pVBXC);
+    nvrhi::FRESULT storeVBXC(nvrhi::IDataBlob **pVBXC);
 
  private:
     /**
@@ -310,13 +310,13 @@ class GVDB: public donut::ObjectImpl<donut::IObject> {
     // }
 
     // GPU resources
-    donut::AutoPtr<donut::gp::IDeviceQueue> m_gpQueue;
-    std::vector<donut::AutoPtr<donut::gp::IBuffer>> m_nodePoolsGPU;
-    std::vector<donut::AutoPtr<donut::gp::IBuffer>> m_childIdPoolsGPU;
-    donut::AutoPtr<donut::gp::IBuffer> m_atlasMapGPU;
-    std::vector<donut::AutoPtr<donut::gp::ITexture>> m_atlasResourceChannelsGPU;
-    donut::AutoPtr<donut::gp::IBuffer> m_VDBInfoGPU;
-    donut::AutoPtr<donut::gp::IKernel> m_updateApronKernels[4];
+    nvrhi::AutoPtr<donut::gp::IDeviceQueue> m_gpQueue;
+    std::vector<nvrhi::AutoPtr<donut::gp::IBuffer>> m_nodePoolsGPU;
+    std::vector<nvrhi::AutoPtr<donut::gp::IBuffer>> m_childIdPoolsGPU;
+    nvrhi::AutoPtr<donut::gp::IBuffer> m_atlasMapGPU;
+    std::vector<nvrhi::AutoPtr<donut::gp::ITexture>> m_atlasResourceChannelsGPU;
+    nvrhi::AutoPtr<donut::gp::IBuffer> m_VDBInfoGPU;
+    nvrhi::AutoPtr<donut::gp::IKernel> m_updateApronKernels[4];
 
     // leaf node bounds in voxel index-space
     dm::box<int, 3> m_voxLeafBounds;

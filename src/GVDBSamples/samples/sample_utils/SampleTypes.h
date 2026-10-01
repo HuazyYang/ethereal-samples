@@ -1,25 +1,25 @@
 #ifndef SAMPLETYPES_H
 #define SAMPLETYPES_H
-#include <donut/core/object/Foundation.h>
+#include <nvrhi/core/Foundation.h>
 #include <gvdb/GPDevice.h>
 #include <donut/core/log.h>
-#include <donut/core/object/Memory.h>
+#include <nvrhi/core/Memory.h>
 
 namespace SampleUtils {
 
 #define UT_V_GP(expr)                                                      \
     do {                                                                     \
         auto rc = (expr);                                                    \
-        if (FFAILED(rc)) {                                                   \
+        if (NVRHI_FAILED(rc)) {                                                   \
             donut::log::error("GPDevice failed with error: %d", (int)rc); \
-            DONUT_ASSERT(0);                                              \
+            NVRHI_ASSERT(0);                                              \
         }                                                                    \
     } while (0)
 
-struct GPDeviceMessageCallback : public donut::ObjectImpl<donut::gp::IMessageCallback> {
-    DONUT_BEGIN_INTERFACE_TABLE_INLINE(GPDeviceMessageCallback)
-    DONUT_IMPLEMENTS_INTERFACE(IMessageCallback)
-    DONUT_END_INTERFACE_TABLE()
+struct GPDeviceMessageCallback : public nvrhi::ObjectImpl<donut::gp::IMessageCallback> {
+    NVRHI_BEGIN_INTERFACE_TABLE_INLINE(GPDeviceMessageCallback)
+    NVRHI_IMPLEMENTS_INTERFACE(IMessageCallback)
+    NVRHI_END_INTERFACE_TABLE()
 
     void message(donut::gp::MessageSeverity severity, const char *desc) override {
         using namespace donut;
@@ -56,13 +56,13 @@ public:
 
     T &operator[](size_t i) {
         if (i < _count) return _start[i];
-        DONUT_ASSERT(0 && "Invalid index");
+        NVRHI_ASSERT(0 && "Invalid index");
         throw std::invalid_argument("Range invalid index");
     }
 
     const T &operator[](size_t i) const {
         if (i < _count) return _start[i];
-        DONUT_ASSERT(0 && "Invalid index");
+        NVRHI_ASSERT(0 && "Invalid index");
         throw std::invalid_argument("Range invalid index");
     }
 

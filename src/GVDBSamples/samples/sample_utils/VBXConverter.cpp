@@ -1,13 +1,13 @@
 #include <gvdb/GVDB.h>
 #include <donut/core/vfs/VFS.h>
-#include <donut/core/object/AutoPtr.h>
+#include <nvrhi/core/AutoPtr.h>
 
 void usage(char *progname) {
     printf("%s      <vbx file path>\n", progname);
     return;
 }
 
-int ConvertVBXBlob(donut::IDataBlob *pVBX, donut::IDataBlob **ppVBXC) {
+int ConvertVBXBlob(nvrhi::IDataBlob *pVBX, nvrhi::IDataBlob **ppVBXC) {
 
     uint8_t *dp = (uint8_t *)pVBX->GetDataPtr();
 
@@ -41,7 +41,7 @@ int ConvertVBXBlob(donut::IDataBlob *pVBX, donut::IDataBlob **ppVBXC) {
     euler_angle_xyz.z = dm::radians(euler_angle_xyz.z);
 
     num_grids = *(const int32_t *)dp;
-    DONUT_ASSERT(num_grids == 1);
+    NVRHI_ASSERT(num_grids == 1);
     dp += sizeof(int32_t);
 
     if (major_version >= 2) {
@@ -57,9 +57,9 @@ int ConvertVBXBlob(donut::IDataBlob *pVBX, donut::IDataBlob **ppVBXC) {
     dp += num_grids * sizeof(uint64_t);
 
     size_t vbxc_flen = pVBX->GetSize() - (dp - (const uint8_t *)pVBX->GetDataPtr());
-    donut::AutoPtr<donut::IDataBlob> pVBXC;
-    donut::FRESULT fr = donut::CreateBlob(vbxc_flen, &pVBXC);
-    if (FFAILED(fr)) {
+    nvrhi::AutoPtr<nvrhi::IDataBlob> pVBXC;
+    nvrhi::FRESULT fr = nvrhi::CreateBlob(vbxc_flen, &pVBXC);
+    if (NVRHI_FAILED(fr)) {
         fprintf(stderr, "Failed to create output VBXC data blob\n");
         return -1;
     }
@@ -95,21 +95,21 @@ int main(int argc, char *argv[]) {
     }
 
     std::filesystem::path filePath{argv[1]};
-    auto fs = donut::TakeOver(MAKE_RC_OBJ(donut::vfs::NativeFileSystem));
+    auto fs = nvrhi::TakeOver(MAKE_RC_OBJ(donut::vfs::NativeFileSystem));
     if (fs->fileExists(filePath)) {
         fprintf(stderr, "can not find file\"%s\"\n", filePath.string().c_str());
         return -1;
     }
     filePath = std::filesystem::canonical(filePath);
 
-    donut::AutoPtr<donut::IDataBlob> pFileBlob;
-    donut::FRESULT fr = fs->readFile(filePath, &pFileBlob);
-    if (FFAILED(fr)) {
+    nvrhi::AutoPtr<nvrhi::IDataBlob> pFileBlob;
+    nvrhi::FRESULT fr = fs->readFile(filePath, &pFileBlob);
+    if (NVRHI_FAILED(fr)) {
         fprintf(stderr, "Read file \"%s\"\n", filePath.string().c_str());
         return -1;
     }
 
-    donut::AutoPtr<donut::IDataBlob> pVBXCBlob;
+    nvrhi::AutoPtr<nvrhi::IDataBlob> pVBXCBlob;
     if (ConvertVBXBlob(pFileBlob, &pVBXCBlob) != 0) {
         fprintf(stderr, "Convert VBX to VBXC file failed\n");
         return -1;

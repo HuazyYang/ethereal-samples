@@ -1,14 +1,14 @@
 #ifndef GVDBALLOCATOR_H
 #define GVDBALLOCATOR_H
 #include <gvdb/GVDB.h>
-#include <donut/core/object/Foundation.h>
+#include <nvrhi/core/Foundation.h>
 
 namespace gvdb {
 
 enum { MAX_POOL = 10 };
 
 // TODO(migration): dropped - base `ethereal::UserAllocated` (public, leak-tracking
-// operator new/delete) exists in the old ethereal fork; donut::UserAllocated makes
+// operator new/delete) exists in the old ethereal fork; nvrhi::UserAllocated makes
 // operator new/delete protected, so plain global new/delete is used instead.
 class GVDBAllocator {
  public:

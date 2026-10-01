@@ -1,7 +1,7 @@
 #ifndef SRC_VXGISAMPLE_VXGITYPES_H
 #define SRC_VXGISAMPLE_VXGITYPES_H
 #include <donut/core/math/math.h>
-#include <donut/core/object/Types.h>
+#include <nvrhi/core/Types.h>
 #include <nvrhi/nvrhi.h>
 
 namespace nvrhi {
@@ -13,7 +13,7 @@ namespace vxgi {
 
 using namespace dm;
 
-enum class Status: donut::FLONG {
+enum class Status: nvrhi::FLONG {
     OK = 0,
     WRONG_INTERFACE_VERSION = 1,
 

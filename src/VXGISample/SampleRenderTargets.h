@@ -3,7 +3,7 @@
 #include <nvrhi/nvrhi.h>
 #include <donut/core/math/math.h>
 #include <donut/engine/FramebufferFactory.h>
-#include <donut/core/object/AutoPtr.h>
+#include <nvrhi/core/AutoPtr.h>
 
 class SampleRenderTargets {
 public:
@@ -21,15 +21,15 @@ public:
    nvrhi::TextureHandle GBufferDepth;
    nvrhi::TextureHandle GBufferDiffuse;
    nvrhi::TextureHandle GBufferNormals;
-   donut::AutoPtr<donut::engine::FramebufferFactory> GBufferFramebuffer;
+   nvrhi::AutoPtr<donut::engine::FramebufferFactory> GBufferFramebuffer;
 
    nvrhi::TextureHandle DepthBuffer;
    nvrhi::TextureHandle HdrColorBuffer;
-   donut::AutoPtr<donut::engine::FramebufferFactory> HdrFramebuffer;
+   nvrhi::AutoPtr<donut::engine::FramebufferFactory> HdrFramebuffer;
    nvrhi::TextureHandle ShadowMapTexture;
-   donut::AutoPtr<donut::engine::FramebufferFactory> ShadowMapFramebuffer;
+   nvrhi::AutoPtr<donut::engine::FramebufferFactory> ShadowMapFramebuffer;
 
-   donut::AutoPtr<donut::engine::FramebufferFactory> VoxelizationDummyFramebuffer;
+   nvrhi::AutoPtr<donut::engine::FramebufferFactory> VoxelizationDummyFramebuffer;
 };
 
 #endif /* SRC_VXGISAMPLE_SAMPLERENDERTARGETS_H */

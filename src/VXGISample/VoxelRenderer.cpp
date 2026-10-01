@@ -16,7 +16,7 @@ VoxelRenderer::VoxelRenderer(nvrhi::IDevice* device, donut::engine::ShaderFactor
 
 VoxelRenderer::~VoxelRenderer() {
     for (auto& tracer : m_ViewTracers) {
-        donut::SafeRelease(tracer);
+        nvrhi::SafeRelease(tracer);
     }
     m_ViewTracers.clear();
 }
@@ -89,11 +89,11 @@ Status VoxelRenderer::AllocateResources() {
             return Status::RESOURCE_CREATION_FAILED;
     }
 
-    m_AllocationMap = donut::MakeMono<AllocationMap>(this);
+    m_AllocationMap = nvrhi::MakeMono<AllocationMap>(this);
     if(VXGI_FAILED(rc = m_AllocationMap->AllocateResources()))
         return rc;
 
-    m_VoxelTexture = donut::MakeMono<VoxelTexture>(this);
+    m_VoxelTexture = nvrhi::MakeMono<VoxelTexture>(this);
     if(VXGI_FAILED(rc = m_VoxelTexture->AllocateResources(m_CommandList)))
         return rc;
 
@@ -211,7 +211,7 @@ void VoxelRenderer::ReleaseResources() {
     Status rc;
     for(auto pViewTracer : m_ViewTracers) {
         rc = pViewTracer->ReleaseResources();
-        DONUT_ASSERT(VXGI_SUCCEEDED(rc));
+        NVRHI_ASSERT(VXGI_SUCCEEDED(rc));
     }
 
     m_VoxelTexture = nullptr;
@@ -807,7 +807,7 @@ uint VoxelRenderer::GetUserShaderBindingSlot(UserShaderBindingID id) {
     };
   int index = (int)((uint)id - (uint)UserShaderBindingID::UNKNOWN);
 
-  DONUT_ASSERT((index >= 0 && index < std::size(ShaderBindingIDMap)));
+  NVRHI_ASSERT((index >= 0 && index < std::size(ShaderBindingIDMap)));
   return ShaderBindingIDMap[index][1];
 }
 
@@ -946,7 +946,7 @@ Status VoxelRenderer::renderDebug(nvrhi::ICommandList *commandList, const DebugR
         fbDesc.addColorAttachment(params->destinationTexture);
         fbDesc.depthAttachment = {params->destinationDepth};
         InvalidateFramebuffer(m_Device, fbDesc, m_DebugFramebuffer.GetAddressOf());
-        DONUT_ASSERT(m_DebugFramebuffer);
+        NVRHI_ASSERT(m_DebugFramebuffer);
     }
 
     nvrhi::GraphicsState state;

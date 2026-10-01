@@ -13,9 +13,9 @@ using namespace donut;
 #define GVDB_V_GP(expr)                                                      \
     do {                                                                     \
         auto rc = (expr);                                                    \
-        if (FFAILED(rc)) {                                                   \
+        if (NVRHI_FAILED(rc)) {                                                   \
             donut::log::error("GPDevice failed with error: %d", (int)rc); \
-            DONUT_ASSERT(0);                                              \
+            NVRHI_ASSERT(0);                                              \
         }                                                                    \
     } while (0)
 
@@ -156,8 +156,8 @@ GVDB::GVDB(gp::IDeviceQueue *queue, donut::vfs::IFileSystem *vfs)
     : m_gpQueue(queue), m_allocator(new GVDBAllocator()) {
     configAtlas({16u, 16u, 1u}, 1);
 
-    AutoPtr<IDataBlob> pBlob;
-    AutoPtr<gp::IModule> pModule;
+    nvrhi::AutoPtr<nvrhi::IDataBlob> pBlob;
+    nvrhi::AutoPtr<gp::IModule> pModule;
 
     GVDB_V_GP(vfs->readFile("gvdb/GVDBUpdateApron.cu", &pBlob));
     size_t len = pBlob->GetSize();
@@ -473,7 +473,7 @@ void GVDB::updateApron() {
 }
 
 gp::IBuffer *GVDB::getVBDInfoGPU() const {
-    DONUT_ASSERT(m_VDBInfoGPU);
+    NVRHI_ASSERT(m_VDBInfoGPU);
     return m_VDBInfoGPU.Get();
 }
 
@@ -524,7 +524,7 @@ void GVDB::convertBitmaskToNonBitmask() {
     }
 }
 
-donut::FRESULT GVDB::loadVBXC(donut::IDataBlob* pVBXC) {
+nvrhi::FRESULT GVDB::loadVBXC(nvrhi::IDataBlob* pVBXC) {
 
     clear();
 
@@ -615,7 +615,7 @@ donut::FRESULT GVDB::loadVBXC(donut::IDataBlob* pVBXC) {
         donut::log::error(
             "VBX file VBX file contains nodes incompatible with current gvdb "
             "library.");
-        return donut::FE_GENERIC_ERROR;
+        return nvrhi::FE_GENERIC_ERROR;
     }
 
     configLevels(num_levels, (const uint32_t*)log_dim, (const uint32_t*)p1_cnt,
@@ -651,7 +651,7 @@ donut::FRESULT GVDB::loadVBXC(donut::IDataBlob* pVBXC) {
     if (num_channel) {
         if (dm::any(getAtlasGridDim() != dm::uint3(axiscnt))) {
             donut::log::error("Atlas dimension does not coincident.");
-            return donut::FE_GENERIC_ERROR;
+            return nvrhi::FE_GENERIC_ERROR;
         }
     }
 
@@ -680,7 +680,7 @@ donut::FRESULT GVDB::loadVBXC(donut::IDataBlob* pVBXC) {
                 resDesc.format = AtlasFormat::ATLAS_FORMAT_RGBA32_FLOAT;
             default:
                 donut::log::error("Unknown atlas resource format: %d", chan_type);
-                return donut::FE_GENERIC_ERROR;
+                return nvrhi::FE_GENERIC_ERROR;
         }
         resDesc.samplerDesc.addressU = donut::gp::SamplerAddressMode::Border;
         resDesc.samplerDesc.addressV = donut::gp::SamplerAddressMode::Border;
@@ -689,13 +689,13 @@ donut::FRESULT GVDB::loadVBXC(donut::IDataBlob* pVBXC) {
         addChannel(resDesc);
         resizeAtlasResource(chan);
         if (!writeAtlasResource(chan, dp, axisres.y, axisres.x * chan_stride))
-            return donut::FE_GENERIC_ERROR;
+            return nvrhi::FE_GENERIC_ERROR;
 
         dp += uint64_t(axisres.x) * axisres.y * axisres.z * chan_stride;
     }
 
     m_gpQueue->getDevice()->commitQueue(m_gpQueue);
-    return donut::FS_OK;
+    return nvrhi::FS_OK;
 }
 
 dm::box<int, 3> GVDB::computeVolumeBounds(int lev) {
@@ -779,8 +779,8 @@ bool GVDB::writeAtlasResource(int c, const void* data, uint32_t height,
     footprint.depth = texDesc->depthOrArraySize;
     footprint.rowPitch = rowPitch;
 
-    FRESULT fr;
-    if(FFAILED(fr = m_gpQueue->writeTextureRegion(atlasTexture, 0, data, footprint, 0, 0, 0, nullptr))) {
+    nvrhi::FRESULT fr;
+    if(NVRHI_FAILED(fr = m_gpQueue->writeTextureRegion(atlasTexture, 0, data, footprint, 0, 0, 0, nullptr))) {
         GVDB_V_GP(fr);
         return false;
     }
@@ -950,7 +950,7 @@ NodeId GVDB::insertChildNode(NodeId currId, uint32_t i) {
 }
 
 Node* GVDB::getNode(NodeId id) {
-    DONUT_ASSERT(id.group() == 0);
+    NVRHI_ASSERT(id.group() == 0);
     return (Node *)m_allocator->poolData(id);
 }
 

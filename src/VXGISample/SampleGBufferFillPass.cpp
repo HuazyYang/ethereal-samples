@@ -12,7 +12,7 @@ nvrhi::ShaderHandle SampleGBufferFillPass::CreatePixelShader(donut::engine::Shad
                                       nvrhi::ShaderType::Pixel);
 }
 
-donut::AutoPtr<donut::engine::MaterialBindingCache> SampleGBufferFillPass::CreateMaterialBindingCache(
+nvrhi::AutoPtr<donut::engine::MaterialBindingCache> SampleGBufferFillPass::CreateMaterialBindingCache(
     donut::engine::CommonRenderPasses& commonPasses) {
     using namespace donut::engine;
     std::vector<MaterialResourceBinding> materialBindings = {

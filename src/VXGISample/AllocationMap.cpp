@@ -26,7 +26,7 @@ AllocationMap::AllocationMap(VoxelRenderer* parent): m_Parent(parent) {
     m_Device = m_Parent->GetDevice();
     m_ShaderFactory = m_Parent->GetShaderFactory();
 
-    m_BindingCache = donut::MakeMono<donut::engine::BindingCache>(m_Device);
+    m_BindingCache = nvrhi::MakeMono<donut::engine::BindingCache>(m_Device);
 }
 
 AllocationMap::~AllocationMap() {}
@@ -703,7 +703,7 @@ void AllocationMap::RenderDebug(nvrhi::ICommandList* commandList, nvrhi::Graphic
             .setDestBlend(nvrhi::BlendFactor::InvSrcAlpha);
 
         m_VoxelizeDebugPSO = m_Device->createGraphicsPipeline(psoDesc, state.framebuffer->getFramebufferInfo());
-        DONUT_ASSERT(m_VoxelizeDebugPSO);
+        NVRHI_ASSERT(m_VoxelizeDebugPSO);
     }
 
     nvrhi::BindingSetDesc bindingSetDesc;

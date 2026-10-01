@@ -1,8 +1,8 @@
 #ifndef SRC_VXGISAMPLE_VIEWTRACER_H
 #define SRC_VXGISAMPLE_VIEWTRACER_H
 #include "VXGIIntTypes.h"
-#include <donut/core/object/Foundation.h>
-#include <donut/core/object/AutoPtr.h>
+#include <nvrhi/core/Foundation.h>
+#include <nvrhi/core/AutoPtr.h>
 #include <nvrhi/nvrhi.h>
 #include <donut/core/salieri.h>
 #include <donut/engine/ShaderFactory.h>
@@ -17,7 +17,7 @@ namespace vxgi {
 
 class VoxelRenderer;
 
-class ViewTracer : public donut::ObjectImpl<donut::IObject> {
+class ViewTracer : public nvrhi::ObjectImpl<nvrhi::IObject> {
 public:
    struct TextureHandleVerbose {
        nvrhi::TextureHandle value;

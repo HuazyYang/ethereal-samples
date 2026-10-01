@@ -1,9 +1,9 @@
 #ifndef VOLRENDERER_H
 #define VOLRENDERER_H
-#include <donut/core/object/Foundation.h>
+#include <nvrhi/core/Foundation.h>
 #include <donut/core/vfs/VFS.h>
 #include <donut/core/math/math.h>
-#include <donut/core/object/AutoPtr.h>
+#include <nvrhi/core/AutoPtr.h>
 #include <gvdb/GVDB.h>
 
 namespace SampleUtils {
@@ -22,7 +22,7 @@ enum class VolShadeType {
 class Camera;
 
 // TODO(migration): dropped - base `ethereal::UserAllocated` exists in the old
-// ethereal fork; donut::UserAllocated has protected operator new/delete.
+// ethereal fork; nvrhi::UserAllocated has protected operator new/delete.
 class VolRenderer {
  public:
     VolRenderer(donut::gp::IDevice *device, donut::vfs::IFileSystem *vfs);
@@ -76,20 +76,20 @@ class VolRenderer {
     void prepareRender(Camera *pCamera, int w, int h, Camera *pLight);
 
     donut::gp::IDevice *m_device;
-    donut::AutoPtr<donut::gp::IDeviceQueue> m_queue;
-    donut::AutoPtr<donut::gp::IKernel> m_rayDeepKernel;
-    donut::AutoPtr<donut::gp::IKernel> m_voxelKernel;
-    donut::AutoPtr<donut::gp::IKernel> m_trilinearKernel;
-    donut::AutoPtr<donut::gp::IKernel> m_tricubicKernel;
-    donut::AutoPtr<donut::gp::IKernel> m_surfaceDeepKernel;
-    donut::AutoPtr<donut::gp::IKernel> m_levelsetKernel;
-    donut::AutoPtr<donut::gp::IKernel> m_emptySkipKernel;
-    donut::AutoPtr<donut::gp::IKernel> m_section2DKernel;
-    donut::AutoPtr<donut::gp::IKernel> m_section3DKernel;
+    nvrhi::AutoPtr<donut::gp::IDeviceQueue> m_queue;
+    nvrhi::AutoPtr<donut::gp::IKernel> m_rayDeepKernel;
+    nvrhi::AutoPtr<donut::gp::IKernel> m_voxelKernel;
+    nvrhi::AutoPtr<donut::gp::IKernel> m_trilinearKernel;
+    nvrhi::AutoPtr<donut::gp::IKernel> m_tricubicKernel;
+    nvrhi::AutoPtr<donut::gp::IKernel> m_surfaceDeepKernel;
+    nvrhi::AutoPtr<donut::gp::IKernel> m_levelsetKernel;
+    nvrhi::AutoPtr<donut::gp::IKernel> m_emptySkipKernel;
+    nvrhi::AutoPtr<donut::gp::IKernel> m_section2DKernel;
+    nvrhi::AutoPtr<donut::gp::IKernel> m_section3DKernel;
 
-    donut::AutoPtr<donut::gp::IBuffer> m_scnInfoBuffer;
-    donut::AutoPtr<donut::gp::IBuffer> m_transferFuncGPU;
-    donut::AutoPtr<donut::gp::IBuffer> m_depthBuffer;
+    nvrhi::AutoPtr<donut::gp::IBuffer> m_scnInfoBuffer;
+    nvrhi::AutoPtr<donut::gp::IBuffer> m_transferFuncGPU;
+    nvrhi::AutoPtr<donut::gp::IBuffer> m_depthBuffer;
 
     // Shadow parameters(independent of method used)
     dm::float3 m_shadowParams;

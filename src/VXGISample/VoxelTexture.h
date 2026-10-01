@@ -2,7 +2,7 @@
 #define SRC_VXGISAMPLE_VOXELTEXTURE_H
 #include "VXGIIntTypes.h"
 #include <nvrhi/nvrhi.h>
-#include <donut/core/object/AutoPtr.h>
+#include <nvrhi/core/AutoPtr.h>
 #include <donut/engine/ShaderFactory.h>
 
 namespace donut::engine {
@@ -183,7 +183,7 @@ struct VoxelTexture {
     box<float, 4> m_VoxelizationScissorRegionsClipSpace[MAX_STACK_LEVELS] = {};
     int4 m_VoxelizationTextureToAmapTranslation[MAX_STACK_LEVELS] = {};
 
-    donut::MonoPtr<donut::engine::BindingCache> m_BindingCache;
+    nvrhi::MonoPtr<donut::engine::BindingCache> m_BindingCache;
 
     nvrhi::BindingLayoutHandle m_TracingBindingLayout;
     nvrhi::BindingSetHandle m_TracingBindingSet;

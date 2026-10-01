@@ -1,6 +1,6 @@
 #ifndef SRC_GPDEVICE_GPDEVICE_H
 #define SRC_GPDEVICE_GPDEVICE_H
-#include <donut/core/object/Foundation.h>
+#include <nvrhi/core/Foundation.h>
 #include <type_traits>
 #include <string>
 
@@ -279,74 +279,74 @@ struct GraphicsInteropKeyedMutexSignalParams {
     uint32_t key;
 };
 
-DONUT_IID(IDeviceChild, "e5d716fa-453f-46a5-af4e-51372e1fdb12")
-struct IDeviceChild : IObject {
-    DONUT_DECLARE_UUID_TRAITS(IDeviceChild)
+NVRHI_IID(IDeviceChild, "e5d716fa-453f-46a5-af4e-51372e1fdb12")
+struct IDeviceChild : nvrhi::IObject {
+    NVRHI_DECLARE_UUID_TRAITS(IDeviceChild)
     virtual IDevice *getDevice() = 0;
 };
 
-DONUT_IID(IMessageCallback, "108dbcec-9e8d-41a9-bffc-209fe1ca4f0e")
-struct IMessageCallback : public IObject {
-    DONUT_DECLARE_UUID_TRAITS(IMessageCallback)
+NVRHI_IID(IMessageCallback, "108dbcec-9e8d-41a9-bffc-209fe1ca4f0e")
+struct IMessageCallback : public nvrhi::IObject {
+    NVRHI_DECLARE_UUID_TRAITS(IMessageCallback)
     virtual void message(MessageSeverity severity, const char *desc) = 0;
 };
 
-DONUT_IID(IResource, "5ee1ef37-acc1-4c58-9b3b-8dffac082510")
+NVRHI_IID(IResource, "5ee1ef37-acc1-4c58-9b3b-8dffac082510")
 struct IResource : IDeviceChild {
-    DONUT_DECLARE_UUID_TRAITS(IResource)
+    NVRHI_DECLARE_UUID_TRAITS(IResource)
 };
 
-DONUT_IID(IBuffer, "2e646679-f443-44f6-9cd8-175ffcd8a2c5")
+NVRHI_IID(IBuffer, "2e646679-f443-44f6-9cd8-175ffcd8a2c5")
 struct IBuffer : public IResource {
-    DONUT_DECLARE_UUID_TRAITS(IBuffer)
+    NVRHI_DECLARE_UUID_TRAITS(IBuffer)
     virtual const BufferDesc *getDesc() = 0;
     virtual NativeHandle getNativeHandle() = 0;
 };
 
-DONUT_IID(ITexture, "7d6e963e-c33c-4d71-b919-974e6e1115d0")
+NVRHI_IID(ITexture, "7d6e963e-c33c-4d71-b919-974e6e1115d0")
 struct ITexture : IResource {
-    DONUT_DECLARE_UUID_TRAITS(ITexture)
+    NVRHI_DECLARE_UUID_TRAITS(ITexture)
     virtual const TextureDesc *getDesc() = 0;
     virtual NativeHandle getMemoryHandle() = 0;
     virtual NativeHandle getNativeHandle() = 0;
     virtual NativeHandle getUnorderedAccessHandle(uint32_t mipIndex) = 0;
 };
 
-DONUT_IID(IModule, "b9481856-1acf-46f6-9b9d-96aa441c8b76")
+NVRHI_IID(IModule, "b9481856-1acf-46f6-9b9d-96aa441c8b76")
 struct IModule : public IDeviceChild {
-    DONUT_DECLARE_UUID_TRAITS(IModule)
-    virtual FRESULT getKernel(const char *sysName, IKernel **ppKernel) = 0;
+    NVRHI_DECLARE_UUID_TRAITS(IModule)
+    virtual nvrhi::FRESULT getKernel(const char *sysName, IKernel **ppKernel) = 0;
 };
 
-DONUT_IID(IKernel, "3a6fe398-bbc2-4379-9330-c231fbe2d581")
+NVRHI_IID(IKernel, "3a6fe398-bbc2-4379-9330-c231fbe2d581")
 struct IKernel : public IDeviceChild {
-    DONUT_DECLARE_UUID_TRAITS(IKernel)
+    NVRHI_DECLARE_UUID_TRAITS(IKernel)
     virtual IModule *getModule() = 0;
     virtual const char *getName() = 0;
 };
 
-DONUT_IID(IGraphicsInteropSemaphore, "7ea89eb4-3c02-4cd4-a1b4-f20bd5b336e1")
+NVRHI_IID(IGraphicsInteropSemaphore, "7ea89eb4-3c02-4cd4-a1b4-f20bd5b336e1")
 struct IGraphicsInteropSemaphore : IDeviceChild {
-    DONUT_DECLARE_UUID_TRAITS(IGraphicsInteropSemaphore)
+    NVRHI_DECLARE_UUID_TRAITS(IGraphicsInteropSemaphore)
 };
 
-DONUT_IID(IGraphicsInteropKeyedMutex, "617d7adb-071b-41c4-ba88-39fb7b57dbfc")
+NVRHI_IID(IGraphicsInteropKeyedMutex, "617d7adb-071b-41c4-ba88-39fb7b57dbfc")
 struct IGraphicsInteropKeyedMutex : IDeviceChild {
-    DONUT_DECLARE_UUID_TRAITS(IGraphicsInteropKeyedMutex)
+    NVRHI_DECLARE_UUID_TRAITS(IGraphicsInteropKeyedMutex)
 };
 
-DONUT_IID(IDeviceQueue, "73d1f44b-ad4e-44bc-b4ce-4879c1e62bac")
+NVRHI_IID(IDeviceQueue, "73d1f44b-ad4e-44bc-b4ce-4879c1e62bac")
 struct IDeviceQueue : public IDeviceChild {
-    DONUT_DECLARE_UUID_TRAITS(IDeviceQueue)
-    virtual FRESULT setConstantBuffer(IKernel *pKernel, const char *symName, void *data,
+    NVRHI_DECLARE_UUID_TRAITS(IDeviceQueue)
+    virtual nvrhi::FRESULT setConstantBuffer(IKernel *pKernel, const char *symName, void *data,
                                 size_t dataSize) = 0;
-    virtual FRESULT setConstantBuffer2(IKernel *pKernel, const char *symName, IBuffer *pBuffer, uint64_t
+    virtual nvrhi::FRESULT setConstantBuffer2(IKernel *pKernel, const char *symName, IBuffer *pBuffer, uint64_t
     offset) = 0;
-    virtual FRESULT launch(IKernel *pKernel, const dim3 &gridDim, const dim3 &blockDim,
+    virtual nvrhi::FRESULT launch(IKernel *pKernel, const dim3 &gridDim, const dim3 &blockDim,
                            const KernelArg *args, size_t argc) = 0;
 
     // synchronize
-    virtual FRESULT synchronizeQueue(IDeviceQueue *otherQueue) = 0;
+    virtual nvrhi::FRESULT synchronizeQueue(IDeviceQueue *otherQueue) = 0;
 
     // NOTE(migration): the pure-virtual signal(uint64_t)/wait(uint64_t) pair that
     // used to be declared here was never implemented or called anywhere, and only
@@ -354,50 +354,50 @@ struct IDeviceQueue : public IDeviceChild {
     // waitForQueue()/waitForIdle(), or the interop-semaphore calls instead.
 
     // memory operations
-    virtual FRESULT clearBufferUint(IBuffer *buffer, uint32_t clearValue) = 0;
-    virtual FRESULT writeBuffer(IBuffer *buffer, const void *data, uint64_t bytes,
+    virtual nvrhi::FRESULT clearBufferUint(IBuffer *buffer, uint32_t clearValue) = 0;
+    virtual nvrhi::FRESULT writeBuffer(IBuffer *buffer, const void *data, uint64_t bytes,
                                 uint64_t destOffsetBytes) = 0;
     // for dataSizeInBytes which is 0, copy source buffer to its end
-    virtual FRESULT copyBufferRegion(IBuffer *dest, uint64_t destOffsetBytes, IBuffer *src,
+    virtual nvrhi::FRESULT copyBufferRegion(IBuffer *dest, uint64_t destOffsetBytes, IBuffer *src,
                                      uint64_t srcOffsetBytes, uint64_t dataSizeBytes) = 0;
 
-    virtual FRESULT copyResource(IResource *src, IResource *dst) = 0;
+    virtual nvrhi::FRESULT copyResource(IResource *src, IResource *dst) = 0;
 
-    virtual FRESULT copyTextureRegion(const TextureCopyLocation &dst, uint32_t dstX,
+    virtual nvrhi::FRESULT copyTextureRegion(const TextureCopyLocation &dst, uint32_t dstX,
                                       uint32_t dstY, uint32_t dstZ,
                                         const TextureCopyLocation &src, /*optional*/ const GPBox *srcBox) = 0;
 
-    virtual FRESULT writeTextureRegion(IResource *dstResource, uint32_t dstSubresource, const void *srcData,
+    virtual nvrhi::FRESULT writeTextureRegion(IResource *dstResource, uint32_t dstSubresource, const void *srcData,
                                        const SubresourceFootprint &footprint, uint32_t dstX,
                                        uint32_t dstY, uint32_t dstZ,
                                        /* opt */ const GPBox *srcBox) = 0;
 
-    virtual FRESULT acquireInteropKeyedMutexes(
+    virtual nvrhi::FRESULT acquireInteropKeyedMutexes(
         const GraphicsInteropKeyedMutexWaitParams *waitParamsArray,
         uint32_t numParamsArray) = 0;
-    virtual FRESULT releaseInteropKeyedMutexes(
+    virtual nvrhi::FRESULT releaseInteropKeyedMutexes(
         const GraphicsInteropKeyedMutexSignalParams *signalParamsArray,
         uint32_t numParamsArray) = 0;
 
-    virtual FRESULT signalInteropSemaphore(IGraphicsInteropSemaphore *semaphore, uint64_t value) = 0;
-    virtual FRESULT waitInteropSemaphoreAsync(IGraphicsInteropSemaphore *semaphore, uint64_t value) = 0;
+    virtual nvrhi::FRESULT signalInteropSemaphore(IGraphicsInteropSemaphore *semaphore, uint64_t value) = 0;
+    virtual nvrhi::FRESULT waitInteropSemaphoreAsync(IGraphicsInteropSemaphore *semaphore, uint64_t value) = 0;
 };
 
-DONUT_IID(IDevice, "f538e077-4cb4-4878-8135-6e4bd0f1ab95")
-struct IDevice : IObject {
-    DONUT_DECLARE_UUID_TRAITS(IDevice)
-    virtual FRESULT createBuffer(const BufferDesc &desc, IBuffer **buffer) = 0;
+NVRHI_IID(IDevice, "f538e077-4cb4-4878-8135-6e4bd0f1ab95")
+struct IDevice : nvrhi::IObject {
+    NVRHI_DECLARE_UUID_TRAITS(IDevice)
+    virtual nvrhi::FRESULT createBuffer(const BufferDesc &desc, IBuffer **buffer) = 0;
 
-    virtual FRESULT createTexture(const TextureDesc &desc, ITexture **texture) = 0;
+    virtual nvrhi::FRESULT createTexture(const TextureDesc &desc, ITexture **texture) = 0;
 
-    virtual FRESULT createModule(const ModuleDesc &desc, const void *data, size_t dataSize,
+    virtual nvrhi::FRESULT createModule(const ModuleDesc &desc, const void *data, size_t dataSize,
                                  IModule **lib) = 0;
 
-    virtual FRESULT createDeviceQueue(const DeviceQueueDesc &desc,
+    virtual nvrhi::FRESULT createDeviceQueue(const DeviceQueueDesc &desc,
                                       IDeviceQueue **queue) = 0;
 
     virtual void commitQueue(IDeviceQueue *queue) = 0;
-    virtual FRESULT waitForQueue(IDeviceQueue *queue) = 0;
+    virtual nvrhi::FRESULT waitForQueue(IDeviceQueue *queue) = 0;
     virtual void waitForIdle() = 0;
 
     // NOTE(migration): the pure-virtual signal(uint64_t)/wait(uint64_t) pair that
@@ -406,43 +406,43 @@ struct IDevice : IObject {
     // waitForQueue()/waitForIdle(), or the interop-semaphore calls instead.
 
     // Only readback the buffer which has BufferDesc::isStaging set
-    virtual FRESULT mapBuffer(IBuffer *buffer, void **data) = 0;
+    virtual nvrhi::FRESULT mapBuffer(IBuffer *buffer, void **data) = 0;
     virtual void unmapBuffer(IBuffer *buffer) = 0;
 
     // Graphics resource interoperation
-    virtual FRESULT createInteropD3D11Buffer(ID3D11Resource *d3d11Buffer,
+    virtual nvrhi::FRESULT createInteropD3D11Buffer(ID3D11Resource *d3d11Buffer,
                                              uint64_t mappedOffset, uint64_t mappedSize,
                                              IBuffer **buffer) = 0;
 
-    virtual FRESULT createInteropD3D12Buffer(ID3D12Resource *d3d12Buffer,
+    virtual nvrhi::FRESULT createInteropD3D12Buffer(ID3D12Resource *d3d12Buffer,
                                              uint64_t mappedOffset, uint64_t mappedSize,
                                              IBuffer **buffer) = 0;
 
-    virtual FRESULT createInteropVulkanBuffer(void *vkBuffer, void *vkMemory, void *vkDevice, uint64_t mappedOffset,
+    virtual nvrhi::FRESULT createInteropVulkanBuffer(void *vkBuffer, void *vkMemory, void *vkDevice, uint64_t mappedOffset,
                                               uint64_t mappedSize, IBuffer **buffer) = 0;
 
     /**
      * @note: for now, all texture mipmaps will be mapped for interoperation
      * so @p baseMipLevel and @p numMipLevels is reserved and should be 0
      */
-    virtual FRESULT createInteropD3D11Texture(ID3D11Resource *d3d11Texture, ITexture **texture)
+    virtual nvrhi::FRESULT createInteropD3D11Texture(ID3D11Resource *d3d11Texture, ITexture **texture)
                                               = 0;
 
     /**
      * @note: for now, all texture mipmaps will be mapped for interoperation
      * so @p baseMipLevel and @p numMipLevels is reserved and should be 0
      */
-    virtual FRESULT createInteropD3D12Texture(ID3D12Resource *d3d12Texture, ITexture **texture)
+    virtual nvrhi::FRESULT createInteropD3D12Texture(ID3D12Resource *d3d12Texture, ITexture **texture)
                                               = 0;
 
-    virtual FRESULT createInteropVulkanTexture(void *vkImage, void *vkMemory, void *vkDevice,
+    virtual nvrhi::FRESULT createInteropVulkanTexture(void *vkImage, void *vkMemory, void *vkDevice,
                                                const TextureDesc &textureDesc,
                                                ITexture **texture) = 0;
 
-    virtual FRESULT createInteropD3D11Fence(ID3D11Fence *d3d11Fence, IGraphicsInteropSemaphore **semaphore) = 0;
-    virtual FRESULT createInteropD3D12Fence(ID3D12Fence *d3d12Fence,
+    virtual nvrhi::FRESULT createInteropD3D11Fence(ID3D11Fence *d3d11Fence, IGraphicsInteropSemaphore **semaphore) = 0;
+    virtual nvrhi::FRESULT createInteropD3D12Fence(ID3D12Fence *d3d12Fence,
                                             IGraphicsInteropSemaphore **semaphore) = 0;
-    virtual FRESULT createInteropVulkanSemaphore(void *vkSemaphore, void *vkDevice,
+    virtual nvrhi::FRESULT createInteropVulkanSemaphore(void *vkSemaphore, void *vkDevice,
                                                  IGraphicsInteropSemaphore **semaphore) = 0;
 };
 

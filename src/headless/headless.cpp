@@ -158,7 +158,7 @@ int main(int argc, const char** argv)
 #endif
 
     nvrhi::GraphicsAPI api = app::GetGraphicsAPIFromCommandLine(argc, argv);
-    auto deviceManager = TakeOver(app::DeviceManager::Create(api));
+    auto deviceManager = nvrhi::TakeOver(app::DeviceManager::Create(api));
 
     app::DeviceCreationParameters deviceParams;
 #ifdef _DEBUG

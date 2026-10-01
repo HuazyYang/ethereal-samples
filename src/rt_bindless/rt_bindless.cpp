@@ -44,7 +44,7 @@ static const char* g_WindowTitle = "Donut Example: Bindless Ray Tracing";
 class BindlessRayTracing : public app::ApplicationBase
 {
 private:
-	AutoPtr<vfs::RootFileSystem> m_RootFS;
+	nvrhi::AutoPtr<vfs::RootFileSystem> m_RootFS;
 
     nvrhi::ShaderLibraryHandle m_ShaderLibrary;
     nvrhi::rt::PipelineHandle m_RayPipeline;
@@ -60,13 +60,13 @@ private:
 
     nvrhi::BufferHandle m_ConstantBuffer;
 
-    AutoPtr<engine::ShaderFactory> m_ShaderFactory;
-    AutoPtr<engine::DescriptorTableManager> m_DescriptorTable;
-    AutoPtr<engine::Scene> m_Scene;
+    nvrhi::AutoPtr<engine::ShaderFactory> m_ShaderFactory;
+    nvrhi::AutoPtr<engine::DescriptorTableManager> m_DescriptorTable;
+    nvrhi::AutoPtr<engine::Scene> m_Scene;
     nvrhi::TextureHandle m_ColorBuffer;
     app::FirstPersonCamera m_Camera;
     engine::PlanarView m_View;
-    AutoPtr<engine::DirectionalLight> m_SunLight;
+    nvrhi::AutoPtr<engine::DirectionalLight> m_SunLight;
     std::unique_ptr<engine::BindingCache> m_BindingCache;
 
     bool m_EnableAnimations = true;
@@ -162,7 +162,7 @@ public:
 
     bool LoadScene(vfs::IFileSystem* fs, const std::filesystem::path& sceneFileName) override 
     {
-        AutoPtr<engine::Scene> scene = MAKE_RC_OBJ_PTR(engine::Scene, GetDevice(),
+        nvrhi::AutoPtr<engine::Scene> scene = MAKE_RC_OBJ_PTR(engine::Scene, GetDevice(),
             m_ShaderFactory, fs, m_TextureCache, m_DescriptorTable, nullptr);
 
         if (scene->Load(sceneFileName))
@@ -502,7 +502,7 @@ int main(int __argc, const char** __argv)
 #endif
 {
     nvrhi::GraphicsAPI api = app::GetGraphicsAPIFromCommandLine(__argc, __argv);
-    auto deviceManager = TakeOver(app::DeviceManager::Create(api));
+    auto deviceManager = nvrhi::TakeOver(app::DeviceManager::Create(api));
 
     app::DeviceCreationParameters deviceParams;
     deviceParams.enableRayTracingExtensions = true;

@@ -93,7 +93,7 @@ class VXGISample : public donut::app::ApplicationBase {
 
         m_CommonPasses = MAKE_RC_OBJ_PTR(donut::engine::CommonRenderPasses, GetDevice(),
                                          m_ShaderFactory);
-        m_BindingCache = donut::MakeMono<donut::engine::BindingCache>(GetDevice());
+        m_BindingCache = nvrhi::MakeMono<donut::engine::BindingCache>(GetDevice());
 
         auto nativeFS = MAKE_RC_OBJ_PTR(donut::vfs::NativeFileSystem);
         m_TextureCache =
@@ -116,7 +116,7 @@ class VXGISample : public donut::app::ApplicationBase {
         m_OpaqueDrawStrategy = MAKE_RC_OBJ_PTR(donut::render::InstancedOpaqueDrawStrategy);
         m_TransparentDrawStrategy = MAKE_RC_OBJ_PTR(donut::render::TransparentDrawStrategy);
 
-        m_RenderTargets = donut::MakeMono<SampleRenderTargets>(GetDevice());
+        m_RenderTargets = nvrhi::MakeMono<SampleRenderTargets>(GetDevice());
 
         {
             donut::render::GBufferFillPass::CreateParameters gbufferParams;
@@ -196,7 +196,7 @@ class VXGISample : public donut::app::ApplicationBase {
         bool ret = m_RenderTargets->Init({width, height});
         m_BindingCache->Clear();
         m_DeferredLightingPass->ResetBindingCache();
-        DONUT_ASSERT(ret);
+        NVRHI_ASSERT(ret);
     }
 
     void Animate(float fElapsedTimeInSeconds)  override {
@@ -446,12 +446,12 @@ class VXGISample : public donut::app::ApplicationBase {
     }
 
  private:
-    donut::AutoPtr<donut::vfs::RootFileSystem> m_RootFS;
-    donut::AutoPtr<donut::engine::ShaderFactory> m_ShaderFactory;
+    nvrhi::AutoPtr<donut::vfs::RootFileSystem> m_RootFS;
+    nvrhi::AutoPtr<donut::engine::ShaderFactory> m_ShaderFactory;
 
-    donut::MonoPtr<donut::engine::BindingCache> m_BindingCache;
-    donut::AutoPtr<donut::engine::Scene> m_Scene;
-    donut::AutoPtr<donut::engine::DirectionalLight> m_SunLight;
+    nvrhi::MonoPtr<donut::engine::BindingCache> m_BindingCache;
+    nvrhi::AutoPtr<donut::engine::Scene> m_Scene;
+    nvrhi::AutoPtr<donut::engine::DirectionalLight> m_SunLight;
 
     donut::engine::PlanarView m_View;
     donut::app::FirstPersonCamera m_Camera;
@@ -459,18 +459,18 @@ class VXGISample : public donut::app::ApplicationBase {
 
     nvrhi::CommandListHandle m_CommandList;
 
-    donut::MonoPtr<SampleRenderTargets> m_RenderTargets;
-    donut::AutoPtr<donut::render::InstancedOpaqueDrawStrategy> m_OpaqueDrawStrategy;
-    donut::AutoPtr<donut::render::TransparentDrawStrategy> m_TransparentDrawStrategy;
-    donut::AutoPtr<donut::render::PlanarShadowMap> m_ShadowMap;
-    donut::AutoPtr<donut::render::DepthPass> m_ShadowDepthPass;
-    donut::AutoPtr<SampleGBufferFillPass> m_GBufferFillPass;
-    donut::AutoPtr<SampleDeferredLightingPass> m_DeferredLightingPass;
+    nvrhi::MonoPtr<SampleRenderTargets> m_RenderTargets;
+    nvrhi::AutoPtr<donut::render::InstancedOpaqueDrawStrategy> m_OpaqueDrawStrategy;
+    nvrhi::AutoPtr<donut::render::TransparentDrawStrategy> m_TransparentDrawStrategy;
+    nvrhi::AutoPtr<donut::render::PlanarShadowMap> m_ShadowMap;
+    nvrhi::AutoPtr<donut::render::DepthPass> m_ShadowDepthPass;
+    nvrhi::AutoPtr<SampleGBufferFillPass> m_GBufferFillPass;
+    nvrhi::AutoPtr<SampleDeferredLightingPass> m_DeferredLightingPass;
 
     // VXGI objects
     vxgi::VoxelizationView m_VoxelizationView;
-    donut::AutoPtr<vxgi::VoxelizationInstancedDrawStrategy> m_VoxelDrawStrategy;
-    donut::AutoPtr<vxgi::VoxelShadingPass> m_VoxelizationPass;
+    nvrhi::AutoPtr<vxgi::VoxelizationInstancedDrawStrategy> m_VoxelDrawStrategy;
+    nvrhi::AutoPtr<vxgi::VoxelShadingPass> m_VoxelizationPass;
 
     dm::frustum m_PrevSunLightFrusta;
 
@@ -679,7 +679,7 @@ int main(int __argc, const char **__argv)
     donut::log::EnableOutputToDebug(true);
 
     nvrhi::GraphicsAPI api = donut::app::GetGraphicsAPIFromCommandLine(__argc, __argv);
-    auto deviceManager = TakeOver(donut::app::DeviceManager::Create(api));
+    auto deviceManager = nvrhi::TakeOver(donut::app::DeviceManager::Create(api));
 
     donut::app::GetDirectoryWithExecutable();
 

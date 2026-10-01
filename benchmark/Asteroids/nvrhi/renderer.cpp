@@ -217,8 +217,8 @@ bool AsteroidsRenderer::Init(donut::engine::ShaderFactory& shaderFactory, const 
     {
         const std::filesystem::path path = mediaDirectory / "starbox_1024.dds";
         auto nativeFS = MAKE_RC_OBJ_PTR(donut::vfs::NativeFileSystem);
-        donut::AutoPtr<donut::IDataBlob> blob;
-        if (FFAILED(nativeFS->readFile(path, &blob)) || !blob)
+        nvrhi::AutoPtr<nvrhi::IDataBlob> blob;
+        if (NVRHI_FAILED(nativeFS->readFile(path, &blob)) || !blob)
         {
             donut::log::error("cannot read %s", path.generic_string().c_str());
             return false;

@@ -3,7 +3,7 @@
 #include "VXGIIntTypes.h"
 #include <vector>
 #include <nvrhi/nvrhi.h>
-#include <donut/core/object/AutoPtr.h>
+#include <nvrhi/core/AutoPtr.h>
 
 namespace donut::engine {
 class ShaderFactory;
@@ -115,7 +115,7 @@ struct AllocationMap {
     nvrhi::ShaderHandle m_VoxelizeDebugPS;
     nvrhi::GraphicsPipelineHandle m_VoxelizeDebugPSO;
 
-    donut::MonoPtr<donut::engine::BindingCache> m_BindingCache;
+    nvrhi::MonoPtr<donut::engine::BindingCache> m_BindingCache;
     nvrhi::BindingSetHandle m_RasterizeInvalidateRegionsBindingSet;
     nvrhi::BindingSetHandle m_InvalidateRegionsBindingSet;
     nvrhi::BindingSetHandle m_DilateEmissivePagesBindingSet;

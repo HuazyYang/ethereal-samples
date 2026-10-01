@@ -323,13 +323,13 @@ Status ViewTracer::LoadTracingShaders(int sparsity, bool gbufferMSAA) {
         DiffuseTracingPS_Macros.push_back(MSAA_G_Buffer_Macro);
         m_pDiffuseTracingPS = m_ShaderFactory->CreateShader("app/ConeTracing/DiffuseTracingPS.hlsl", "main",
                                                             &DiffuseTracingPS_Macros, nvrhi::ShaderType::Pixel);
-        DONUT_ASSERT(m_pDiffuseTracingPS);
+        NVRHI_ASSERT(m_pDiffuseTracingPS);
 
         DiffuseTracingPS_Macros[2].definition = "1";
         m_pDiffuseTracingDebugPS =
             m_ShaderFactory->CreateShader("app/ConeTracing/DiffuseTracingPS.hlsl", "main",
                                           &DiffuseTracingPS_Macros, nvrhi::ShaderType::Pixel);
-        DONUT_ASSERT(m_pDiffuseTracingDebugPS);
+        NVRHI_ASSERT(m_pDiffuseTracingDebugPS);
 
         if (m_PreviousTracingShaderSparsity > 1) {
             nvrhi::GraphicsPipelineDesc psoDesc;
@@ -338,14 +338,14 @@ Status ViewTracer::LoadTracingShaders(int sparsity, bool gbufferMSAA) {
 
             auto pRefinementGridVS = m_ShaderFactory->CreateShader("app/ConeTracing/RefinementGridVS.hlsl",
                                                                    "main", nullptr, nvrhi::ShaderType::Vertex);
-            DONUT_ASSERT(pRefinementGridVS);
+            NVRHI_ASSERT(pRefinementGridVS);
 
             psoDesc.primType = nvrhi::PrimitiveType::TriangleList;
             psoDesc.VS = pRefinementGridVS;
 
             ps = m_ShaderFactory->CreateShader("app/ConeTracing/CopyToStencilPS.hlsl", "main", nullptr,
                                                nvrhi::ShaderType::Pixel);
-            DONUT_ASSERT(ps);
+            NVRHI_ASSERT(ps);
             psoDesc.PS = ps;
             psoDesc.bindingLayouts = {m_GraphicsBindingLayout};
 
@@ -363,13 +363,13 @@ Status ViewTracer::LoadTracingShaders(int sparsity, bool gbufferMSAA) {
             fbInfo.setDepthFormat(m_AvailableDSFormat);
 
             m_pCopyToStencilPS = m_Device->createGraphicsPipeline(psoDesc, fbInfo);
-            DONUT_ASSERT(m_pCopyToStencilPS);
+            NVRHI_ASSERT(m_pCopyToStencilPS);
 
             DiffuseTracingPS_Macros[1].definition = "0";
             DiffuseTracingPS_Macros[2].definition = "0";
             ps = m_ShaderFactory->CreateShader("app/ConeTracing/DiffuseTracingPS.hlsl", "main",
                                                &DiffuseTracingPS_Macros, nvrhi::ShaderType::Pixel);
-            DONUT_ASSERT(ps);
+            NVRHI_ASSERT(ps);
             psoDesc.PS = ps;
             psoDesc.bindingLayouts = {m_GraphicsBindingLayout, TracingBindingLayout};
 
@@ -385,7 +385,7 @@ Status ViewTracer::LoadTracingShaders(int sparsity, bool gbufferMSAA) {
             fbInfo.setDepthFormat(m_AvailableDSFormat);
 
             m_pDiffuseTracingRefinePS = m_Device->createGraphicsPipeline(psoDesc, fbInfo);
-            DONUT_ASSERT(m_pDiffuseTracingRefinePS);
+            NVRHI_ASSERT(m_pDiffuseTracingRefinePS);
         }
     }
 
@@ -406,32 +406,32 @@ Status ViewTracer::LoadTracingShaders(int sparsity, bool gbufferMSAA) {
 
         auto ps = m_ShaderFactory->CreateShader("app/ConeTracing/SpecularTracingPS.hlsl", "main",
                                                 &SpecularTracingPS_Macros, nvrhi::ShaderType::Pixel);
-        DONUT_ASSERT(ps);
+        NVRHI_ASSERT(ps);
         psoDesc.PS = ps;
         psoDesc.bindingLayouts = {m_GraphicsBindingLayout, TracingBindingLayout};
         fbInfo.addColorFormat(nvrhi::Format::RGBA16_FLOAT);
         m_SpecularTracingPSOs[0] = m_Device->createGraphicsPipeline(psoDesc, fbInfo);
-        DONUT_ASSERT(m_SpecularTracingPSOs[0]);
+        NVRHI_ASSERT(m_SpecularTracingPSOs[0]);
 
         SpecularTracingPS_Macros[1].definition = "1";
         ps = m_ShaderFactory->CreateShader("app/ConeTracing/SpecularTracingPS.hlsl", "main",
                                            &SpecularTracingPS_Macros, nvrhi::ShaderType::Pixel);
-        DONUT_ASSERT(ps);
+        NVRHI_ASSERT(ps);
         psoDesc.PS = ps;
         psoDesc.bindingLayouts = {m_GraphicsBindingLayoutDebug, TracingBindingLayout};
         m_SpecularTracingPSOs[1] = m_Device->createGraphicsPipeline(psoDesc, fbInfo);
-        DONUT_ASSERT(m_SpecularTracingPSOs[1]);
+        NVRHI_ASSERT(m_SpecularTracingPSOs[1]);
 
         std::vector<donut::engine::ShaderMacro> FilterSpecularCS_Macros{MSAA_G_Buffer_Macro};
         cs = m_ShaderFactory->CreateShader("app/ConeTracing/SpecularFilteringCS.hlsl", "main",
                                            &FilterSpecularCS_Macros, nvrhi::ShaderType::Compute);
-        DONUT_ASSERT(cs);
+        NVRHI_ASSERT(cs);
         csoDesc.CS = cs;
 
         csoDesc.bindingLayouts = {m_ComputeBindingLayout, TracingBindingLayout};
 
         m_pFilterSpecularCS = m_Device->createComputePipeline(csoDesc);
-        DONUT_ASSERT(m_pFilterSpecularCS);
+        NVRHI_ASSERT(m_pFilterSpecularCS);
     }
 
     if (m_PreviousTracingShaderSparsity > 1) {
@@ -442,11 +442,11 @@ Status ViewTracer::LoadTracingShaders(int sparsity, bool gbufferMSAA) {
                                             std::to_string(m_PreviousTracingShaderSparsity));
         cs = m_ShaderFactory->CreateShader("app/ConeTracing/DiffuseInterpolationCS.hlsl", "main",
                                            &InterpolationPS_Macros, nvrhi::ShaderType::Compute);
-        DONUT_ASSERT(cs);
+        NVRHI_ASSERT(cs);
         csoDesc.CS = cs;
         csoDesc.bindingLayouts = {m_ComputeBindingLayout, TracingBindingLayout};
         m_pInterpolateIlluminationCS = m_Device->createComputePipeline(csoDesc);
-        DONUT_ASSERT(m_pInterpolateIlluminationCS);
+        NVRHI_ASSERT(m_pInterpolateIlluminationCS);
     }
 
     if (m_PreviousTracingShaderSparsity > 1) {
@@ -456,11 +456,11 @@ Status ViewTracer::LoadTracingShaders(int sparsity, bool gbufferMSAA) {
 
         cs = m_ShaderFactory->CreateShader("app/ConeTracing/DiffuseFilteringCS.hlsl", "main",
                                            &InterpolateCoarseCS_Macros, nvrhi::ShaderType::Compute);
-        DONUT_ASSERT(cs);
+        NVRHI_ASSERT(cs);
         csoDesc.CS = cs;
         csoDesc.bindingLayouts = {m_ComputeBindingLayout, TracingBindingLayout};
         m_pInterpolateCoarseCS = m_Device->createComputePipeline(csoDesc);
-        DONUT_ASSERT(m_pInterpolateCoarseCS);
+        NVRHI_ASSERT(m_pInterpolateCoarseCS);
     }
 
     if (!m_AmbientOcclusionMode) {
@@ -472,12 +472,12 @@ Status ViewTracer::LoadTracingShaders(int sparsity, bool gbufferMSAA) {
 
         m_pTracerVisionPS = m_ShaderFactory->CreateShader("app/ConeTracing/TracerVisionPS.hlsl", "main",
                                                           &TraceVisionPS_Macros, nvrhi::ShaderType::Pixel);
-        DONUT_ASSERT(m_pTracerVisionPS);
+        NVRHI_ASSERT(m_pTracerVisionPS);
 
         TraceVisionPS_Macros[1].definition = "1";
         m_pTracerVisionDebugPS = m_ShaderFactory->CreateShader("app/ConeTracing/TracerVisionPS.hlsl", "main",
                                                                &TraceVisionPS_Macros, nvrhi::ShaderType::Pixel);
-        DONUT_ASSERT(m_pTracerVisionDebugPS);
+        NVRHI_ASSERT(m_pTracerVisionDebugPS);
     }
 
     {
@@ -485,21 +485,21 @@ Status ViewTracer::LoadTracingShaders(int sparsity, bool gbufferMSAA) {
 
         cs = m_ShaderFactory->CreateShader("app/ConeTracing/ComputeScreenSpaceOcclusionCS.hlsl", "main",
                                            &GBuffer_Macros, nvrhi::ShaderType::Compute);
-        DONUT_ASSERT(cs);
+        NVRHI_ASSERT(cs);
         csoDesc.CS = cs;
         csoDesc.bindingLayouts = {m_ComputeBindingLayout};
         m_pComputeScreenSpaceOcclusionCS = m_Device->createComputePipeline(csoDesc);
 
         cs = m_ShaderFactory->CreateShader("app/ConeTracing/DeinterleaveDepthCS.hlsl", "main", &GBuffer_Macros,
                                            nvrhi::ShaderType::Compute);
-        DONUT_ASSERT(cs);
+        NVRHI_ASSERT(cs);
         csoDesc.CS = cs;
         csoDesc.bindingLayouts = {m_ComputeBindingLayout};
         m_pDeinterleaveDepthCS = m_Device->createComputePipeline(csoDesc);
 
         cs = m_ShaderFactory->CreateShader("app/ConeTracing/BlurScreenSpaceOcclusionCS.hlsl", "main", nullptr,
                                            nvrhi::ShaderType::Compute);
-        DONUT_ASSERT(cs);
+        NVRHI_ASSERT(cs);
         csoDesc.CS = cs;
         csoDesc.bindingLayouts = {m_ComputeBindingLayout};
         m_pBlurScreenSpaceOcclusionCS = m_Device->createComputePipeline(csoDesc);
@@ -687,8 +687,8 @@ void ViewTracer::UpdateConeVectors(nvrhi::ICommandList *commandList, uint numCon
             auto sliceRegion = nvrhi::TextureSlice{}.setArraySlice(i);
             auto tilesOfCones = (float4 *)m_Device->mapStagingTexture(tilesOfConesBuffer, sliceRegion,
                                                                       nvrhi::CpuAccessMode::Write, &rowPitch);
-            DONUT_ASSERT(tilesOfCones);
-            DONUT_ASSERT((rowPitch & (sizeof(float4) - 1)) == 0);
+            NVRHI_ASSERT(tilesOfCones);
+            NVRHI_ASSERT((rowPitch & (sizeof(float4) - 1)) == 0);
             int N = rowPitch / sizeof(float4);
 
             float4 basicCone = randomizedConeVectors[0][i];
@@ -1210,7 +1210,7 @@ Status ViewTracer::computeDiffuseChannel(nvrhi::ICommandList *commandList,
             }
 
             pso = m_Device->createGraphicsPipeline(psoDesc, fbInfo);
-            DONUT_ASSERT(pso);
+            NVRHI_ASSERT(pso);
             if (!pso)
                 return Status::RESOURCE_CREATION_FAILED;
         }
@@ -1676,7 +1676,7 @@ Status ViewTracer::renderSamplesDebug(nvrhi::ICommandList *commandList, nvrhi::I
         fbDesc.addColorAttachment(destinationTexture);
         fbDesc.depthAttachment = {destinationDepth};
         InvalidateFramebuffer(m_Device, fbDesc, m_DebugFramebuffer.GetAddressOf());
-        DONUT_ASSERT(m_DebugFramebuffer);
+        NVRHI_ASSERT(m_DebugFramebuffer);
     }
     auto fbInfo = m_DebugFramebuffer->getFramebufferInfo();
 
@@ -1792,7 +1792,7 @@ Status ViewTracer::renderTracerVision(nvrhi::ICommandList *commandList, const Tr
         nvrhi::FramebufferDesc fbDesc;
         fbDesc.addColorAttachment(destinationTexture);
         InvalidateFramebuffer(m_Device, fbDesc, m_TracerVisionFramebuffer.GetAddressOf());
-        DONUT_ASSERT(m_TracerVisionFramebuffer);
+        NVRHI_ASSERT(m_TracerVisionFramebuffer);
     }
 
     state.framebuffer = m_TracerVisionFramebuffer;
@@ -1812,7 +1812,7 @@ Status ViewTracer::renderTracerVision(nvrhi::ICommandList *commandList, const Tr
             psoDesc.PS = m_pTracerVisionDebugPS;
             psoDesc.bindingLayouts = {m_GraphicsBindingLayoutDebug, TracingBindingLayout};
             m_TracerVisionPSOs[1] = m_Device->createGraphicsPipeline(psoDesc, fbInfo);
-            DONUT_ASSERT(m_TracerVisionPSOs[1]);
+            NVRHI_ASSERT(m_TracerVisionPSOs[1]);
         }
         state.pipeline = m_TracerVisionPSOs[1];
     } else {
@@ -1828,7 +1828,7 @@ Status ViewTracer::renderTracerVision(nvrhi::ICommandList *commandList, const Tr
             psoDesc.PS = m_pTracerVisionPS;
             psoDesc.bindingLayouts = {m_GraphicsBindingLayout, TracingBindingLayout};
             m_TracerVisionPSOs[0] = m_Device->createGraphicsPipeline(psoDesc, fbInfo);
-            DONUT_ASSERT(m_TracerVisionPSOs[0]);
+            NVRHI_ASSERT(m_TracerVisionPSOs[0]);
         }
         state.pipeline = m_TracerVisionPSOs[0];
     }

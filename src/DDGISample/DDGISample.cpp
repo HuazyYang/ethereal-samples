@@ -52,23 +52,23 @@ using namespace donut;
 
 class DDGISample : public donut::app::ApplicationBase {
  private:
-    MonoPtr<Config> m_Config;
-    AutoPtr<vfs::RootFileSystem> m_RootFS;
+    nvrhi::MonoPtr<Config> m_Config;
+    nvrhi::AutoPtr<vfs::RootFileSystem> m_RootFS;
     nvrhi::CommandListHandle m_CommandList;
 
-    AutoPtr<engine::ShaderFactory> m_ShaderFactory;
-    AutoPtr<SampleScene> m_Scene;
-    AutoPtr<donut::engine::DescriptorTableManager> m_SceneDescriptorTableManager;
+    nvrhi::AutoPtr<engine::ShaderFactory> m_ShaderFactory;
+    nvrhi::AutoPtr<SampleScene> m_Scene;
+    nvrhi::AutoPtr<donut::engine::DescriptorTableManager> m_SceneDescriptorTableManager;
     app::FirstPersonCamera m_Camera;
     engine::PlanarView m_View;
-    MonoPtr<engine::BindingCache> m_BindingCache;
+    nvrhi::MonoPtr<engine::BindingCache> m_BindingCache;
 
-    MonoPtr<GlobalResources> m_GlobalResources;
-    MonoPtr<PathTracingPass> m_PathTracingPass;
-    MonoPtr<GBufferPass> m_GBufferPass;
-    MonoPtr<DDGIRenderPass> m_DDGIPass;
-    MonoPtr<RTAOPass> m_RTAOPass;
-    MonoPtr<CompositePass> m_CompositePass;
+    nvrhi::MonoPtr<GlobalResources> m_GlobalResources;
+    nvrhi::MonoPtr<PathTracingPass> m_PathTracingPass;
+    nvrhi::MonoPtr<GBufferPass> m_GBufferPass;
+    nvrhi::MonoPtr<DDGIRenderPass> m_DDGIPass;
+    nvrhi::MonoPtr<RTAOPass> m_RTAOPass;
+    nvrhi::MonoPtr<CompositePass> m_CompositePass;
 
     float m_PerspectiveFOV;
     bool m_EnableAnimations = true;
@@ -93,7 +93,7 @@ class DDGISample : public donut::app::ApplicationBase {
         m_RootFS->mount("/shaders/donut", frameworkShaderPath);
         m_RootFS->mount("/shaders/app", appShaderPath);
 
-        m_Config = donut::MakeMono<Config>();
+        m_Config = nvrhi::MakeMono<Config>();
         if (!LoadConfigs(nativeFS, configPath, *m_Config)) {
             donut::log::fatal("Can not load config file '%s'", configPath);
             return false;
@@ -108,20 +108,20 @@ class DDGISample : public donut::app::ApplicationBase {
 
         m_CommonPasses =
             MAKE_RC_OBJ_PTR(engine::CommonRenderPasses, GetDevice(), m_ShaderFactory);
-        m_BindingCache = MakeMono<engine::BindingCache>(GetDevice());
+        m_BindingCache = nvrhi::MakeMono<engine::BindingCache>(GetDevice());
 
         int fbWidth, fbHeight;
         GetDeviceManager()->GetWindowDimensions(fbWidth, fbHeight);
 
-        m_GlobalResources = MakeMono<GlobalResources>();
+        m_GlobalResources = nvrhi::MakeMono<GlobalResources>();
         m_GlobalResources->Initialize(GetDevice(), dm::uint2(fbWidth, fbHeight),
                                       GetDeviceManager()->GetBackBufferCount());
 
-        m_PathTracingPass = MakeMono<PathTracingPass>();
-        m_GBufferPass = MakeMono<GBufferPass>();
-        m_DDGIPass = MakeMono<DDGIRenderPass>();
-        m_RTAOPass = MakeMono<RTAOPass>();
-        m_CompositePass = MakeMono<CompositePass>();
+        m_PathTracingPass = nvrhi::MakeMono<PathTracingPass>();
+        m_GBufferPass = nvrhi::MakeMono<GBufferPass>();
+        m_DDGIPass = nvrhi::MakeMono<DDGIRenderPass>();
+        m_RTAOPass = nvrhi::MakeMono<RTAOPass>();
+        m_CompositePass = nvrhi::MakeMono<CompositePass>();
 
         m_PathTracingPass->Initialize(m_GlobalResources, m_ShaderFactory);
         m_GBufferPass->Initialize(m_GlobalResources, m_ShaderFactory);
@@ -350,7 +350,7 @@ int main(int __argc, const char **__argv)
 #endif
 {
     nvrhi::GraphicsAPI api = app::GetGraphicsAPIFromCommandLine(__argc, __argv);
-    auto deviceManager = TakeOver(app::DeviceManager::Create(api));
+    auto deviceManager = nvrhi::TakeOver(app::DeviceManager::Create(api));
 
     app::DeviceCreationParameters deviceParams;
     deviceParams.enablePerMonitorDPI = true;

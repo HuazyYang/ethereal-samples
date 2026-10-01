@@ -43,7 +43,7 @@ static const char* g_WindowTitle = "Donut Example: Threaded Rendering";
 class ThreadedRendering : public app::ApplicationBase
 {
 private:
-    AutoPtr<vfs::RootFileSystem> m_RootFS;
+    nvrhi::AutoPtr<vfs::RootFileSystem> m_RootFS;
 
     nvrhi::CommandListHandle m_CommandList;
     std::array<nvrhi::CommandListHandle, 6> m_FaceCommandLists;
@@ -53,11 +53,11 @@ private:
     
     nvrhi::TextureHandle m_DepthBuffer;
     nvrhi::TextureHandle m_ColorBuffer;
-    AutoPtr<engine::FramebufferFactory> m_Framebuffer;
+    nvrhi::AutoPtr<engine::FramebufferFactory> m_Framebuffer;
     
-    AutoPtr<render::ForwardShadingPass> m_ForwardShadingPass;
-    AutoPtr<engine::ShaderFactory> m_ShaderFactory;
-    AutoPtr<engine::Scene> m_Scene;
+    nvrhi::AutoPtr<render::ForwardShadingPass> m_ForwardShadingPass;
+    nvrhi::AutoPtr<engine::ShaderFactory> m_ShaderFactory;
+    nvrhi::AutoPtr<engine::Scene> m_Scene;
     std::unique_ptr<engine::BindingCache> m_BindingCache;
 
     app::FirstPersonCamera m_Camera;
@@ -138,7 +138,7 @@ public:
 
     bool LoadScene(vfs::IFileSystem* fs, const std::filesystem::path& sceneFileName) override 
     {
-        AutoPtr<engine::Scene> scene = MAKE_RC_OBJ_PTR(engine::Scene, GetDevice(),
+        nvrhi::AutoPtr<engine::Scene> scene = MAKE_RC_OBJ_PTR(engine::Scene, GetDevice(),
             m_ShaderFactory, fs, m_TextureCache, nullptr, nullptr);
 
         if (scene->LoadWithThreadPool(sceneFileName, m_ThreadPool.get()))
@@ -299,7 +299,7 @@ int main(int __argc, const char** __argv)
         return 1;
     }
 
-    auto deviceManager = TakeOver(app::DeviceManager::Create(api));
+    auto deviceManager = nvrhi::TakeOver(app::DeviceManager::Create(api));
 
     app::DeviceCreationParameters deviceParams;
     deviceParams.backBufferWidth = 1024; // window size matches the layout of the rendered cube faces

@@ -50,13 +50,13 @@ VolRenderer::VolRenderer(donut::gp::IDevice* device, donut::vfs::IFileSystem *vf
 
     // Load device module
     {
-        donut::AutoPtr<donut::IDataBlob> pBlob;
+        nvrhi::AutoPtr<nvrhi::IDataBlob> pBlob;
         UT_V_GP(vfs->readFile("sample_utils/kernels/cuda_gvdb_raycast.ptx", &pBlob));
         size_t len = pBlob->GetSize();
         pBlob->Resize(len + 1);
         ((char *)pBlob->GetDataPtr())[len] = 0;
 
-        AutoPtr<gp::IModule> pModule;
+        nvrhi::AutoPtr<gp::IModule> pModule;
         UT_V_GP(m_device->createModule({}, pBlob->GetDataPtr(), len + 1, &pModule));
 
         UT_V_GP(pModule->getKernel("gvdbRaySurfaceVoxel", &m_voxelKernel));
@@ -303,7 +303,7 @@ void VolRenderer::prepareRender(Camera* pCamera, int w, int h, Camera *pLight) {
 
     // Transfer function
     scnInfo.transfer = m_transferFuncGPU->getNativeHandle();
-    DONUT_ASSERT(scnInfo.transfer != 0);
+    NVRHI_ASSERT(scnInfo.transfer != 0);
 
     scnInfo.outbuf = -1;  // NOT USED
     // Depth buffer

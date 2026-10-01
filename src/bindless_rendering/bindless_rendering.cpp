@@ -46,7 +46,7 @@ static const char* g_WindowTitle = "Donut Example: Bindless Rendering";
 class BindlessRendering : public app::ApplicationBase
 {
 private:
-	AutoPtr<vfs::RootFileSystem> m_RootFS;
+	nvrhi::AutoPtr<vfs::RootFileSystem> m_RootFS;
 
     nvrhi::CommandListHandle m_CommandList;
     nvrhi::BindingLayoutHandle m_BindingLayout;
@@ -58,9 +58,9 @@ private:
 
     nvrhi::BufferHandle m_ViewConstants;
     
-    AutoPtr<engine::ShaderFactory> m_ShaderFactory;
-    AutoPtr<engine::Scene> m_Scene;
-    AutoPtr<engine::DescriptorTableManager> m_DescriptorTableManager;
+    nvrhi::AutoPtr<engine::ShaderFactory> m_ShaderFactory;
+    nvrhi::AutoPtr<engine::Scene> m_Scene;
+    nvrhi::AutoPtr<engine::DescriptorTableManager> m_DescriptorTableManager;
     std::unique_ptr<engine::BindingCache> m_BindingCache;
 
     app::FirstPersonCamera m_Camera;
@@ -131,7 +131,7 @@ public:
 
     bool LoadScene(vfs::IFileSystem* fs, const std::filesystem::path& sceneFileName) override 
     {
-        AutoPtr<engine::Scene> scene = MAKE_RC_OBJ_PTR(engine::Scene, GetDevice(),
+        nvrhi::AutoPtr<engine::Scene> scene = MAKE_RC_OBJ_PTR(engine::Scene, GetDevice(),
             m_ShaderFactory, fs, m_TextureCache, m_DescriptorTableManager, nullptr);
 
         if (scene->Load(sceneFileName))
@@ -248,7 +248,7 @@ int main(int __argc, const char** __argv)
         return 1;
     }
 
-    auto deviceManager = TakeOver(app::DeviceManager::Create(api));
+    auto deviceManager = nvrhi::TakeOver(app::DeviceManager::Create(api));
 
     app::DeviceCreationParameters deviceParams;
     deviceParams.depthBufferFormat = nvrhi::Format::D24S8;

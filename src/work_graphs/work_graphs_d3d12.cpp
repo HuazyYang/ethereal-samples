@@ -76,7 +76,7 @@ struct RenderTargets
     nvrhi::TextureHandle m_LDRBuffer;
     nvrhi::TextureHandle m_GBuffer;
     nvrhi::IFramebuffer* m_FrameBufferGB;
-    AutoPtr<engine::FramebufferFactory> m_GBufferDepth;
+    nvrhi::AutoPtr<engine::FramebufferFactory> m_GBufferDepth;
 
     int2 m_Size;
 
@@ -892,8 +892,8 @@ public:
 class UIRenderer : public ImGuiRenderPass
 {
 private:
-    AutoPtr<donut::vfs::RootFileSystem> m_RootFs;
-	AutoPtr<ShaderFactory> m_ShaderFactory;
+    nvrhi::AutoPtr<donut::vfs::RootFileSystem> m_RootFs;
+	nvrhi::AutoPtr<ShaderFactory> m_ShaderFactory;
 
 	UIData& m_UI;
 
@@ -953,7 +953,7 @@ int main(int __argc, const char** __argv)
         return -1;
     }
 
-    auto deviceManager = TakeOver(app::DeviceManager::Create(api));
+    auto deviceManager = nvrhi::TakeOver(app::DeviceManager::Create(api));
 
     app::DeviceCreationParameters deviceParams;
 #ifdef _DEBUG

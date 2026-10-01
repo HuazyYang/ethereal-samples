@@ -1,6 +1,6 @@
 #include <gvdb/GPDeviceNVRHI.h>
-#include <donut/core/object/Foundation.h>
-#include <donut/core/object/AutoPtr.h>
+#include <nvrhi/core/Foundation.h>
+#include <nvrhi/core/AutoPtr.h>
 #include <d3d11_4.h>
 #include <d3d12.h>
 #include <dxgi1_2.h>
@@ -87,50 +87,50 @@ struct TimelineTransaction {
     uint64_t waitValue;
 };
 
-struct GPAndNVRHIInteropDevice : public ObjectImpl<IGPAndNVRHIInteropDevice> {
-    DONUT_BEGIN_INTERFACE_TABLE_INLINE(GPAndNVRHIInteropDevice)
-    DONUT_IMPLEMENTS_INTERFACE(IGPAndNVRHIInteropDevice)
-    DONUT_IMPLEMENTS_INTERFACE(IObject)
-    DONUT_END_INTERFACE_TABLE()
+struct GPAndNVRHIInteropDevice : public nvrhi::ObjectImpl<IGPAndNVRHIInteropDevice> {
+    NVRHI_BEGIN_INTERFACE_TABLE_INLINE(GPAndNVRHIInteropDevice)
+    NVRHI_IMPLEMENTS_INTERFACE(IGPAndNVRHIInteropDevice)
+    NVRHI_IMPLEMENTS_INTERFACE(nvrhi::IObject)
+    NVRHI_END_INTERFACE_TABLE()
 
     nvrhi::IDevice* getNVRHIDevice() override;
     gp::IDevice* getGPDevice() override;
 
-    FRESULT createGPBuffer(nvrhi::IBuffer* srcBuffer, gp::IBuffer** dstBuffer) override;
-    FRESULT createGPTexture(nvrhi::ITexture* srcTexture,
+    nvrhi::FRESULT createGPBuffer(nvrhi::IBuffer* srcBuffer, gp::IBuffer** dstBuffer) override;
+    nvrhi::FRESULT createGPTexture(nvrhi::ITexture* srcTexture,
                             gp::ITexture** dstTexture) override;
 
-     FRESULT acquireNVRHIBufferKeyedMutex(nvrhi::IBuffer* buffer, uint32_t key,
+     nvrhi::FRESULT acquireNVRHIBufferKeyedMutex(nvrhi::IBuffer* buffer, uint32_t key,
                                                  uint32_t timeoutMS) override;
-     FRESULT releaseNVRHIBufferKeyedMutex(nvrhi::IBuffer* buffer, uint32_t key) override;
+     nvrhi::FRESULT releaseNVRHIBufferKeyedMutex(nvrhi::IBuffer* buffer, uint32_t key) override;
 
-     FRESULT acquireNVRHITextureKeyedMutex(nvrhi::ITexture* texture, uint32_t key,
+     nvrhi::FRESULT acquireNVRHITextureKeyedMutex(nvrhi::ITexture* texture, uint32_t key,
                                                   uint32_t timeoutMS) override;
-     FRESULT releaseNVRHITextureKeyedMutex(nvrhi::ITexture* texture,
+     nvrhi::FRESULT releaseNVRHITextureKeyedMutex(nvrhi::ITexture* texture,
                                                   uint32_t key) override;
 
-     FRESULT acquireGPResourceKeyedMutexes(
+     nvrhi::FRESULT acquireGPResourceKeyedMutexes(
          gp::IDeviceQueue *gpQueue,
         const gp::GraphicsInteropKeyedMutexWaitParams* paramsArray,
         uint32_t numParamsArray) override;
-     FRESULT releaseGPResourceKeyedMutexes(
+     nvrhi::FRESULT releaseGPResourceKeyedMutexes(
          gp::IDeviceQueue* gpQueue,
          const gp::GraphicsInteropKeyedMutexSignalParams* paramsArray,
          uint32_t numParamsArray) override;
 
-      FRESULT commitGPQueueSignal(gp::IDeviceQueue* queue, nvrhi::CommandQueue queueType) override;
+      nvrhi::FRESULT commitGPQueueSignal(gp::IDeviceQueue* queue, nvrhi::CommandQueue queueType) override;
 
-      FRESULT commitGPQueueWait(gp::IDeviceQueue* queue, nvrhi::CommandQueue queueType) override;
+      nvrhi::FRESULT commitGPQueueWait(gp::IDeviceQueue* queue, nvrhi::CommandQueue queueType) override;
 
-      FRESULT commitNVRHIQueueSignal(nvrhi::CommandQueue queueType) override;
+      nvrhi::FRESULT commitNVRHIQueueSignal(nvrhi::CommandQueue queueType) override;
 
-      FRESULT commitNVRHIQueueWait(nvrhi::CommandQueue queueType) override;
+      nvrhi::FRESULT commitNVRHIQueueWait(nvrhi::CommandQueue queueType) override;
 
      // Implements
      GPAndNVRHIInteropDevice(nvrhi::IDevice* nvrhiDevice, gp::IDevice* gpDevice);
      ~GPAndNVRHIInteropDevice();
 
-     FRESULT init();
+     nvrhi::FRESULT init();
 
      nvrhi::IDevice* m_nvrhiDevice;
      gp::IDevice* m_gpDevice;
@@ -143,7 +143,7 @@ nvrhi::IDevice* GPAndNVRHIInteropDevice::getNVRHIDevice() {
 
 gp::IDevice* GPAndNVRHIInteropDevice::getGPDevice() { return m_gpDevice; }
 
-FRESULT GPAndNVRHIInteropDevice::createGPBuffer(nvrhi::IBuffer* nvrhiBuffer,
+nvrhi::FRESULT GPAndNVRHIInteropDevice::createGPBuffer(nvrhi::IBuffer* nvrhiBuffer,
                                                 gp::IBuffer** buffer) {
     nvrhi::GraphicsAPI rhiAPI = m_nvrhiDevice->getGraphicsAPI();
     switch (rhiAPI) {
@@ -166,10 +166,10 @@ FRESULT GPAndNVRHIInteropDevice::createGPBuffer(nvrhi::IBuffer* nvrhiBuffer,
                                                      buffer);
         }
     }
-    return FS_OK;
+    return nvrhi::FS_OK;
 }
 
-FRESULT GPAndNVRHIInteropDevice::createGPTexture(nvrhi::ITexture* nvrhiTexture, gp::ITexture** texture) {
+nvrhi::FRESULT GPAndNVRHIInteropDevice::createGPTexture(nvrhi::ITexture* nvrhiTexture, gp::ITexture** texture) {
     nvrhi::GraphicsAPI rhiAPI = m_nvrhiDevice->getGraphicsAPI();
 
     switch (rhiAPI) {
@@ -217,153 +217,153 @@ FRESULT GPAndNVRHIInteropDevice::createGPTexture(nvrhi::ITexture* nvrhiTexture, 
                 texDesc.depthOrArraySize = nvrhiDesc.depth;
                 break;
             default:
-                return FE_INVALID_ARGS;
+                return nvrhi::FE_INVALID_ARGS;
             }
 
             texDesc.mipLevels = nvrhiDesc.mipLevels;
             texDesc.format = getFormatFromNVRHIForamt(nvrhiDesc.format);
 
-            if (texDesc.format == gp::Format::UNKNOWN) return FE_INVALID_ARGS;
+            if (texDesc.format == gp::Format::UNKNOWN) return nvrhi::FE_INVALID_ARGS;
 
             return m_gpDevice->createInteropVulkanTexture(vkImage, vkMemory, vkDevice, texDesc, texture);
         }
     }
 
-    return FS_OK;
+    return nvrhi::FS_OK;
 }
 
-FRESULT GPAndNVRHIInteropDevice::acquireNVRHIBufferKeyedMutex(nvrhi::IBuffer* _buffer,
+nvrhi::FRESULT GPAndNVRHIInteropDevice::acquireNVRHIBufferKeyedMutex(nvrhi::IBuffer* _buffer,
                                                               uint32_t key,
                                                               uint32_t timeoutMS) {
-    if (!_buffer) return FE_INVALID_ARGS;
+    if (!_buffer) return nvrhi::FE_INVALID_ARGS;
 
-    if (m_nvrhiDevice->getGraphicsAPI() != nvrhi::GraphicsAPI::D3D11) return FS_OK;
+    if (m_nvrhiDevice->getGraphicsAPI() != nvrhi::GraphicsAPI::D3D11) return nvrhi::FS_OK;
 
     HRESULT hr;
     ID3D11Resource* resource = _buffer->getNativeObject(nvrhi::ObjectTypes::D3D11_Resource);
-    AutoPtr<IDXGIKeyedMutex> dxgiKeyedMutex;
+    nvrhi::AutoPtr<IDXGIKeyedMutex> dxgiKeyedMutex;
    if(FAILED(hr = resource->QueryInterface(IID_PPV_ARGS(&dxgiKeyedMutex)))) {
-       return FE_GENERIC_ERROR;
+       return nvrhi::FE_GENERIC_ERROR;
    }
 
-   if (FAILED(hr = dxgiKeyedMutex->AcquireSync(key, timeoutMS))) return FE_GENERIC_ERROR;
+   if (FAILED(hr = dxgiKeyedMutex->AcquireSync(key, timeoutMS))) return nvrhi::FE_GENERIC_ERROR;
 
-   return FS_OK;
+   return nvrhi::FS_OK;
 }
 
-FRESULT GPAndNVRHIInteropDevice::releaseNVRHIBufferKeyedMutex(nvrhi::IBuffer* _buffer,
+nvrhi::FRESULT GPAndNVRHIInteropDevice::releaseNVRHIBufferKeyedMutex(nvrhi::IBuffer* _buffer,
                                                               uint32_t key) {
-    if (!_buffer) return FE_INVALID_ARGS;
+    if (!_buffer) return nvrhi::FE_INVALID_ARGS;
 
-    if (m_nvrhiDevice->getGraphicsAPI() != nvrhi::GraphicsAPI::D3D11) return FS_OK;
+    if (m_nvrhiDevice->getGraphicsAPI() != nvrhi::GraphicsAPI::D3D11) return nvrhi::FS_OK;
 
     HRESULT hr;
     ID3D11Resource* resource = _buffer->getNativeObject(nvrhi::ObjectTypes::D3D11_Resource);
-    AutoPtr<IDXGIKeyedMutex> dxgiKeyedMutex;
+    nvrhi::AutoPtr<IDXGIKeyedMutex> dxgiKeyedMutex;
     if (FAILED(hr = resource->QueryInterface(IID_PPV_ARGS(&dxgiKeyedMutex)))) {
-        return FE_GENERIC_ERROR;
+        return nvrhi::FE_GENERIC_ERROR;
     }
 
-    if (FAILED(hr = dxgiKeyedMutex->ReleaseSync(key))) return FE_GENERIC_ERROR;
+    if (FAILED(hr = dxgiKeyedMutex->ReleaseSync(key))) return nvrhi::FE_GENERIC_ERROR;
 
-    return FS_OK;
+    return nvrhi::FS_OK;
 }
 
-FRESULT GPAndNVRHIInteropDevice::acquireNVRHITextureKeyedMutex(nvrhi::ITexture* _texture,
+nvrhi::FRESULT GPAndNVRHIInteropDevice::acquireNVRHITextureKeyedMutex(nvrhi::ITexture* _texture,
                                                                uint32_t key,
                                                                uint32_t timeoutMS) {
-    if (!_texture) return FE_INVALID_ARGS;
+    if (!_texture) return nvrhi::FE_INVALID_ARGS;
 
-    if (m_nvrhiDevice->getGraphicsAPI() != nvrhi::GraphicsAPI::D3D11) return FS_OK;
+    if (m_nvrhiDevice->getGraphicsAPI() != nvrhi::GraphicsAPI::D3D11) return nvrhi::FS_OK;
 
     HRESULT hr;
     ID3D11Resource* resource = _texture->getNativeObject(nvrhi::ObjectTypes::D3D11_Resource);
-    AutoPtr<IDXGIKeyedMutex> dxgiKeyedMutex;
+    nvrhi::AutoPtr<IDXGIKeyedMutex> dxgiKeyedMutex;
     if (FAILED(hr = resource->QueryInterface(IID_PPV_ARGS(&dxgiKeyedMutex)))) {
-        return FE_GENERIC_ERROR;
+        return nvrhi::FE_GENERIC_ERROR;
     }
 
-    if (FAILED(hr = dxgiKeyedMutex->AcquireSync(key, timeoutMS))) return FE_GENERIC_ERROR;
+    if (FAILED(hr = dxgiKeyedMutex->AcquireSync(key, timeoutMS))) return nvrhi::FE_GENERIC_ERROR;
 
-    return FS_OK;
+    return nvrhi::FS_OK;
 }
 
-FRESULT GPAndNVRHIInteropDevice::releaseNVRHITextureKeyedMutex(nvrhi::ITexture* _texture,
+nvrhi::FRESULT GPAndNVRHIInteropDevice::releaseNVRHITextureKeyedMutex(nvrhi::ITexture* _texture,
                                                                uint32_t key) {
-    if (!_texture) return FE_INVALID_ARGS;
+    if (!_texture) return nvrhi::FE_INVALID_ARGS;
 
-    if (m_nvrhiDevice->getGraphicsAPI() != nvrhi::GraphicsAPI::D3D11) return FS_OK;
+    if (m_nvrhiDevice->getGraphicsAPI() != nvrhi::GraphicsAPI::D3D11) return nvrhi::FS_OK;
 
     HRESULT hr;
     ID3D11Resource* resource = _texture->getNativeObject(nvrhi::ObjectTypes::D3D11_Resource);
-    AutoPtr<IDXGIKeyedMutex> dxgiKeyedMutex;
+    nvrhi::AutoPtr<IDXGIKeyedMutex> dxgiKeyedMutex;
     if (FAILED(hr = resource->QueryInterface(IID_PPV_ARGS(&dxgiKeyedMutex)))) {
-        return FE_GENERIC_ERROR;
+        return nvrhi::FE_GENERIC_ERROR;
     }
 
-    if (FAILED(hr = dxgiKeyedMutex->ReleaseSync(key))) return FE_GENERIC_ERROR;
+    if (FAILED(hr = dxgiKeyedMutex->ReleaseSync(key))) return nvrhi::FE_GENERIC_ERROR;
 
-    return FS_OK;
+    return nvrhi::FS_OK;
 }
 
-FRESULT GPAndNVRHIInteropDevice::acquireGPResourceKeyedMutexes(
+nvrhi::FRESULT GPAndNVRHIInteropDevice::acquireGPResourceKeyedMutexes(
     gp::IDeviceQueue* gpQueue, const gp::GraphicsInteropKeyedMutexWaitParams* paramsArray,
     uint32_t numParamsArray) {
-    if (!gpQueue) return FE_INVALID_ARGS;
+    if (!gpQueue) return nvrhi::FE_INVALID_ARGS;
 
-    if (m_nvrhiDevice->getGraphicsAPI() != nvrhi::GraphicsAPI::D3D11) return FS_OK;
+    if (m_nvrhiDevice->getGraphicsAPI() != nvrhi::GraphicsAPI::D3D11) return nvrhi::FS_OK;
 
     return gpQueue->acquireInteropKeyedMutexes(paramsArray, numParamsArray);
 }
 
-FRESULT GPAndNVRHIInteropDevice::releaseGPResourceKeyedMutexes(
+nvrhi::FRESULT GPAndNVRHIInteropDevice::releaseGPResourceKeyedMutexes(
     gp::IDeviceQueue* gpQueue, const gp::GraphicsInteropKeyedMutexSignalParams* paramsArray,
     uint32_t numParamsArray) {
-    if (!gpQueue) return FE_INVALID_ARGS;
+    if (!gpQueue) return nvrhi::FE_INVALID_ARGS;
 
-    if (m_nvrhiDevice->getGraphicsAPI() != nvrhi::GraphicsAPI::D3D11) return FS_OK;
+    if (m_nvrhiDevice->getGraphicsAPI() != nvrhi::GraphicsAPI::D3D11) return nvrhi::FS_OK;
 
     return gpQueue->releaseInteropKeyedMutexes(paramsArray, numParamsArray);
 }
 
-FRESULT GPAndNVRHIInteropDevice::commitGPQueueSignal(gp::IDeviceQueue* queue,
+nvrhi::FRESULT GPAndNVRHIInteropDevice::commitGPQueueSignal(gp::IDeviceQueue* queue,
                                                      nvrhi::CommandQueue queueType) {
 
     if (!queue)
-        return FE_INVALID_ARGS;
+        return nvrhi::FE_INVALID_ARGS;
 
     int queueIndex = (int)queueType;
     if (m_nvrhiDevice->getGraphicsAPI() == nvrhi::GraphicsAPI::D3D11) queueIndex = 0;
 
     auto& transaction = m_transactions[queueIndex];
     uint64_t signalValue = transaction.signalValue.fetch_add(1, std::memory_order_relaxed);
-    FRESULT fr;
-    if (FFAILED(fr = queue->signalInteropSemaphore(transaction.gpSemaphore, signalValue))) {
-        DONUT_ASSERT(0);
+    nvrhi::FRESULT fr;
+    if (NVRHI_FAILED(fr = queue->signalInteropSemaphore(transaction.gpSemaphore, signalValue))) {
+        NVRHI_ASSERT(0);
         return fr;
     }
     transaction.waitValue = signalValue;
-    return FS_OK;
+    return nvrhi::FS_OK;
 }
 
-FRESULT GPAndNVRHIInteropDevice::commitGPQueueWait(gp::IDeviceQueue* queue,
+nvrhi::FRESULT GPAndNVRHIInteropDevice::commitGPQueueWait(gp::IDeviceQueue* queue,
                                                    nvrhi::CommandQueue queueType) {
-    if (!queue) return FE_INVALID_ARGS;
+    if (!queue) return nvrhi::FE_INVALID_ARGS;
 
     int queueIndex = (int)queueType;
     if (m_nvrhiDevice->getGraphicsAPI() == nvrhi::GraphicsAPI::D3D11) queueIndex = 0;
 
     auto& transaction = m_transactions[queueIndex];
     uint64_t waitValue = transaction.waitValue;
-    FRESULT fr;
-    if (FFAILED(fr = queue->waitInteropSemaphoreAsync(transaction.gpSemaphore, waitValue))) {
-        DONUT_ASSERT(0);
+    nvrhi::FRESULT fr;
+    if (NVRHI_FAILED(fr = queue->waitInteropSemaphoreAsync(transaction.gpSemaphore, waitValue))) {
+        NVRHI_ASSERT(0);
         return fr;
     }
-    return FS_OK;
+    return nvrhi::FS_OK;
 }
 
-FRESULT GPAndNVRHIInteropDevice::commitNVRHIQueueSignal(nvrhi::CommandQueue queueType) {
+nvrhi::FRESULT GPAndNVRHIInteropDevice::commitNVRHIQueueSignal(nvrhi::CommandQueue queueType) {
     switch (m_nvrhiDevice->getGraphicsAPI()) {
         case nvrhi::GraphicsAPI::D3D11: {
             auto& transaction = m_transactions[0];
@@ -372,16 +372,16 @@ FRESULT GPAndNVRHIInteropDevice::commitNVRHIQueueSignal(nvrhi::CommandQueue queu
             HRESULT hr;
             auto d3d11Context = (ID3D11DeviceContext*)m_nvrhiDevice->getNativeObject(
                 nvrhi::ObjectTypes::D3D11_DeviceContext);
-            AutoPtr<ID3D11DeviceContext4> d3d11Context4;
+            nvrhi::AutoPtr<ID3D11DeviceContext4> d3d11Context4;
             if (FAILED(hr = d3d11Context->QueryInterface(IID_PPV_ARGS(&d3d11Context4)))) {
-                DONUT_ASSERT(0);
-                return FE_GENERIC_ERROR;
+                NVRHI_ASSERT(0);
+                return nvrhi::FE_GENERIC_ERROR;
             }
 
             if (FAILED(hr = d3d11Context4->Signal(transaction.nvrhiSemaphore.d3d11Fence,
                                                 signalValue))) {
-                DONUT_ASSERT(0);
-                return FE_GENERIC_ERROR;
+                NVRHI_ASSERT(0);
+                return nvrhi::FE_GENERIC_ERROR;
             }
             transaction.waitValue = signalValue;
         } break;
@@ -395,8 +395,8 @@ FRESULT GPAndNVRHIInteropDevice::commitNVRHIQueueSignal(nvrhi::CommandQueue queu
 
             if (FAILED(hr = d3d12Queue->Signal(transaction.nvrhiSemaphore.d3d12Fence,
                                              signalValue))) {
-                DONUT_ASSERT(0);
-                return FE_GENERIC_ERROR;
+                NVRHI_ASSERT(0);
+                return nvrhi::FE_GENERIC_ERROR;
             }
             transaction.waitValue = signalValue;
         } break;
@@ -423,17 +423,17 @@ FRESULT GPAndNVRHIInteropDevice::commitNVRHIQueueSignal(nvrhi::CommandQueue queu
 
             vkRet = vkQueue.submit(1, &submitInfo, vk::Fence{});
             if (vkRet != vk::Result::eSuccess) {
-                DONUT_ASSERT(0);
-                return FE_GENERIC_ERROR;
+                NVRHI_ASSERT(0);
+                return nvrhi::FE_GENERIC_ERROR;
             }
             transaction.waitValue = signalValue;
         } break;
     }
 
-    return FS_OK;
+    return nvrhi::FS_OK;
 }
 
-FRESULT GPAndNVRHIInteropDevice::commitNVRHIQueueWait(nvrhi::CommandQueue queueType) {
+nvrhi::FRESULT GPAndNVRHIInteropDevice::commitNVRHIQueueWait(nvrhi::CommandQueue queueType) {
     switch (m_nvrhiDevice->getGraphicsAPI()) {
         case nvrhi::GraphicsAPI::D3D11: {
             auto& transaction = m_transactions[0];
@@ -442,16 +442,16 @@ FRESULT GPAndNVRHIInteropDevice::commitNVRHIQueueWait(nvrhi::CommandQueue queueT
             HRESULT hr;
             auto d3d11Context = (ID3D11DeviceContext*)m_nvrhiDevice->getNativeObject(
                 nvrhi::ObjectTypes::D3D11_DeviceContext);
-            AutoPtr<ID3D11DeviceContext4> d3d11Context4;
+            nvrhi::AutoPtr<ID3D11DeviceContext4> d3d11Context4;
             if (FAILED(hr = d3d11Context->QueryInterface(IID_PPV_ARGS(&d3d11Context4)))) {
-                DONUT_ASSERT(0);
-                return FE_GENERIC_ERROR;
+                NVRHI_ASSERT(0);
+                return nvrhi::FE_GENERIC_ERROR;
             }
 
             if (FAILED(hr = d3d11Context4->Wait(transaction.nvrhiSemaphore.d3d11Fence,
                                                 waitValue))) {
-                DONUT_ASSERT(0);
-                return FE_GENERIC_ERROR;
+                NVRHI_ASSERT(0);
+                return nvrhi::FE_GENERIC_ERROR;
             }
         } break;
         case nvrhi::GraphicsAPI::D3D12: {
@@ -464,8 +464,8 @@ FRESULT GPAndNVRHIInteropDevice::commitNVRHIQueueWait(nvrhi::CommandQueue queueT
 
             if (FAILED(hr = d3d12Queue->Wait(transaction.nvrhiSemaphore.d3d12Fence,
                                              waitValue))) {
-                DONUT_ASSERT(0);
-                return FE_GENERIC_ERROR;
+                NVRHI_ASSERT(0);
+                return nvrhi::FE_GENERIC_ERROR;
             }
         } break;
         case nvrhi::GraphicsAPI::VULKAN: {
@@ -492,14 +492,14 @@ FRESULT GPAndNVRHIInteropDevice::commitNVRHIQueueWait(nvrhi::CommandQueue queueT
 
             vkRet = vkQueue.submit(1, &submitInfo, vk::Fence{});
             if (vkRet != vk::Result::eSuccess) {
-                DONUT_ASSERT(0);
-                return FE_GENERIC_ERROR;
+                NVRHI_ASSERT(0);
+                return nvrhi::FE_GENERIC_ERROR;
             }
             transaction.waitValue = signalValue;
         } break;
     }
 
-    return FS_OK;
+    return nvrhi::FS_OK;
 }
 
 GPAndNVRHIInteropDevice::GPAndNVRHIInteropDevice(nvrhi::IDevice* nvrhiDevice,
@@ -512,11 +512,11 @@ GPAndNVRHIInteropDevice::GPAndNVRHIInteropDevice(nvrhi::IDevice* nvrhiDevice,
 GPAndNVRHIInteropDevice::~GPAndNVRHIInteropDevice() {
     switch (m_nvrhiDevice->getGraphicsAPI()) {
         case nvrhi::GraphicsAPI::D3D11:
-            SafeRelease(m_transactions[0].nvrhiSemaphore.d3d11Fence);
+            nvrhi::SafeRelease(m_transactions[0].nvrhiSemaphore.d3d11Fence);
             break;
         case nvrhi::GraphicsAPI::D3D12:
             for (int i = 0; i < (int)nvrhi::CommandQueue::Count; ++i)
-                SafeRelease(m_transactions[i].nvrhiSemaphore.d3d12Fence);
+                nvrhi::SafeRelease(m_transactions[i].nvrhiSemaphore.d3d12Fence);
             break;
         case nvrhi::GraphicsAPI::VULKAN: {
             vk::Device vkDevice{
@@ -530,33 +530,33 @@ GPAndNVRHIInteropDevice::~GPAndNVRHIInteropDevice() {
     }
 
     for (int i = 0; i < (int)nvrhi::CommandQueue::Count; ++i)
-        SafeRelease(m_transactions[i].gpSemaphore);
+        nvrhi::SafeRelease(m_transactions[i].gpSemaphore);
 
     m_nvrhiDevice->Release();
     m_gpDevice->Release();
 }
 
-FRESULT GPAndNVRHIInteropDevice::init() {
+nvrhi::FRESULT GPAndNVRHIInteropDevice::init() {
     auto GAPI = m_nvrhiDevice->getGraphicsAPI();
     switch (GAPI) {
         case nvrhi::GraphicsAPI::D3D11: {
             auto d3d11Device = (ID3D11Device*)m_nvrhiDevice->getNativeObject(
                 nvrhi::ObjectTypes::D3D11_Device);
-            AutoPtr<ID3D11Device5> d3d11Device5;
+            nvrhi::AutoPtr<ID3D11Device5> d3d11Device5;
             HRESULT hr;
-            FRESULT fr;
+            nvrhi::FRESULT fr;
 
             if (FAILED(hr = d3d11Device->QueryInterface(IID_PPV_ARGS(&d3d11Device5))))
-                return FE_GENERIC_ERROR;
+                return nvrhi::FE_GENERIC_ERROR;
 
-            AutoPtr<ID3D11Fence> d3d11Fence;
+            nvrhi::AutoPtr<ID3D11Fence> d3d11Fence;
             if (FAILED(hr = d3d11Device5->CreateFence(
                            0, D3D11_FENCE_FLAG_SHARED,
                            IID_PPV_ARGS(&d3d11Fence))))
-                return FE_GENERIC_ERROR;
+                return nvrhi::FE_GENERIC_ERROR;
 
-            AutoPtr<gp::IGraphicsInteropSemaphore> gpFence;
-            if(FFAILED(fr = m_gpDevice->createInteropD3D11Fence(d3d11Fence, &gpFence)))
+            nvrhi::AutoPtr<gp::IGraphicsInteropSemaphore> gpFence;
+            if(NVRHI_FAILED(fr = m_gpDevice->createInteropD3D11Fence(d3d11Fence, &gpFence)))
                 return fr;
 
             m_transactions[0].nvrhiSemaphore.d3d11Fence = d3d11Fence;
@@ -570,17 +570,17 @@ FRESULT GPAndNVRHIInteropDevice::init() {
                 (ID3D12Device *)m_nvrhiDevice->getNativeObject(nvrhi::ObjectTypes::D3D12_Device);
 
             HRESULT hr;
-            FRESULT fr;
+            nvrhi::FRESULT fr;
 
-            AutoPtr<ID3D12Fence> d3d12Fences[3];
-            AutoPtr<gp::IGraphicsInteropSemaphore> gpFences[3];
+            nvrhi::AutoPtr<ID3D12Fence> d3d12Fences[3];
+            nvrhi::AutoPtr<gp::IGraphicsInteropSemaphore> gpFences[3];
             for (int i = 0; i < (int)nvrhi::CommandQueue::Count; ++i) {
                 if (FAILED(hr = d3d12Device->CreateFence(
                                0, D3D12_FENCE_FLAG_SHARED,
                                IID_PPV_ARGS(&d3d12Fences[i]))))
-                    return FE_GENERIC_ERROR;
+                    return nvrhi::FE_GENERIC_ERROR;
 
-                if (FFAILED(fr = m_gpDevice->createInteropD3D12Fence(d3d12Fences[i],
+                if (NVRHI_FAILED(fr = m_gpDevice->createInteropD3D12Fence(d3d12Fences[i],
                                                                      &gpFences[i])))
                     return fr;
             }
@@ -618,20 +618,20 @@ FRESULT GPAndNVRHIInteropDevice::init() {
 
             vk::Semaphore vkSemaphores[3];
             vk::Result vkRet;
-            FRESULT fr;
-            AutoPtr<gp::IGraphicsInteropSemaphore> gpSemaphores[3];
+            nvrhi::FRESULT fr;
+            nvrhi::AutoPtr<gp::IGraphicsInteropSemaphore> gpSemaphores[3];
 
             for (int i = 0; i < (int)nvrhi::CommandQueue::Count; ++i) {
                 vkRet = vkDevice.createSemaphore(&createInfo, nullptr, &vkSemaphores[i]);
                 if(vkRet != vk::Result::eSuccess) {
-                    DONUT_ASSERT(0);
-                    return FE_GENERIC_ERROR;
+                    NVRHI_ASSERT(0);
+                    return nvrhi::FE_GENERIC_ERROR;
                 }
-                if (FFAILED(fr = m_gpDevice->createInteropVulkanSemaphore(
+                if (NVRHI_FAILED(fr = m_gpDevice->createInteropVulkanSemaphore(
                                 (void*)(VkSemaphore)vkSemaphores[i],
                                 (void*)(VkDevice)vkDevice, &gpSemaphores[i]))) {
-                    DONUT_ASSERT(0);
-                    return FE_GENERIC_ERROR;
+                    NVRHI_ASSERT(0);
+                    return nvrhi::FE_GENERIC_ERROR;
                 }
             }
 
@@ -644,22 +644,22 @@ FRESULT GPAndNVRHIInteropDevice::init() {
         break;
     }
 
-    return FS_OK;
+    return nvrhi::FS_OK;
 }
 
-FRESULT createGPAndNVRHIDevice(nvrhi::IDevice* nvrhiDevice, gp::IDevice* gpDevice,
+nvrhi::FRESULT createGPAndNVRHIDevice(nvrhi::IDevice* nvrhiDevice, gp::IDevice* gpDevice,
                                IGPAndNVRHIInteropDevice** _interopDevice) {
-    if (!nvrhiDevice || !gpDevice) return FE_INVALID_ARGS;
+    if (!nvrhiDevice || !gpDevice) return nvrhi::FE_INVALID_ARGS;
 
-    auto interopDevice = TakeOver(MAKE_RC_OBJ(GPAndNVRHIInteropDevice, nvrhiDevice, gpDevice));
-    FRESULT fr = interopDevice->init();
-    if (FFAILED(fr)) return fr;
+    auto interopDevice = nvrhi::TakeOver(MAKE_RC_OBJ(GPAndNVRHIInteropDevice, nvrhiDevice, gpDevice));
+    nvrhi::FRESULT fr = interopDevice->init();
+    if (NVRHI_FAILED(fr)) return fr;
 
     if(_interopDevice) {
         *_interopDevice = interopDevice;
         interopDevice->AddRef();
     }
-    return FS_OK;
+    return nvrhi::FS_OK;
 }
 
 }  // namespace donut

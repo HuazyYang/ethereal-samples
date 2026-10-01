@@ -1,8 +1,8 @@
 #ifndef SRC_VXGISAMPLE_VXGIRENDERER_H
 #define SRC_VXGISAMPLE_VXGIRENDERER_H
 #include "VXGIIntTypes.h"
-#include <donut/core/object/Foundation.h>
-#include <donut/core/object/AutoPtr.h>
+#include <nvrhi/core/Foundation.h>
+#include <nvrhi/core/AutoPtr.h>
 #include <donut/render/DrawStrategy.h>
 #include <nvrhi/nvrhi.h>
 #include "ClipmapGeometry.h"
@@ -18,7 +18,7 @@ struct AllocationMap;
 struct VoxelTexture;
 class ViewTracer;
 
-class VoxelRenderer : public donut::ObjectImpl<donut::IObject>  {
+class VoxelRenderer : public nvrhi::ObjectImpl<nvrhi::IObject>  {
  public:
     VoxelRenderer(nvrhi::IDevice *device, donut::engine::ShaderFactory *shaderFactory);
     ~VoxelRenderer();
@@ -85,10 +85,10 @@ class VoxelRenderer : public donut::ObjectImpl<donut::IObject>  {
 
  private:
     nvrhi::IDevice *m_Device;
-    donut::AutoPtr<donut::engine::ShaderFactory> m_ShaderFactory;
+    nvrhi::AutoPtr<donut::engine::ShaderFactory> m_ShaderFactory;
     nvrhi::CommandListHandle m_CommandList;
-    donut::MonoPtr<AllocationMap> m_AllocationMap;
-    donut::MonoPtr<VoxelTexture> m_VoxelTexture;
+    nvrhi::MonoPtr<AllocationMap> m_AllocationMap;
+    nvrhi::MonoPtr<VoxelTexture> m_VoxelTexture;
     box3 m_SceneExtents;
     DerivedVoxelizationParameters m_Parameters;
     ClipmapGeometry m_ClipGeometry;

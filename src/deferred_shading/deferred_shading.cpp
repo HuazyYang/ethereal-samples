@@ -143,7 +143,7 @@ public:
         node->SetLeaf(m_MeshInstance);
         node->SetName("CubeNode");
 
-        AutoPtr<DirectionalLight> sunLight = MAKE_RC_OBJ_PTR(DirectionalLight);
+        nvrhi::AutoPtr<DirectionalLight> sunLight = MAKE_RC_OBJ_PTR(DirectionalLight);
         m_SceneGraph->AttachLeafNode(node, sunLight);
 
         sunLight->SetDirection(double3(0.1, -1.0, 0.2));
@@ -158,27 +158,27 @@ public:
         return true;
     }
 
-    const AutoPtr<MeshInstance>& GetMeshInstance() const
+    const nvrhi::AutoPtr<MeshInstance>& GetMeshInstance() const
     {
         return m_MeshInstance;
     }
 
-    const AutoPtr<SceneGraph>& GetSceneGraph() const
+    const nvrhi::AutoPtr<SceneGraph>& GetSceneGraph() const
     {
         return m_SceneGraph;
     }
     
-    const std::vector<AutoPtr<Light>>& GetLights() const
+    const std::vector<nvrhi::AutoPtr<Light>>& GetLights() const
     {
         return m_SceneGraph->GetLights();
     }
 
 private:
-    AutoPtr<BufferGroup> m_Buffers;
-    AutoPtr<Material> m_Material;
-    AutoPtr<MeshInfo> m_MeshInfo;
-    AutoPtr<MeshInstance> m_MeshInstance;
-    AutoPtr<SceneGraph> m_SceneGraph;
+    nvrhi::AutoPtr<BufferGroup> m_Buffers;
+    nvrhi::AutoPtr<Material> m_Material;
+    nvrhi::AutoPtr<MeshInfo> m_MeshInfo;
+    nvrhi::AutoPtr<MeshInstance> m_MeshInstance;
+    nvrhi::AutoPtr<SceneGraph> m_SceneGraph;
 
     nvrhi::BufferHandle CreateGeometryBuffer(nvrhi::IDevice* device, nvrhi::ICommandList* commandList,
         const char* debugName, const void* data, uint64_t dataSize, bool isVertexBuffer, bool isInstanceBuffer)
@@ -209,7 +209,7 @@ private:
         return bufHandle;
     }
 
-    nvrhi::BufferHandle CreateMaterialConstantBuffer(nvrhi::IDevice* device, nvrhi::ICommandList* commandList, const AutoPtr<Material> material)
+    nvrhi::BufferHandle CreateMaterialConstantBuffer(nvrhi::IDevice* device, nvrhi::ICommandList* commandList, const nvrhi::AutoPtr<Material> material)
     {
         nvrhi::BufferDesc bufferDesc;
         bufferDesc.byteSize = sizeof(MaterialConstants);
@@ -230,14 +230,14 @@ private:
 class DeferredShading : public app::IRenderPass
 {
 private:
-    AutoPtr<ShaderFactory> m_ShaderFactory;
-    AutoPtr<TextureCache> m_TextureCache;
-    AutoPtr<CommonRenderPasses> m_CommonPasses;
+    nvrhi::AutoPtr<ShaderFactory> m_ShaderFactory;
+    nvrhi::AutoPtr<TextureCache> m_TextureCache;
+    nvrhi::AutoPtr<CommonRenderPasses> m_CommonPasses;
     std::unique_ptr<engine::BindingCache> m_BindingCache;
 
     std::shared_ptr<RenderTargets> m_RenderTargets;
-    AutoPtr<GBufferFillPass> m_GBufferPass;
-    AutoPtr<DeferredLightingPass> m_DeferredLightingPass;
+    nvrhi::AutoPtr<GBufferFillPass> m_GBufferPass;
+    nvrhi::AutoPtr<DeferredLightingPass> m_DeferredLightingPass;
     
     PlanarView m_View;
 
@@ -270,7 +270,7 @@ public:
 
         std::filesystem::path frameworkShaderPath = app::GetDirectoryWithExecutable() / "shaders/framework" / app::GetShaderTypeName(GetDevice()->getGraphicsAPI());
         
-        AutoPtr<vfs::RootFileSystem> rootFS = MAKE_RC_OBJ_PTR(vfs::RootFileSystem);
+        nvrhi::AutoPtr<vfs::RootFileSystem> rootFS = MAKE_RC_OBJ_PTR(vfs::RootFileSystem);
         rootFS->mount("/shaders/donut", frameworkShaderPath);
         m_ShaderFactory = MAKE_RC_OBJ_PTR(ShaderFactory, GetDevice(), rootFS, "/shaders");
         m_CommonPasses = MAKE_RC_OBJ_PTR(CommonRenderPasses, GetDevice(), m_ShaderFactory);
@@ -376,7 +376,7 @@ int main(int __argc, const char** __argv)
 #endif
 {
     nvrhi::GraphicsAPI api = app::GetGraphicsAPIFromCommandLine(__argc, __argv);
-    auto deviceManager = TakeOver(app::DeviceManager::Create(api));
+    auto deviceManager = nvrhi::TakeOver(app::DeviceManager::Create(api));
 
     app::DeviceCreationParameters deviceParams;
 #ifdef _DEBUG
