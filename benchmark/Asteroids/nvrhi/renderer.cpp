@@ -373,7 +373,7 @@ bool AsteroidsRenderer::Init(donut::engine::ShaderFactory& shaderFactory, const 
         desc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
         desc.Width = 65536; desc.Height = 1; desc.DepthOrArraySize = 1; desc.MipLevels = 1;
         desc.SampleDesc.Count = 1; desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
-        nvrhi::RefCountPtr<ID3D12Resource> probe;
+        nvrhi::AutoPtr<ID3D12Resource> probe;
         void* mapped = nullptr;
         MEMORY_BASIC_INFORMATION info{};
         if (d3d12 && SUCCEEDED(d3d12->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_GENERIC_READ,
@@ -1201,7 +1201,7 @@ void AsteroidsRenderer::FillRunInfo(Benchmark::RunInfo& info) const
         //   D3D11   Donut/src/app/dx11/DeviceManager_DX11.cpp: Present(0, 0), no tearing flag
         //   Vulkan  Donut/src/app/vulkan/DeviceManager_VK.cpp: VK_PRESENT_MODE_IMMEDIATE_KHR
         bool tearing = false;
-        nvrhi::RefCountPtr<IDXGIFactory5> factory;
+        nvrhi::AutoPtr<IDXGIFactory5> factory;
         BOOL supported = FALSE;
         if (SUCCEEDED(CreateDXGIFactory1(IID_PPV_ARGS(&factory))) &&
             SUCCEEDED(factory->CheckFeatureSupport(DXGI_FEATURE_PRESENT_ALLOW_TEARING, &supported, sizeof(supported))))

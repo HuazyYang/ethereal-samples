@@ -72,8 +72,8 @@ bool QueryDeviceLuid(donut::app::DeviceManager* deviceManager, uint64_t& luid, s
         case nvrhi::GraphicsAPI::D3D11:
         {
             ID3D11Device* d3d11 = device->getNativeObject(nvrhi::ObjectTypes::D3D11_Device);
-            nvrhi::RefCountPtr<IDXGIDevice> dxgiDevice;
-            nvrhi::RefCountPtr<IDXGIAdapter> adapter;
+            nvrhi::AutoPtr<IDXGIDevice> dxgiDevice;
+            nvrhi::AutoPtr<IDXGIAdapter> adapter;
             DXGI_ADAPTER_DESC desc{};
             if (!d3d11 || FAILED(d3d11->QueryInterface(IID_PPV_ARGS(&dxgiDevice))) || FAILED(dxgiDevice->GetAdapter(&adapter)) ||
                 FAILED(adapter->GetDesc(&desc)))
