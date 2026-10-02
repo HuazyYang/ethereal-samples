@@ -1,5 +1,5 @@
 #include "GVDBAllocator.h"
-#include <nvrhi/core/Memory.h>
+#include <nvrhi/core/memory.h>
 #include <donut/core/log.h>
 
 namespace gvdb {

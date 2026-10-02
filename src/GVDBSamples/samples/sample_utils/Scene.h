@@ -1,9 +1,9 @@
 #ifndef SCENE_HPP
 #define SCENE_HPP
-#include <nvrhi/core/Foundation.h>
+#include <nvrhi/core/foundation.h>
 #include <donut/core/vfs/VFS.h>
 #include <donut/core/math/math.h>
-#include <nvrhi/core/AutoPtr.h>
+#include <nvrhi/core/autoptr.h>
 #include "SampleTypes.h"
 
 namespace SampleUtils {

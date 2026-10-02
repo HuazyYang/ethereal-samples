@@ -3,7 +3,7 @@
 #include "VXGIIntTypes.h"
 #include <vector>
 #include <nvrhi/nvrhi.h>
-#include <nvrhi/core/AutoPtr.h>
+#include <nvrhi/core/autoptr.h>
 
 namespace donut::engine {
 class ShaderFactory;

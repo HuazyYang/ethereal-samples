@@ -1,6 +1,6 @@
 #ifndef SRC_GPDEVICE_GPDEVICE_H
 #define SRC_GPDEVICE_GPDEVICE_H
-#include <nvrhi/core/Foundation.h>
+#include <nvrhi/core/foundation.h>
 #include <type_traits>
 #include <string>
 

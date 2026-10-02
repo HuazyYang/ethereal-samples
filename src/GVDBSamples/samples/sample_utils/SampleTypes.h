@@ -1,9 +1,9 @@
 #ifndef SAMPLETYPES_H
 #define SAMPLETYPES_H
-#include <nvrhi/core/Foundation.h>
+#include <nvrhi/core/foundation.h>
 #include <gvdb/GPDevice.h>
 #include <donut/core/log.h>
-#include <nvrhi/core/Memory.h>
+#include <nvrhi/core/memory.h>
 
 namespace SampleUtils {
 

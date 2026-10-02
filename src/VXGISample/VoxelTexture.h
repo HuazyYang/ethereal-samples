@@ -2,7 +2,7 @@
 #define SRC_VXGISAMPLE_VOXELTEXTURE_H
 #include "VXGIIntTypes.h"
 #include <nvrhi/nvrhi.h>
-#include <nvrhi/core/AutoPtr.h>
+#include <nvrhi/core/autoptr.h>
 #include <donut/engine/ShaderFactory.h>
 
 namespace donut::engine {

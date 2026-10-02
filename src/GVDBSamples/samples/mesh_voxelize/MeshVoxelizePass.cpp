@@ -1,6 +1,6 @@
 #include <donut/app/DeviceManager.h>
 #include <donut/app/ApplicationBase.h>
-#include <nvrhi/core/AutoPtr.h>
+#include <nvrhi/core/autoptr.h>
 #include <donut/core/vfs/VFS.h>
 #include <donut/engine/ShaderFactory.h>
 #include <donut/engine/BindingCache.h>

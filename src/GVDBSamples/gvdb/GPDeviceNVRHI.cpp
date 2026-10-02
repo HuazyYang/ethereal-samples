@@ -1,6 +1,6 @@
 #include <gvdb/GPDeviceNVRHI.h>
-#include <nvrhi/core/Foundation.h>
-#include <nvrhi/core/AutoPtr.h>
+#include <nvrhi/core/foundation.h>
+#include <nvrhi/core/autoptr.h>
 #include <d3d11_4.h>
 #include <d3d12.h>
 #include <dxgi1_2.h>

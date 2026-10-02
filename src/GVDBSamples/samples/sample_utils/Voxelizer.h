@@ -1,6 +1,6 @@
 #ifndef GVDBVOXELIZER_H
 #define GVDBVOXELIZER_H
-#include <nvrhi/core/Foundation.h>
+#include <nvrhi/core/foundation.h>
 #include <gvdb/GPDevice.h>
 #include <donut/core/math/math.h>
 

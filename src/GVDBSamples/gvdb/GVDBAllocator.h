@@ -1,7 +1,7 @@
 #ifndef GVDBALLOCATOR_H
 #define GVDBALLOCATOR_H
 #include <gvdb/GVDB.h>
-#include <nvrhi/core/Foundation.h>
+#include <nvrhi/core/foundation.h>
 
 namespace gvdb {
 

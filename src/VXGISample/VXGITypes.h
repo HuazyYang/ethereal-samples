@@ -1,7 +1,7 @@
 #ifndef SRC_VXGISAMPLE_VXGITYPES_H
 #define SRC_VXGISAMPLE_VXGITYPES_H
 #include <donut/core/math/math.h>
-#include <nvrhi/core/Types.h>
+#include <nvrhi/core/types.h>
 #include <nvrhi/nvrhi.h>
 
 namespace nvrhi {

@@ -1,8 +1,8 @@
 #ifndef SRC_VXGISAMPLE_VIEWTRACER_H
 #define SRC_VXGISAMPLE_VIEWTRACER_H
 #include "VXGIIntTypes.h"
-#include <nvrhi/core/Foundation.h>
-#include <nvrhi/core/AutoPtr.h>
+#include <nvrhi/core/foundation.h>
+#include <nvrhi/core/autoptr.h>
 #include <nvrhi/nvrhi.h>
 #include <donut/core/salieri.h>
 #include <donut/engine/ShaderFactory.h>

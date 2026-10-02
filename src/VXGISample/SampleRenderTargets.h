@@ -3,7 +3,7 @@
 #include <nvrhi/nvrhi.h>
 #include <donut/core/math/math.h>
 #include <donut/engine/FramebufferFactory.h>
-#include <nvrhi/core/AutoPtr.h>
+#include <nvrhi/core/autoptr.h>
 
 class SampleRenderTargets {
 public:

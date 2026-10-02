@@ -1,8 +1,8 @@
 #ifndef SRC_GVDBVOLUME_H
 #define SRC_GVDBVOLUME_H
 #include <gvdb/GPDevice.h>
-#include <nvrhi/core/Foundation.h>
-#include <nvrhi/core/AutoPtr.h>
+#include <nvrhi/core/foundation.h>
+#include <nvrhi/core/autoptr.h>
 #include <donut/core/math/math.h>
 #include <donut/core/log.h>
 #include <vector>

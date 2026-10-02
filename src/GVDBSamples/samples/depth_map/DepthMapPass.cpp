@@ -1,8 +1,8 @@
 #include <donut/app/DeviceManager.h>
-#include <nvrhi/core/AutoPtr.h>
+#include <nvrhi/core/autoptr.h>
 #include <donut/app/ApplicationBase.h>
 #include <donut/core/log.h>
-#include <nvrhi/core/Foundation.h>
+#include <nvrhi/core/foundation.h>
 #include <sample_utils/AppUtils.h>
 #include <donut/core/vfs/VFS.h>
 #include <donut/engine/ShaderFactory.h>

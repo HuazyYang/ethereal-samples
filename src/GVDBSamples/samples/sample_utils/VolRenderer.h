@@ -1,9 +1,9 @@
 #ifndef VOLRENDERER_H
 #define VOLRENDERER_H
-#include <nvrhi/core/Foundation.h>
+#include <nvrhi/core/foundation.h>
 #include <donut/core/vfs/VFS.h>
 #include <donut/core/math/math.h>
-#include <nvrhi/core/AutoPtr.h>
+#include <nvrhi/core/autoptr.h>
 #include <gvdb/GVDB.h>
 
 namespace SampleUtils {

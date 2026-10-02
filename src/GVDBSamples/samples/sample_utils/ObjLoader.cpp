@@ -2,7 +2,7 @@
 #include <cctype>
 #include <optional>
 #include <string.h>
-#include <nvrhi/core/AutoPtr.h>
+#include <nvrhi/core/autoptr.h>
 
 namespace SampleUtils {
 

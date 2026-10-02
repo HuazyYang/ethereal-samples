@@ -1,6 +1,6 @@
 #ifndef GVDBCAMERA_H
 #define GVDBCAMERA_H
-#include <nvrhi/core/Foundation.h>
+#include <nvrhi/core/foundation.h>
 #include <donut/core/math/math.h>
 #include <cmath>
 

@@ -1,6 +1,6 @@
 #include <gvdb/GVDB.h>
 #include <donut/core/vfs/VFS.h>
-#include <nvrhi/core/AutoPtr.h>
+#include <nvrhi/core/autoptr.h>
 
 void usage(char *progname) {
     printf("%s      <vbx file path>\n", progname);
