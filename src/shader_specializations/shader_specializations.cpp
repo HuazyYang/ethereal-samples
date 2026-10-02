@@ -33,6 +33,7 @@ static const char* g_WindowTitle = "Donut Example: Vulkan Shader Specializations
 
 class ShaderSpecializations : public app::IRenderPass
 {
+    NVRHI_INHERIT_INTERFACE_TABLE()
 private:
     nvrhi::ShaderHandle m_VertexShader;
     nvrhi::ShaderHandle m_PixelShader;

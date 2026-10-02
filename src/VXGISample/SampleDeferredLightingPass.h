@@ -3,6 +3,7 @@
 #include <donut/render/DeferredLightingPass.h>
 
 class SampleDeferredLightingPass : public donut::render::DeferredLightingPass {
+   NVRHI_INHERIT_INTERFACE_TABLE()
 public:
    using donut::render::DeferredLightingPass::DeferredLightingPass;
 

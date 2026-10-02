@@ -128,6 +128,7 @@ struct RenderTargets
 
 class WorkGraphs : public app::IRenderPass
 {
+    NVRHI_INHERIT_INTERFACE_TABLE()
 private:
     enum class ScenePass
     {
@@ -891,6 +892,7 @@ public:
 
 class UIRenderer : public ImGuiRenderPass
 {
+    NVRHI_INHERIT_INTERFACE_TABLE()
 private:
     nvrhi::AutoPtr<donut::vfs::RootFileSystem> m_RootFs;
 	nvrhi::AutoPtr<ShaderFactory> m_ShaderFactory;

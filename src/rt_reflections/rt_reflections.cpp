@@ -140,6 +140,7 @@ public:
 
 class VariableRateShading : public app::ApplicationBase
 {
+    NVRHI_INHERIT_INTERFACE_TABLE()
 private:
 	nvrhi::AutoPtr<vfs::RootFileSystem> m_RootFS;
 

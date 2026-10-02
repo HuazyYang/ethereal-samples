@@ -49,6 +49,7 @@ enum class CrashType
 
 class AftermathSample : public app::IRenderPass
 {
+    NVRHI_INHERIT_INTERFACE_TABLE()
 private:
     nvrhi::ShaderHandle m_VertexShader;
     nvrhi::ShaderHandle m_PixelShader;
@@ -206,6 +207,7 @@ public:
 
 class UIRenderer : public app::ImGuiRenderPass
 {
+    NVRHI_INHERIT_INTERFACE_TABLE()
 private:
     AftermathSample& m_app;
 

@@ -70,6 +70,7 @@ public:
 
 class AsyncCompute : public app::IRenderPass
 {
+    NVRHI_INHERIT_INTERFACE_TABLE()
 private:
     nvrhi::ShaderHandle m_VertexShader;
     nvrhi::ShaderHandle m_PixelShader;

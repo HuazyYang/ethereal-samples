@@ -229,6 +229,7 @@ private:
 
 class DeferredShading : public app::IRenderPass
 {
+    NVRHI_INHERIT_INTERFACE_TABLE()
 private:
     nvrhi::AutoPtr<ShaderFactory> m_ShaderFactory;
     nvrhi::AutoPtr<TextureCache> m_TextureCache;

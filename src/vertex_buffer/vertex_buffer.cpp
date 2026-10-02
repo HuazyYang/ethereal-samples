@@ -91,6 +91,7 @@ static const math::float3 g_RotationAxes[c_NumViews] = {
 
 class VertexBuffer : public app::IRenderPass
 {
+    NVRHI_INHERIT_INTERFACE_TABLE()
 private:
     nvrhi::ShaderHandle m_VertexShader;
     nvrhi::ShaderHandle m_PixelShader;

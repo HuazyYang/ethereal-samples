@@ -51,6 +51,7 @@ static const char* g_WindowTitle = "DDGISample";
 using namespace donut;
 
 class DDGISample : public donut::app::ApplicationBase {
+    NVRHI_INHERIT_INTERFACE_TABLE()
  private:
     nvrhi::MonoPtr<Config> m_Config;
     nvrhi::AutoPtr<vfs::RootFileSystem> m_RootFS;

@@ -15,6 +15,7 @@
 
 class SampleScene : public donut::engine::Scene
 {
+    NVRHI_INHERIT_INTERFACE_TABLE()
 public:
     using Scene::Scene;
 

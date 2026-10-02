@@ -5,6 +5,7 @@
 struct Config;
 
 class UIPass : public donut::app::ImGuiRenderPass {
+    NVRHI_INHERIT_INTERFACE_TABLE()
  public:
     using ImGuiRenderPass::ImGuiRenderPass;
 

@@ -33,6 +33,7 @@ static const char* g_WindowTitle = "Donut Example: Meshlets";
 
 class MeshletExample : public app::IRenderPass
 {
+    NVRHI_INHERIT_INTERFACE_TABLE()
 private:
     nvrhi::ShaderHandle m_AmplificationShader;
     nvrhi::ShaderHandle m_MeshShader;

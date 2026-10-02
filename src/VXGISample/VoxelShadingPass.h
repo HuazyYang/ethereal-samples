@@ -24,6 +24,7 @@ class VoxelRenderer;
 class ViewTracer;
 
 class VoxelizationView : public donut::engine::PlanarView {
+   NVRHI_INHERIT_INTERFACE_TABLE()
 public:
    void SetClipRegions(uint32_t numRegions, dm::box3* regions);
    const std::vector<dm::box3>& GetClipRegions() const;
@@ -33,6 +34,7 @@ protected:
 };
 
 class VoxelizationInstancedDrawStrategy: public donut::render::IDrawStrategy {
+   NVRHI_INHERIT_INTERFACE_TABLE()
 public:
    void PrepareForView(donut::engine::SceneGraphNode* rootNode, const donut::engine::IView& view) override;
 
@@ -108,6 +110,7 @@ struct hash<vxgi::VXGIShadingPassPipelineKey> {
 namespace vxgi {
 
 class VoxelShadingPass : public donut::render::IGeometryPass {
+    NVRHI_INHERIT_INTERFACE_TABLE()
  public:
     class Context : public donut::render::GeometryPassContext {
      public:

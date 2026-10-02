@@ -33,6 +33,7 @@ static const char* g_WindowTitle = "Donut Example: Basic Triangle";
 
 class BasicTriangle : public app::IRenderPass
 {
+    NVRHI_INHERIT_INTERFACE_TABLE()
 private:
     nvrhi::ShaderHandle m_VertexShader;
     nvrhi::ShaderHandle m_PixelShader;

@@ -67,6 +67,7 @@ struct Config {
 };
 
 class VXGISample : public donut::app::ApplicationBase {
+    NVRHI_INHERIT_INTERFACE_TABLE()
  public:
     friend class UIPass;
 
@@ -478,6 +479,7 @@ class VXGISample : public donut::app::ApplicationBase {
 };
 
 class UIPass : public donut::app::ImGuiRenderPass {
+    NVRHI_INHERIT_INTERFACE_TABLE()
 public:
     UIPass(VXGISample *sample, donut::app::DeviceManager *deviceManager)
     : ImGuiRenderPass(deviceManager), m_Config(&sample->m_Config) {}

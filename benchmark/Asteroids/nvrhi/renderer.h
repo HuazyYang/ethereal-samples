@@ -60,6 +60,7 @@ struct RendererDesc
 
 class AsteroidsRenderer final : public donut::app::IRenderPass
 {
+    NVRHI_INHERIT_INTERFACE_TABLE()
 public:
     AsteroidsRenderer(donut::app::DeviceManager* deviceManager, const RendererDesc& desc, AsteroidsSimulation* simulation,
                       OrbitCamera* camera, const Settings* settings);

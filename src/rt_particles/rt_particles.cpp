@@ -118,6 +118,7 @@ struct UIData
 
 class RayTracedParticles : public app::ApplicationBase
 {
+	NVRHI_INHERIT_INTERFACE_TABLE()
 private:
 	nvrhi::AutoPtr<vfs::RootFileSystem> m_RootFS;
 
@@ -771,6 +772,7 @@ public:
 
 class UserInterface : public app::ImGuiRenderPass
 {
+    NVRHI_INHERIT_INTERFACE_TABLE()
 private:
     UIData* m_ui;
 

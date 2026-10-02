@@ -38,6 +38,7 @@ static const char* g_WindowTitle = "Donut Example: Ray Traced Triangle";
 
 class RayTracedTriangle : public app::IRenderPass
 {
+    NVRHI_INHERIT_INTERFACE_TABLE()
 private:
     nvrhi::ShaderLibraryHandle m_ShaderLibrary;
     nvrhi::rt::PipelineHandle m_Pipeline;

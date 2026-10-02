@@ -29,6 +29,7 @@ struct TopologyInstanceData {
 };
 
 class VoxelizePass : public donut::app::IRenderPass {
+    NVRHI_INHERIT_INTERFACE_TABLE()
     friend class VoxelizeGUIPass;
 
  public:
@@ -629,6 +630,7 @@ class VoxelizePass : public donut::app::IRenderPass {
 };
 
 class VoxelizeGUIPass : public donut::app::ImGuiRenderPass {
+    NVRHI_INHERIT_INTERFACE_TABLE()
  public:
     VoxelizeGUIPass(donut::app::DeviceManager *deviceManager, VoxelizePass *attachPass)
         : ImGuiRenderPass{deviceManager}, m_attachPass{attachPass} {}

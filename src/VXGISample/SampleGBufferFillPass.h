@@ -4,6 +4,7 @@
 #include <donut/render/GBufferFillPass.h>
 
 class SampleGBufferFillPass : public donut::render::GBufferFillPass {
+    NVRHI_INHERIT_INTERFACE_TABLE()
  public:
     using GBufferFillPass::GBufferFillPass;
 

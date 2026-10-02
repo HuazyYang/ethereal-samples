@@ -275,7 +275,9 @@ public:
     uint32_t m_flushProjMatrix = 1;
 };
 
-class Light : public Camera {};
+class Light : public Camera {
+    NVRHI_INHERIT_INTERFACE_TABLE()
+};
 
 }  // namespace SampleUtils
 
