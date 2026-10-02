@@ -18,7 +18,7 @@ namespace SampleUtils {
 
 struct GPDeviceMessageCallback : public nvrhi::ObjectImpl<donut::gp::IMessageCallback> {
     NVRHI_BEGIN_INTERFACE_TABLE_INLINE(GPDeviceMessageCallback)
-    NVRHI_IMPLEMENTS_INTERFACE(IMessageCallback)
+    NVRHI_IMPLEMENTS_INTERFACE(donut::gp::IMessageCallback)
     NVRHI_END_INTERFACE_TABLE()
 
     void message(donut::gp::MessageSeverity severity, const char *desc) override {

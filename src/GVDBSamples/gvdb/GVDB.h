@@ -139,6 +139,10 @@ class GVDBAllocator;
 
 class GVDB: public nvrhi::ObjectImpl<nvrhi::IObject> {
  public:
+    NVRHI_BEGIN_INTERFACE_TABLE_INLINE(GVDB)
+    NVRHI_IMPLEMENTS_INTERFACE(nvrhi::IObject)
+    NVRHI_END_INTERFACE_TABLE()
+
     GVDB(donut::gp::IDeviceQueue *queue, donut::vfs::IFileSystem *vfs);
     ~GVDB();
 

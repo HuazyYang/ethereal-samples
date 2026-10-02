@@ -19,6 +19,10 @@ class VoxelRenderer;
 
 class ViewTracer : public nvrhi::ObjectImpl<nvrhi::IObject> {
 public:
+    NVRHI_BEGIN_INTERFACE_TABLE_INLINE(ViewTracer)
+    NVRHI_IMPLEMENTS_INTERFACE(nvrhi::IObject)
+    NVRHI_END_INTERFACE_TABLE()
+
    struct TextureHandleVerbose {
        nvrhi::TextureHandle value;
        nvrhi::TextureHandle attachment;

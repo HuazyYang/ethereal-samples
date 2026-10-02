@@ -13,6 +13,10 @@ class Light;
 
 class Model : public nvrhi::ObjectImpl<nvrhi::IObject> {
  public:
+    NVRHI_BEGIN_INTERFACE_TABLE_INLINE(Model)
+    NVRHI_IMPLEMENTS_INTERFACE(nvrhi::IObject)
+    NVRHI_END_INTERFACE_TABLE()
+
     int loadObj(donut::vfs::IFileSystem *vfs, const char *filePath,
                 const dm::float3 &pos = {0.f}, const dm::quat &rot = {},
                 const dm::float3 &scaling = {1.f});
@@ -45,6 +49,10 @@ class Model : public nvrhi::ObjectImpl<nvrhi::IObject> {
 
 class Scene : public nvrhi::ObjectImpl<nvrhi::IObject> {
  public:
+    NVRHI_BEGIN_INTERFACE_TABLE_INLINE(Scene)
+    NVRHI_IMPLEMENTS_INTERFACE(nvrhi::IObject)
+    NVRHI_END_INTERFACE_TABLE()
+
     Scene();
     ~Scene();
 

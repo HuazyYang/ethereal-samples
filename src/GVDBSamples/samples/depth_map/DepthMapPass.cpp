@@ -32,7 +32,8 @@ class DepthMapPass : public donut::app::IRenderPass {
     NVRHI_DECLARE_UUID_TRAITS(DepthMapPass)
 public:
     NVRHI_BEGIN_INTERFACE_TABLE_INLINE(DepthMapPass)
-    NVRHI_IMPLEMENTS_INTERFACE(DepthMapPass)
+    NVRHI_IMPLEMENTS_INTERFACE(nvrhi::IObject)
+    NVRHI_IMPLEMENTS_CLASS(DepthMapPass)
     NVRHI_IMPLEMENTS_ROUTE_PARENT(donut::app::IRenderPass)
     NVRHI_END_INTERFACE_TABLE()
 

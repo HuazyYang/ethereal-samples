@@ -60,11 +60,13 @@ struct GraphicsInteropSemaphoreDesc {
     uint32_t initValue;
 };
 
+// T derives from IDeviceChild. A class derived from DeviceChild<T> lists T's other ancestors (e.g. IResource)
+// and routes to this table.
 template<typename T>
 struct DeviceChild: public nvrhi::ObjectImpl<T> {
     NVRHI_BEGIN_INTERFACE_TABLE_INLINE(DeviceChild)
+    NVRHI_IMPLEMENTS_INTERFACE(T)
     NVRHI_IMPLEMENTS_INTERFACE(IDeviceChild)
-    NVRHI_IMPLEMENTS_ROUTE_PARENT(nvrhi::ObjectImpl<T>)
     NVRHI_END_INTERFACE_TABLE()
 
     IDevice *getDevice() override final {
@@ -165,11 +167,16 @@ struct Module: public DeviceChild<IModule> {
     std::vector<ConstantInfo> m_constants;
 };
 
+// Shares its Module's reference count (AddRef/Release go to the owner) but answers QueryInterface itself:
+// the module does not route to its kernels. The non-delegating table answers the same interfaces.
 struct Kernel: public nvrhi::DelegatingObjectImpl<IKernel> {
     NVRHI_BEGIN_INTERFACE_TABLE_INLINE(Kernel)
     NVRHI_IMPLEMENTS_INTERFACE(IKernel)
     NVRHI_IMPLEMENTS_INTERFACE(IDeviceChild)
-    NVRHI_IMPLEMENTS_INTERFACE(nvrhi::IObject)
+    NVRHI_END_INTERFACE_TABLE()
+    NVRHI_BEGIN_NON_DELEGATING_INTERFACE_TABLE_INLINE(Kernel)
+    NVRHI_IMPLEMENTS_INTERFACE(IKernel)
+    NVRHI_IMPLEMENTS_INTERFACE(IDeviceChild)
     NVRHI_END_INTERFACE_TABLE()
 
     IDevice *getDevice() override;
@@ -265,7 +272,6 @@ struct SyncPointInfo {
 struct Device : public nvrhi::ObjectImpl<IDevice> {
     NVRHI_BEGIN_INTERFACE_TABLE_INLINE(Device)
     NVRHI_IMPLEMENTS_INTERFACE(IDevice)
-    NVRHI_IMPLEMENTS_ROUTE_PARENT(nvrhi::ObjectImpl<IDevice>)
     NVRHI_END_INTERFACE_TABLE()
 
     nvrhi::FRESULT createBuffer(const BufferDesc &desc, IBuffer **buffer) override;

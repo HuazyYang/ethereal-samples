@@ -17,6 +17,10 @@ inline dm::quat axisAngleQuat(const dm::float3 &axis, float radians) {
 
 class Camera: public nvrhi::ObjectImpl<nvrhi::IObject>  {
 public:
+    NVRHI_BEGIN_INTERFACE_TABLE_INLINE(Camera)
+    NVRHI_IMPLEMENTS_INTERFACE(nvrhi::IObject)
+    NVRHI_END_INTERFACE_TABLE()
+
    /**
     * @brief specify the rotation convention of WCS, VCS, HCS
     * @p rightHandled

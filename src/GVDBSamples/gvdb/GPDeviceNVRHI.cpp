@@ -90,7 +90,6 @@ struct TimelineTransaction {
 struct GPAndNVRHIInteropDevice : public nvrhi::ObjectImpl<IGPAndNVRHIInteropDevice> {
     NVRHI_BEGIN_INTERFACE_TABLE_INLINE(GPAndNVRHIInteropDevice)
     NVRHI_IMPLEMENTS_INTERFACE(IGPAndNVRHIInteropDevice)
-    NVRHI_IMPLEMENTS_INTERFACE(nvrhi::IObject)
     NVRHI_END_INTERFACE_TABLE()
 
     nvrhi::IDevice* getNVRHIDevice() override;

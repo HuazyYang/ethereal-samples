@@ -133,6 +133,10 @@ enum class KN {
 
 class NamedKernels : public nvrhi::ObjectImpl<nvrhi::IObject> {
  public:
+    NVRHI_BEGIN_INTERFACE_TABLE_INLINE(NamedKernels)
+    NVRHI_IMPLEMENTS_INTERFACE(nvrhi::IObject)
+    NVRHI_END_INTERFACE_TABLE()
+
     void load(donut::vfs::IFileSystem *vfs, donut::gp::IDevice *device);
     ~NamedKernels();
 
@@ -232,7 +236,6 @@ NamedKernels::~NamedKernels() {}
 struct Voxelizer : public nvrhi::ObjectImpl<IVoxelizer> {
     NVRHI_BEGIN_INTERFACE_TABLE_INLINE(Voxelizer)
     NVRHI_IMPLEMENTS_INTERFACE(IVoxelizer)
-    NVRHI_IMPLEMENTS_INTERFACE(nvrhi::IObject)
     NVRHI_END_INTERFACE_TABLE()
 
     nvrhi::FRESULT solidVoxelize(gvdb::GVDB *pGVDB, int channel,
