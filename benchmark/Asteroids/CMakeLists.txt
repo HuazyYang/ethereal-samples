@@ -53,7 +53,7 @@ function(asteroids_collect_targets dir out)
 	get_property(_subdirs DIRECTORY "${dir}" PROPERTY SUBDIRECTORIES)
 	foreach (_subdir IN LISTS _subdirs)
 		# ShaderTool is a build-time tool that links vendored compiler libraries: left as it is.
-		if (NOT _subdir MATCHES "/thirdparty/shadertool$")
+		if (NOT _subdir MATCHES "/thirdparty/shader-tool$")
 			asteroids_collect_targets("${_subdir}" _nested)
 			list(APPEND _targets ${_nested})
 		endif()

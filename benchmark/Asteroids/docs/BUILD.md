@@ -110,8 +110,8 @@ executable; the reference sample does not select DXC, its HLSL goes through glsl
 
 ### Recipe for `asteroids_nvrhi`
 
-Donut replaced ShaderMake with `Donut/thirdparty/shadertool`. The CMake function
-`shadertool_add_shader_objects` (from `Donut/thirdparty/shadertool/cmake/ShaderToolFunctions.cmake`,
+Donut replaced ShaderMake with `Donut/thirdparty/shader-tool`. The CMake function
+`shadertool_add_shader_objects` (from `Donut/thirdparty/shader-tool/cmake/ShaderToolFunctions.cmake`,
 already included by `Donut/shaders/CMakeLists.txt`, so it is available after `add_subdirectory(Donut)`)
 turns a ShaderMake-style config file into one custom command per backend.
 
