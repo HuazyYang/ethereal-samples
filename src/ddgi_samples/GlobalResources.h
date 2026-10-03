@@ -115,6 +115,15 @@ class GlobalResources {
     dm::uint NumFramesInFlight;
     bool IsGlobalConstsDirty = true;
 
+    // The passes track these textures explicitly: every frame they begin tracking each one in its steady
+    // state (ShaderResource or UnorderedAccess) and leave it there. A texture is created in Common, the
+    // state it really is in on every backend (on Vulkan the image starts in VK_IMAGE_LAYOUT_UNDEFINED
+    // whatever TextureDesc::initialState says), and the next command list moves it to its steady state.
+    std::vector<std::pair<nvrhi::TextureHandle, nvrhi::ResourceStates>> PendingInitialStates;
+    void CreateTrackedTexture(nvrhi::TextureDesc desc, nvrhi::ResourceStates steadyState,
+                              nvrhi::TextureHandle &texture);
+    void CommitInitialStates(nvrhi::ICommandList *commandList);
+
     void CreateResizableResources(dm::uint2 size);
     void CreateBindingLayout();
     void CreateBindlessLayout();

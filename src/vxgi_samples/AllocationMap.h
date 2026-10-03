@@ -108,6 +108,7 @@ struct AllocationMap {
     int m_InvalidateBufferSize = {};
 
     nvrhi::GraphicsPipelineHandle m_RasterizeInvalidateRegionsPS;
+    nvrhi::BindingLayoutHandle m_RasterizeInvalidateRegionsBindingLayout;
     nvrhi::FramebufferHandle m_EmptyFramebuffer;
 
     nvrhi::TextureHandle m_InvalidateBitmap;

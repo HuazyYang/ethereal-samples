@@ -29,6 +29,20 @@ ViewTracer::ViewTracer(VoxelRenderer *parent, bool ambientOcclusion)
 
 ViewTracer::~ViewTracer() {}
 
+namespace {
+// g_TargetStencil is a Texture2D<uint2> that reads the stencil value from .g. A depth-stencil texture's default SRV
+// is its depth plane (UNORM/FLOAT), so it has to be bound through the stencil-plane view format.
+nvrhi::BindingSetItem StencilPlaneSRV(uint32_t slot, nvrhi::ITexture *texture) {
+    nvrhi::Format format = nvrhi::Format::UNKNOWN;
+    switch (texture->getDesc().format) {
+        case nvrhi::Format::D24S8: format = nvrhi::Format::X24G8_UINT; break;
+        case nvrhi::Format::D32S8: format = nvrhi::Format::X32G8_UINT; break;
+        default: break;
+    }
+    return nvrhi::BindingSetItem::Texture_SRV(slot, texture, format);
+}
+}  // namespace
+
 Status ViewTracer::AllocateResources(nvrhi::ICommandList *commandList) {
     Status rc;
 
@@ -67,43 +81,43 @@ Status ViewTracer::AllocateResources(nvrhi::ICommandList *commandList) {
     bufDesc.maxVersions = m_Parent->GetNumFramesInFlight() * 4;
     bufDesc.byteSize = sizeof(BuiltinTracingConstants);
     bufDesc.debugName = "ViewTracer:BuiltinTracing";
-    m_pTracingCB = m_Device->createBuffer(bufDesc);
+    m_Device->createBuffer(bufDesc, &m_pTracingCB);
 
     bufDesc.byteSize = sizeof(DownsampleConstants);
     bufDesc.debugName = "ViewTracer:Downsample";
-    m_DownsampleCB = m_Device->createBuffer(bufDesc);
+    m_Device->createBuffer(bufDesc, &m_DownsampleCB);
 
     nvrhi::SamplerDesc samplerDesc;
     samplerDesc.setAllAddressModes(nvrhi::SamplerAddressMode::Border);
     samplerDesc.borderColor = nvrhi::Color{0.f};
     samplerDesc.minFilter = false;
-    m_pSamplerLinearBorder = m_Device->createSampler(samplerDesc);
+    m_Device->createSampler(samplerDesc, &m_pSamplerLinearBorder);
 
     nvrhi::SamplerDesc envMapSampler = {};
-    m_EnvironmentMapSampler = m_Device->createSampler(envMapSampler);
+    m_Device->createSampler(envMapSampler, &m_EnvironmentMapSampler);
 
     nvrhi::SamplerDesc pointSampler;
     pointSampler.setAllFilters(false);
     pointSampler.setAllAddressModes(nvrhi::SamplerAddressMode::Border);
     pointSampler.borderColor = nvrhi::Color{0.f};
-    m_PointSampler = m_Device->createSampler(pointSampler);
+    m_Device->createSampler(pointSampler, &m_PointSampler);
 
     bufDesc = {};
     bufDesc.structStride = sizeof(SampleData);
     bufDesc.byteSize = 4096 * sizeof(SampleData);
     bufDesc.canHaveUAVs = true;
-    m_SamplePositions = m_Device->createBuffer(bufDesc);
+    m_Device->createBuffer(bufDesc, &m_SamplePositions);
 
     bufDesc.structStride = 32;
     bufDesc.byteSize = 129 * 32;
-    m_ConeDirections = m_Device->createBuffer(bufDesc);
+    m_Device->createBuffer(bufDesc, &m_ConeDirections);
 
     uint drawIndirectInitialData[] = {0, 1, 0, 0, 0, 1, 0, 0};
     bufDesc = {};
     bufDesc.byteSize = sizeof(drawIndirectInitialData);
     bufDesc.isDrawIndirectArgs = true;
     bufDesc.initialState = nvrhi::ResourceStates::CopyDest;
-    m_DrawIndirectArgs = m_Device->createBuffer(bufDesc);
+    m_Device->createBuffer(bufDesc, &m_DrawIndirectArgs);
     commandList->beginTrackingBufferState(m_DrawIndirectArgs, nvrhi::ResourceStates::CopyDest);
     commandList->writeBuffer(m_DrawIndirectArgs, drawIndirectInitialData, sizeof(drawIndirectInitialData));
 
@@ -111,7 +125,7 @@ Status ViewTracer::AllocateResources(nvrhi::ICommandList *commandList) {
     bufDesc.byteSize = 64;
     bufDesc.canHaveUAVs = 1;
     bufDesc.isDrawIndirectArgs = 1;
-    m_AppendCounters = m_Device->createBuffer(bufDesc);
+    m_Device->createBuffer(bufDesc, &m_AppendCounters);
 
     bufDesc = {};
     bufDesc.isConstantBuffer = true;
@@ -119,7 +133,7 @@ Status ViewTracer::AllocateResources(nvrhi::ICommandList *commandList) {
     bufDesc.maxVersions = m_Parent->GetNumFramesInFlight();
     bufDesc.byteSize = sizeof(VisualizeSamplesConstants);
     bufDesc.debugName = "ViewTracer:VisualizeSamples";
-    m_VisualizeSamplesCB = m_Device->createBuffer(bufDesc);
+    m_Device->createBuffer(bufDesc, &m_VisualizeSamplesCB);
 
     nvrhi::TextureDesc randTextureDesc;
     randTextureDesc.format = nvrhi::Format::R32_FLOAT;
@@ -134,9 +148,11 @@ Status ViewTracer::AllocateResources(nvrhi::ICommandList *commandList) {
             randomValues[y * 16 + x] = (float)z / 256.f;
         }
     }
-    m_RandomsTextureLarge = m_Device->createTexture(randTextureDesc);
+    m_Device->createTexture(randTextureDesc, &m_RandomsTextureLarge);
+    // New textures are in Common on every backend (a Vulkan image starts in VK_IMAGE_LAYOUT_UNDEFINED);
+    // writeTexture and clearDepthStencilTexture move them to the states they need.
     commandList->beginTrackingTextureState(m_RandomsTextureLarge, nvrhi::AllSubresources,
-                                           nvrhi::ResourceStates::CopyDest);
+                                           nvrhi::ResourceStates::Common);
     commandList->writeTexture(m_RandomsTextureLarge, 0, 0, randomValues, 16 * sizeof(float));
     commandList->setPermanentTextureState(m_RandomsTextureLarge, nvrhi::ResourceStates::ShaderResource);
     delete[] randomValues;
@@ -144,9 +160,9 @@ Status ViewTracer::AllocateResources(nvrhi::ICommandList *commandList) {
     randTextureDesc.width = 4;
     randTextureDesc.height = 4;
     randTextureDesc.debugName = "randTextureSmall";
-    m_RandomsTextureSmall = m_Device->createTexture(randTextureDesc);
+    m_Device->createTexture(randTextureDesc, &m_RandomsTextureSmall);
     commandList->beginTrackingTextureState(m_RandomsTextureSmall, nvrhi::AllSubresources,
-                                           nvrhi::ResourceStates::CopyDest);
+                                           nvrhi::ResourceStates::Common);
     commandList->writeTexture(m_RandomsTextureSmall, 0, 0, g_RandomValuesSmall, 4 * sizeof(float));
     commandList->setPermanentTextureState(m_RandomsTextureSmall, nvrhi::ResourceStates::ShaderResource);
 
@@ -158,7 +174,7 @@ Status ViewTracer::AllocateResources(nvrhi::ICommandList *commandList) {
     nullTextureDesc.width = 1;
     nullTextureDesc.height = 1;
     nullTextureDesc.debugName = "nullTexture";
-    m_NullTexture = m_Device->createTexture(nullTextureDesc);
+    m_Device->createTexture(nullTextureDesc, &m_NullTexture);
 
     nullTextureDesc.isTypeless = true;
     nullTextureDesc.isRenderTarget = true;
@@ -166,7 +182,7 @@ Status ViewTracer::AllocateResources(nvrhi::ICommandList *commandList) {
     nullTextureDesc.isRenderTarget = true;
     nullTextureDesc.isTypeless = true;
     nullTextureDesc.debugName = "nullDepthStencil";
-    m_NullDepthStencilTexture = m_Device->createTexture(nullTextureDesc);
+    m_Device->createTexture(nullTextureDesc, &m_NullDepthStencilTexture);
 
     nvrhi::TextureDesc nullCubemapDesc;
     nullCubemapDesc.format = nvrhi::Format::RGBA8_UNORM;
@@ -175,14 +191,14 @@ Status ViewTracer::AllocateResources(nvrhi::ICommandList *commandList) {
     nullCubemapDesc.height = 1;
     nullCubemapDesc.arraySize = 6;
     nullCubemapDesc.debugName = "nullCubemap";
-    m_NullCubemap = m_Device->createTexture(nullCubemapDesc);
+    m_Device->createTexture(nullCubemapDesc, &m_NullCubemap);
 
     commandList->beginTrackingTextureState(m_NullTexture, nvrhi::AllSubresources,
-                                           nvrhi::ResourceStates::CopyDest);
+                                           nvrhi::ResourceStates::Common);
     commandList->beginTrackingTextureState(m_NullDepthStencilTexture, nvrhi::AllSubresources,
-                                           nvrhi::ResourceStates::DepthWrite);
+                                           nvrhi::ResourceStates::Common);
     commandList->beginTrackingTextureState(m_NullCubemap, nvrhi::AllSubresources,
-                                           nvrhi::ResourceStates::CopyDest);
+                                           nvrhi::ResourceStates::Common);
 
     commandList->writeTexture(m_NullTexture, 0, 0, &nullImageValue, 0);
     commandList->clearDepthStencilTexture(m_NullDepthStencilTexture, nvrhi::AllSubresources, true, 0.f, true,
@@ -221,7 +237,7 @@ Status ViewTracer::AllocateResources(nvrhi::ICommandList *commandList) {
             nvrhi::BindingLayoutItem::Sampler(VXGI_CT_ENV_MAP_SAMPLER_SLOT),  // s_EnvironmentMapSampler
         };
 
-        m_ComputeBindingLayout = m_Device->createBindingLayout(bindingLayoutDesc);
+        m_Device->createBindingLayout(bindingLayoutDesc, &m_ComputeBindingLayout);
 
         bindingLayoutDesc.visibility = nvrhi::ShaderType::Vertex | nvrhi::ShaderType::Pixel;
         bindingLayoutDesc.registerSpaceIsDescriptorSet = true;
@@ -244,7 +260,7 @@ Status ViewTracer::AllocateResources(nvrhi::ICommandList *commandList) {
             nvrhi::BindingLayoutItem::Sampler(VXGI_CT_LINEAR_BORDER_SAMPLER_SLOT),       // SamplerLinearBorder
             nvrhi::BindingLayoutItem::Sampler(VXGI_CT_ENV_MAP_SAMPLER_SLOT),  // s_EnvironmentMapSampler
         };
-        m_GraphicsBindingLayout = m_Device->createBindingLayout(bindingLayoutDesc);
+        m_Device->createBindingLayout(bindingLayoutDesc, &m_GraphicsBindingLayout);
 
         bindingLayoutDesc.bindings = {
             nvrhi::BindingLayoutItem::PushConstants(0, 3 * sizeof(float)),  // FullScreenQuadCB
@@ -269,7 +285,7 @@ Status ViewTracer::AllocateResources(nvrhi::ICommandList *commandList) {
             nvrhi::BindingLayoutItem::Sampler(VXGI_CT_ENV_MAP_SAMPLER_SLOT),  // s_EnvironmentMapSampler
         };
 
-        m_GraphicsBindingLayoutDebug = m_Device->createBindingLayout(bindingLayoutDesc);
+        m_Device->createBindingLayout(bindingLayoutDesc, &m_GraphicsBindingLayoutDebug);
 
         bindingLayoutDesc.visibility = nvrhi::ShaderType::Vertex | nvrhi::ShaderType::Pixel;
         bindingLayoutDesc.registerSpaceIsDescriptorSet = true;
@@ -279,7 +295,7 @@ Status ViewTracer::AllocateResources(nvrhi::ICommandList *commandList) {
             nvrhi::BindingLayoutItem::StructuredBuffer_SRV(1),    // t_ConeDirections
             nvrhi::BindingLayoutItem::Texture_SRV(2),             // t_EmittanceDebug
         };
-        m_pVisualizeBindingLayout = m_Device->createBindingLayout(bindingLayoutDesc);
+        m_Device->createBindingLayout(bindingLayoutDesc, &m_pVisualizeBindingLayout);
     }
 
     return Status::OK;
@@ -362,7 +378,7 @@ Status ViewTracer::LoadTracingShaders(int sparsity, bool gbufferMSAA) {
             fbInfo = {};
             fbInfo.setDepthFormat(m_AvailableDSFormat);
 
-            m_pCopyToStencilPS = m_Device->createGraphicsPipeline(psoDesc, fbInfo);
+            m_Device->createGraphicsPipeline1(psoDesc, fbInfo, &m_pCopyToStencilPS);
             NVRHI_ASSERT(m_pCopyToStencilPS);
 
             DiffuseTracingPS_Macros[1].definition = "0";
@@ -384,7 +400,7 @@ Status ViewTracer::LoadTracingShaders(int sparsity, bool gbufferMSAA) {
                                                          : nvrhi::Format::RGBA16_FLOAT);
             fbInfo.setDepthFormat(m_AvailableDSFormat);
 
-            m_pDiffuseTracingRefinePS = m_Device->createGraphicsPipeline(psoDesc, fbInfo);
+            m_Device->createGraphicsPipeline1(psoDesc, fbInfo, &m_pDiffuseTracingRefinePS);
             NVRHI_ASSERT(m_pDiffuseTracingRefinePS);
         }
     }
@@ -410,7 +426,7 @@ Status ViewTracer::LoadTracingShaders(int sparsity, bool gbufferMSAA) {
         psoDesc.PS = ps;
         psoDesc.bindingLayouts = {m_GraphicsBindingLayout, TracingBindingLayout};
         fbInfo.addColorFormat(nvrhi::Format::RGBA16_FLOAT);
-        m_SpecularTracingPSOs[0] = m_Device->createGraphicsPipeline(psoDesc, fbInfo);
+        m_Device->createGraphicsPipeline1(psoDesc, fbInfo, &m_SpecularTracingPSOs[0]);
         NVRHI_ASSERT(m_SpecularTracingPSOs[0]);
 
         SpecularTracingPS_Macros[1].definition = "1";
@@ -419,7 +435,7 @@ Status ViewTracer::LoadTracingShaders(int sparsity, bool gbufferMSAA) {
         NVRHI_ASSERT(ps);
         psoDesc.PS = ps;
         psoDesc.bindingLayouts = {m_GraphicsBindingLayoutDebug, TracingBindingLayout};
-        m_SpecularTracingPSOs[1] = m_Device->createGraphicsPipeline(psoDesc, fbInfo);
+        m_Device->createGraphicsPipeline1(psoDesc, fbInfo, &m_SpecularTracingPSOs[1]);
         NVRHI_ASSERT(m_SpecularTracingPSOs[1]);
 
         std::vector<donut::engine::ShaderMacro> FilterSpecularCS_Macros{MSAA_G_Buffer_Macro};
@@ -430,7 +446,7 @@ Status ViewTracer::LoadTracingShaders(int sparsity, bool gbufferMSAA) {
 
         csoDesc.bindingLayouts = {m_ComputeBindingLayout, TracingBindingLayout};
 
-        m_pFilterSpecularCS = m_Device->createComputePipeline(csoDesc);
+        m_Device->createComputePipeline(csoDesc, &m_pFilterSpecularCS);
         NVRHI_ASSERT(m_pFilterSpecularCS);
     }
 
@@ -445,7 +461,7 @@ Status ViewTracer::LoadTracingShaders(int sparsity, bool gbufferMSAA) {
         NVRHI_ASSERT(cs);
         csoDesc.CS = cs;
         csoDesc.bindingLayouts = {m_ComputeBindingLayout, TracingBindingLayout};
-        m_pInterpolateIlluminationCS = m_Device->createComputePipeline(csoDesc);
+        m_Device->createComputePipeline(csoDesc, &m_pInterpolateIlluminationCS);
         NVRHI_ASSERT(m_pInterpolateIlluminationCS);
     }
 
@@ -459,7 +475,7 @@ Status ViewTracer::LoadTracingShaders(int sparsity, bool gbufferMSAA) {
         NVRHI_ASSERT(cs);
         csoDesc.CS = cs;
         csoDesc.bindingLayouts = {m_ComputeBindingLayout, TracingBindingLayout};
-        m_pInterpolateCoarseCS = m_Device->createComputePipeline(csoDesc);
+        m_Device->createComputePipeline(csoDesc, &m_pInterpolateCoarseCS);
         NVRHI_ASSERT(m_pInterpolateCoarseCS);
     }
 
@@ -488,21 +504,21 @@ Status ViewTracer::LoadTracingShaders(int sparsity, bool gbufferMSAA) {
         NVRHI_ASSERT(cs);
         csoDesc.CS = cs;
         csoDesc.bindingLayouts = {m_ComputeBindingLayout};
-        m_pComputeScreenSpaceOcclusionCS = m_Device->createComputePipeline(csoDesc);
+        m_Device->createComputePipeline(csoDesc, &m_pComputeScreenSpaceOcclusionCS);
 
         cs = m_ShaderFactory->CreateShader("app/ConeTracing/DeinterleaveDepthCS.hlsl", "main", &GBuffer_Macros,
                                            nvrhi::ShaderType::Compute);
         NVRHI_ASSERT(cs);
         csoDesc.CS = cs;
         csoDesc.bindingLayouts = {m_ComputeBindingLayout};
-        m_pDeinterleaveDepthCS = m_Device->createComputePipeline(csoDesc);
+        m_Device->createComputePipeline(csoDesc, &m_pDeinterleaveDepthCS);
 
         cs = m_ShaderFactory->CreateShader("app/ConeTracing/BlurScreenSpaceOcclusionCS.hlsl", "main", nullptr,
                                            nvrhi::ShaderType::Compute);
         NVRHI_ASSERT(cs);
         csoDesc.CS = cs;
         csoDesc.bindingLayouts = {m_ComputeBindingLayout};
-        m_pBlurScreenSpaceOcclusionCS = m_Device->createComputePipeline(csoDesc);
+        m_Device->createComputePipeline(csoDesc, &m_pBlurScreenSpaceOcclusionCS);
     }
 
     m_ShaderReloadRequired = false;
@@ -673,20 +689,21 @@ void ViewTracer::UpdateConeVectors(nvrhi::ICommandList *commandList, uint numCon
         coneDirectionsTexDesc.height = 4;
         coneDirectionsTexDesc.arraySize = numCones;
         coneDirectionsTexDesc.debugName = "coneDirectionsStagingTexture";
-        auto tilesOfConesBuffer =
-            m_Device->createStagingTexture(coneDirectionsTexDesc, nvrhi::CpuAccessMode::Write);
+        nvrhi::StagingTextureHandle tilesOfConesBuffer;
+        m_Device->createStagingTexture(coneDirectionsTexDesc, nvrhi::CpuAccessMode::Write, &tilesOfConesBuffer);
 
         coneDirectionsTexDesc.debugName = "coneDirectionsTexture";
-        m_ConeDirectionsTexture = m_Device->createTexture(coneDirectionsTexDesc);
+        m_Device->createTexture(coneDirectionsTexDesc, &m_ConeDirectionsTexture);
 
+        // A new texture is in Common; the copies below move it to CopyDest.
         commandList->beginTrackingTextureState(m_ConeDirectionsTexture, nvrhi::AllSubresources,
-                                               nvrhi::ResourceStates::CopyDest);
+                                               nvrhi::ResourceStates::Common);
 
         for (uint i = 0; i < numCones; ++i) {
             size_t rowPitch;
             auto sliceRegion = nvrhi::TextureSlice{}.setArraySlice(i);
             auto tilesOfCones = (float4 *)m_Device->mapStagingTexture(tilesOfConesBuffer, sliceRegion,
-                                                                      nvrhi::CpuAccessMode::Write, &rowPitch);
+                                                                      nvrhi::CpuAccessMode::Write, rowPitch);
             NVRHI_ASSERT(tilesOfCones);
             NVRHI_ASSERT((rowPitch & (sizeof(float4) - 1)) == 0);
             int N = rowPitch / sizeof(float4);
@@ -714,7 +731,7 @@ void ViewTracer::UpdateConeVectors(nvrhi::ICommandList *commandList, uint numCon
 
             m_Device->unmapStagingTexture(tilesOfConesBuffer);
 
-            commandList->copyTexture(m_ConeDirectionsTexture, sliceRegion, tilesOfConesBuffer, sliceRegion);
+            commandList->copyTexture3(m_ConeDirectionsTexture, sliceRegion, tilesOfConesBuffer, sliceRegion);
         }
 
         commandList->setPermanentTextureState(m_ConeDirectionsTexture, nvrhi::ResourceStates::ShaderResource);
@@ -748,8 +765,7 @@ Status ViewTracer::ValidateTextureSize(TextureHandleVerbose *texture, uint width
         desc.initialState = format == m_AvailableDSFormat ? nvrhi::ResourceStates::DepthWrite
                                                           : nvrhi::ResourceStates::RenderTarget;
         desc.keepInitialState = true;
-        texture->value = m_Device->createTexture(desc);
-        if (!texture->value)
+        if (NVRHI_FAILED(m_Device->createTexture(desc, &texture->value)))
             return Status::RESOURCE_CREATION_FAILED;
         *invalidated = true;
     }
@@ -784,8 +800,7 @@ Status ViewTracer::ValidateDownsampledTargets(uint width, uint height, bool useF
         nvrhi::FramebufferDesc fbDesc;
         for (uint n = 0; n < m_DownsampledTargetCount; ++n)
             fbDesc.addColorAttachment(m_DownsampledTargets[n].value);
-        m_DownsampledFb = m_Device->createFramebuffer(fbDesc);
-        if (!m_DownsampledFb)
+        if (NVRHI_FAILED(m_Device->createFramebuffer(fbDesc, &m_DownsampledFb)))
             return Status::RESOURCE_CREATION_FAILED;
     }
 
@@ -793,8 +808,7 @@ Status ViewTracer::ValidateDownsampledTargets(uint width, uint height, bool useF
         nvrhi::FramebufferDesc fbDesc;
         for (uint n = 0; n < m_DownsampledTargetCount; ++n)
             fbDesc.addColorAttachment(m_DownsampledSmoothedTargets[n].value);
-        m_DownsampledSmoothedFb = m_Device->createFramebuffer(fbDesc);
-        if (!m_DownsampledSmoothedFb)
+        if (NVRHI_FAILED(m_Device->createFramebuffer(fbDesc, &m_DownsampledSmoothedFb)))
             return Status::RESOURCE_CREATION_FAILED;
     }
 
@@ -813,8 +827,7 @@ Status ViewTracer::ValidateSpecularTargets(uint width, uint height, bool useFilt
             if (m_SpecularTargets[n].value) {
                 nvrhi::FramebufferDesc fbDesc;
                 fbDesc.addColorAttachment(m_SpecularTargets[n].value);
-                m_SpecularTracingFbs[n] = m_Device->createFramebuffer(fbDesc);
-                if (!m_SpecularTracingFbs[n])
+                if (NVRHI_FAILED(m_Device->createFramebuffer(fbDesc, &m_SpecularTracingFbs[n])))
                     return Status::RESOURCE_CREATION_FAILED;
             }
         }
@@ -852,8 +865,7 @@ Status ViewTracer::ValidateInterpolatedTargets(uint width, uint height) {
             if (m_InterpolatedTargets[n].value) {
                 nvrhi::FramebufferDesc fbDesc;
                 fbDesc.addColorAttachment(m_InterpolatedTargets[0].value);
-                m_InterpolatedFbs[n] = m_Device->createFramebuffer(fbDesc);
-                if (!m_InterpolatedFbs[n])
+                if (NVRHI_FAILED(m_Device->createFramebuffer(fbDesc, &m_InterpolatedFbs[n])))
                     return Status::RESOURCE_CREATION_FAILED;
             }
         }
@@ -871,19 +883,16 @@ Status ViewTracer::ValidateInterpolatedTargets(uint width, uint height) {
         if (m_RefinementStencilTexture.value) {
             nvrhi::FramebufferDesc fbDesc;
             fbDesc.setDepthAttachment(m_RefinementStencilTexture.value);
-            m_RefinementStencilFb = m_Device->createFramebuffer(fbDesc);
-            if (!m_RefinementStencilFb)
+            if (NVRHI_FAILED(m_Device->createFramebuffer(fbDesc, &m_RefinementStencilFb)))
                 return Status::RESOURCE_CREATION_FAILED;
 
             fbDesc.colorAttachments.resize(1);
             fbDesc.colorAttachments[0] = {m_InterpolatedTargets[0].value};
-            m_DiffuseTracingRefineFbs[0] = m_Device->createFramebuffer(fbDesc);
-            if (!m_DiffuseTracingRefineFbs[0])
+            if (NVRHI_FAILED(m_Device->createFramebuffer(fbDesc, &m_DiffuseTracingRefineFbs[0])))
                 return Status::RESOURCE_CREATION_FAILED;
 
             fbDesc.colorAttachments[0] = {m_InterpolatedTargets[1].value};
-            m_DiffuseTracingRefineFbs[1] = m_Device->createFramebuffer(fbDesc);
-            if (!m_DiffuseTracingRefineFbs[1])
+            if (NVRHI_FAILED(m_Device->createFramebuffer(fbDesc, &m_DiffuseTracingRefineFbs[1])))
                 return Status::RESOURCE_CREATION_FAILED;
         }
     }
@@ -1045,9 +1054,8 @@ Status ViewTracer::computeDiffuseChannel(nvrhi::ICommandList *commandList,
         nvrhi::BindingSetItem::Texture_SRV(
             VXGI_CT_FLAT_NORMAL_BUFFER_SRV_SLOT,
             inputBuffers->gbufferGeoNormal ? inputBuffers->gbufferGeoNormal : inputBuffers->gbufferNormal),
-        nvrhi::BindingSetItem::Texture_SRV(
-            VXGI_CT_STENCIL_BUFFER_SRV_SLOT,
-            inputBuffers->gbufferStencil ? inputBuffers->gbufferStencil : m_NullDepthStencilTexture.Get()),
+        StencilPlaneSRV(VXGI_CT_STENCIL_BUFFER_SRV_SLOT,
+                        inputBuffers->gbufferStencil ? inputBuffers->gbufferStencil : m_NullDepthStencilTexture.Get()),
         nvrhi::BindingSetItem::Texture_SRV(
             VXGI_CT_PREV_DEPTH_BUFFER_SRV_SLOT,
             inputBuffersPreviousFrame ? inputBuffersPreviousFrame->gbufferDepth : m_NullTexture.Get()),
@@ -1098,7 +1106,7 @@ Status ViewTracer::computeDiffuseChannel(nvrhi::ICommandList *commandList,
             bindingSetDesc.bindings.resize(numBindings);
             bindingSetDesc.bindings.push_back(nvrhi::BindingSetItem::Texture_UAV(
                 VXGI_CT_COMMON_UAV_SLOT_0, m_DeinterleavedDepthTextureArray.value));
-            state.bindings = {bindingCache->GetOrCreateBindingSet(bindingSetDesc, m_ComputeBindingLayout)};
+            state.bindings = {m_Parent->GetBindingSetFactory().GetOrCreate(*bindingCache, bindingSetDesc, m_ComputeBindingLayout)};
             commandList->setComputeState(state);
 
             auto &texDesc = m_DeinterleavedDepthTextureArray.value->getDesc();
@@ -1117,7 +1125,7 @@ Status ViewTracer::computeDiffuseChannel(nvrhi::ICommandList *commandList,
                                                     m_DeinterleavedDepthTextureArray.value),
                  nvrhi::BindingSetItem::Texture_UAV(VXGI_CT_COMMON_UAV_SLOT_0,
                                                     m_ScreenSpaceOcclusionTextureArray.value)});
-            state.bindings = {bindingCache->GetOrCreateBindingSet(bindingSetDesc, m_ComputeBindingLayout)};
+            state.bindings = {m_Parent->GetBindingSetFactory().GetOrCreate(*bindingCache, bindingSetDesc, m_ComputeBindingLayout)};
             commandList->setComputeState(state);
 
             auto &texDesc = m_DeinterleavedDepthTextureArray.value->getDesc();
@@ -1138,7 +1146,7 @@ Status ViewTracer::computeDiffuseChannel(nvrhi::ICommandList *commandList,
                                                     m_ScreenSpaceOcclusionTextureArray.value),
                  nvrhi::BindingSetItem::Texture_UAV(VXGI_CT_COMMON_UAV_SLOT_0,
                                                     m_ScreenSpaceOcclusionBlurTexture.value)});
-            state.bindings = {bindingCache->GetOrCreateBindingSet(bindingSetDesc, m_ComputeBindingLayout)};
+            state.bindings = {m_Parent->GetBindingSetFactory().GetOrCreate(*bindingCache, bindingSetDesc, m_ComputeBindingLayout)};
             commandList->setComputeState(state);
 
             auto &texDesc = m_ScreenSpaceOcclusionBlurTexture.value->getDesc();
@@ -1197,7 +1205,7 @@ Status ViewTracer::computeDiffuseChannel(nvrhi::ICommandList *commandList,
             psoDesc.renderState.depthStencilState.depthTestEnable = false;
             psoDesc.renderState.depthStencilState.stencilEnable = false;
 
-            nvrhi::FramebufferInfo fbInfo = fb->getFramebufferInfo();
+            nvrhi::FramebufferInfo fbInfo = fb->getFramebufferInfo().getInfo();
             for (uint i = 0; i < numTargets; ++i) {
                 psoDesc.renderState.blendState.targets[i]
                     .enableBlend()
@@ -1209,7 +1217,7 @@ Status ViewTracer::computeDiffuseChannel(nvrhi::ICommandList *commandList,
                     .setDestBlendAlpha(nvrhi::BlendFactor::One);
             }
 
-            pso = m_Device->createGraphicsPipeline(psoDesc, fbInfo);
+            m_Device->createGraphicsPipeline1(psoDesc, fbInfo, &pso);
             NVRHI_ASSERT(pso);
             if (!pso)
                 return Status::RESOURCE_CREATION_FAILED;
@@ -1241,7 +1249,7 @@ Status ViewTracer::computeDiffuseChannel(nvrhi::ICommandList *commandList,
         }
 
         state.bindings = {
-            bindingCache->GetOrCreateBindingSet(
+            m_Parent->GetBindingSetFactory().GetOrCreate(*bindingCache, 
                 bindingSetDesc, renderDebug ? m_GraphicsBindingLayoutDebug : m_GraphicsBindingLayout),
             TracingBindingSet};
 
@@ -1274,7 +1282,7 @@ Status ViewTracer::computeDiffuseChannel(nvrhi::ICommandList *commandList,
                     VXGI_CT_COMMON_UAV_SLOT_0 + slot, m_DownsampledTargets[slot].value));
             }
 
-            state.bindings = {bindingCache->GetOrCreateBindingSet(bindingSetDesc, m_ComputeBindingLayout),
+            state.bindings = {m_Parent->GetBindingSetFactory().GetOrCreate(*bindingCache, bindingSetDesc, m_ComputeBindingLayout),
                               TracingBindingSet};
             commandList->setComputeState(state);
 
@@ -1318,15 +1326,20 @@ Status ViewTracer::computeDiffuseChannel(nvrhi::ICommandList *commandList,
                 {nvrhi::BindingSetItem::Texture_UAV(0, m_InterpolatedTargets[0].value),
                  nvrhi::BindingSetItem::Texture_UAV(1, m_RefinementControlTexture.value),
                  nvrhi::BindingSetItem::Texture_UAV(2, m_RefinementGridTexture.value)});
-            state.bindings = {bindingCache->GetOrCreateBindingSet(bindingSetDesc, m_ComputeBindingLayout),
+            state.bindings = {m_Parent->GetBindingSetFactory().GetOrCreate(*bindingCache, bindingSetDesc, m_ComputeBindingLayout),
                               TracingBindingSet};
 
             if (params.enableSparseTracingRefinement) {
-                commandList->clearTextureUInt(m_RefinementControlTexture.value, nvrhi::AllSubresources, 0);
-                commandList->clearTextureUInt(m_RefinementGridTexture.value, nvrhi::AllSubresources, 0);
+                // R8_UNORM textures: clear them as the float formats they are.
+                commandList->clearTextureFloat(m_RefinementControlTexture.value, nvrhi::AllSubresources, nvrhi::Color(0.f));
+                commandList->clearTextureFloat(m_RefinementGridTexture.value, nvrhi::AllSubresources, nvrhi::Color(0.f));
             }
 
             commandList->setComputeState(state);
+            // The layout declares FullScreenQuadVS's push constants and nvrhi requires them after every
+            // set*State call; this shader ignores them.
+            const float interpolationPushConstants[] = {params.nearClipZ, params.farClipZ, params.farClipZ};
+            commandList->setPushConstants(interpolationPushConstants, sizeof(interpolationPushConstants));
 
             numGroups.x = div_ceil(viewportSize.x, 16);
             numGroups.y = div_ceil(viewportSize.y, 16);
@@ -1353,7 +1366,7 @@ Status ViewTracer::computeDiffuseChannel(nvrhi::ICommandList *commandList,
                                                 VXGI_CT_TEXTURE_SRV_SLOT_0, m_RefinementControlTexture.value),
                                             nvrhi::BindingSetItem::Texture_SRV(VXGI_CT_TEXTURE_SRV_SLOT_3,
                                                                                m_RefinementGridTexture.value)});
-            state.bindings = {bindingCache->GetOrCreateBindingSet(bindingSetDesc, m_GraphicsBindingLayout)};
+            state.bindings = {m_Parent->GetBindingSetFactory().GetOrCreate(*bindingCache, bindingSetDesc, m_GraphicsBindingLayout)};
             state.viewport.viewports = {
                 nvrhi::Viewport{(float)textureSize.x, (float)textureSize.y}
             };
@@ -1363,6 +1376,9 @@ Status ViewTracer::computeDiffuseChannel(nvrhi::ICommandList *commandList,
             };
             state.framebuffer = m_RefinementStencilFb;
             commandList->setGraphicsState(state);
+            // Required by the layout (see above); RefinementGridVS does not read them.
+            const float refinementPushConstants[] = {params.nearClipZ, params.farClipZ, params.farClipZ};
+            commandList->setPushConstants(refinementPushConstants, sizeof(refinementPushConstants));
 
             nvrhi::DrawArguments args;
             auto &texDesc = m_RefinementGridTexture.value->getDesc();
@@ -1392,15 +1408,17 @@ Status ViewTracer::computeDiffuseChannel(nvrhi::ICommandList *commandList,
 
             bindingSetDesc.bindings.push_back(
                 nvrhi::BindingSetItem::Texture_SRV(VXGI_CT_TEXTURE_SRV_SLOT_3, m_RefinementGridTexture.value));
-            state.bindings = {bindingCache->GetOrCreateBindingSet(bindingSetDesc, renderDebug ? m_GraphicsBindingLayoutDebug : m_GraphicsBindingLayout),
+            state.bindings = {m_Parent->GetBindingSetFactory().GetOrCreate(*bindingCache, bindingSetDesc, renderDebug ? m_GraphicsBindingLayoutDebug : m_GraphicsBindingLayout),
                               TracingBindingSet};
 
             state.pipeline = m_pDiffuseTracingRefinePS;
             state.framebuffer = m_DiffuseTracingRefineFbs[0];
             commandList->setGraphicsState(state);
+            commandList->setPushConstants(refinementPushConstants, sizeof(refinementPushConstants));
 
+            // RefinementGridVS generates the grid quads from SV_VertexID; there is no index buffer.
             args.instanceCount = params.numCones;
-            commandList->drawIndexed(args);
+            commandList->draw(args);
 
             commandList->endMarker();
         }
@@ -1571,7 +1589,7 @@ Status ViewTracer::computeSpecularChannel(nvrhi::ICommandList *commandList,
         nvrhi::GraphicsState state;
         state.pipeline = renderDebug ? m_SpecularTracingPSOs[1] : m_SpecularTracingPSOs[0];
         state.bindings = {
-            bindingCache->GetOrCreateBindingSet(
+            m_Parent->GetBindingSetFactory().GetOrCreate(*bindingCache, 
                 bindingSetDesc, renderDebug ? m_GraphicsBindingLayoutDebug : m_GraphicsBindingLayout),
             TracingBindingSet};
         state.viewport.addViewport(inputBuffers->gbufferViewport);
@@ -1602,7 +1620,7 @@ Status ViewTracer::computeSpecularChannel(nvrhi::ICommandList *commandList,
 
         nvrhi::ComputeState state;
         state.pipeline = m_pFilterSpecularCS;
-        state.bindings = {bindingCache->GetOrCreateBindingSet(bindingSetDesc, m_ComputeBindingLayout),
+        state.bindings = {m_Parent->GetBindingSetFactory().GetOrCreate(*bindingCache, bindingSetDesc, m_ComputeBindingLayout),
                           TracingBindingSet};
         commandList->setComputeState(state);
 
@@ -1678,10 +1696,10 @@ Status ViewTracer::renderSamplesDebug(nvrhi::ICommandList *commandList, nvrhi::I
         InvalidateFramebuffer(m_Device, fbDesc, m_DebugFramebuffer.GetAddressOf());
         NVRHI_ASSERT(m_DebugFramebuffer);
     }
-    auto fbInfo = m_DebugFramebuffer->getFramebufferInfo();
+    nvrhi::FramebufferInfo fbInfo = m_DebugFramebuffer->getFramebufferInfo().getInfo();
 
     nvrhi::GraphicsState state;
-    state.bindings = {bindingCache->GetOrCreateBindingSet(bindingSetDesc, m_pVisualizeBindingLayout),
+    state.bindings = {m_Parent->GetBindingSetFactory().GetOrCreate(*bindingCache, bindingSetDesc, m_pVisualizeBindingLayout),
                       TracingBindingSet};
     state.framebuffer = m_DebugFramebuffer;
 
@@ -1701,7 +1719,7 @@ Status ViewTracer::renderSamplesDebug(nvrhi::ICommandList *commandList, nvrhi::I
             psoDesc.PS = m_pVisualizeTexelsPS;
             psoDesc.bindingLayouts = {m_pVisualizeBindingLayout, TracingBindingLayout};
 
-            m_pVisualizeTexelsPSO = m_Device->createGraphicsPipeline(psoDesc, fbInfo);
+            m_Device->createGraphicsPipeline1(psoDesc, fbInfo, &m_pVisualizeTexelsPSO);
         }
 
         state.pipeline = m_pVisualizeTexelsPSO;
@@ -1721,7 +1739,7 @@ Status ViewTracer::renderSamplesDebug(nvrhi::ICommandList *commandList, nvrhi::I
             psoDesc.PS = m_pVisualizeSamplesPS;
             psoDesc.bindingLayouts = {m_pVisualizeBindingLayout, TracingBindingLayout};
 
-            m_pVisualizeSamplesPSO = m_Device->createGraphicsPipeline(psoDesc, fbInfo);
+            m_Device->createGraphicsPipeline1(psoDesc, fbInfo, &m_pVisualizeSamplesPSO);
         }
 
         state.pipeline = m_pVisualizeSamplesPSO;
@@ -1749,7 +1767,7 @@ Status ViewTracer::renderSamplesDebug(nvrhi::ICommandList *commandList, nvrhi::I
             psoDesc.PS = m_pVisualizeConesPS;
             psoDesc.bindingLayouts = {m_pVisualizeBindingLayout, TracingBindingLayout};
 
-            m_pVisualizeConesPSO = m_Device->createGraphicsPipeline(psoDesc, fbInfo);
+            m_Device->createGraphicsPipeline1(psoDesc, fbInfo, &m_pVisualizeConesPSO);
         }
 
         state.pipeline = m_pVisualizeConesPSO;
@@ -1798,7 +1816,7 @@ Status ViewTracer::renderTracerVision(nvrhi::ICommandList *commandList, const Tr
     state.framebuffer = m_TracerVisionFramebuffer;
 
     const bool renderDebug = m_PixelToSave.x >= 0 && m_PixelToSave.y >= 0;
-    auto fbInfo = m_TracerVisionFramebuffer->getFramebufferInfo();
+    nvrhi::FramebufferInfo fbInfo = m_TracerVisionFramebuffer->getFramebufferInfo().getInfo();
     if (renderDebug) {
         if (m_TracerVisionPSOs[1]) {
             if (fbInfo != m_TracerVisionPSOs[1]->getFramebufferInfo())
@@ -1811,7 +1829,7 @@ Status ViewTracer::renderTracerVision(nvrhi::ICommandList *commandList, const Tr
             psoDesc.VS = m_Parent->GetFullScreenQuadVS();
             psoDesc.PS = m_pTracerVisionDebugPS;
             psoDesc.bindingLayouts = {m_GraphicsBindingLayoutDebug, TracingBindingLayout};
-            m_TracerVisionPSOs[1] = m_Device->createGraphicsPipeline(psoDesc, fbInfo);
+            m_Device->createGraphicsPipeline1(psoDesc, fbInfo, &m_TracerVisionPSOs[1]);
             NVRHI_ASSERT(m_TracerVisionPSOs[1]);
         }
         state.pipeline = m_TracerVisionPSOs[1];
@@ -1827,7 +1845,7 @@ Status ViewTracer::renderTracerVision(nvrhi::ICommandList *commandList, const Tr
             psoDesc.VS = m_Parent->GetFullScreenQuadVS();
             psoDesc.PS = m_pTracerVisionPS;
             psoDesc.bindingLayouts = {m_GraphicsBindingLayout, TracingBindingLayout};
-            m_TracerVisionPSOs[0] = m_Device->createGraphicsPipeline(psoDesc, fbInfo);
+            m_Device->createGraphicsPipeline1(psoDesc, fbInfo, &m_TracerVisionPSOs[0]);
             NVRHI_ASSERT(m_TracerVisionPSOs[0]);
         }
         state.pipeline = m_TracerVisionPSOs[0];
@@ -1849,7 +1867,7 @@ Status ViewTracer::renderTracerVision(nvrhi::ICommandList *commandList, const Tr
                                         nvrhi::BindingSetItem::TypedBuffer_UAV(5, m_AppendCounters)});
     }
 
-    state.bindings = {bindingCache->GetOrCreateBindingSet(bindingSetDesc, m_GraphicsBindingLayout),
+    state.bindings = {m_Parent->GetBindingSetFactory().GetOrCreate(*bindingCache, bindingSetDesc, m_GraphicsBindingLayout),
                       VoxelTexture->GetBindingSetForIrradianceMapTracing()};
     state.viewport.addViewport(inputBuffers->gbufferViewport);
 

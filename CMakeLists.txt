@@ -1,4 +1,4 @@
-# etherealsamples -- samples and benchmarks built on the Donut framework.
+# ethereal-samples -- samples and benchmarks built on the Donut framework.
 #
 # This directory is not a standalone CMake project: it is added by the root
 # CMakeLists.txt of the ethereal aggregate, after Donut, which provides the
@@ -9,7 +9,7 @@
 #   assets/      scenes and textures used by the samples
 
 if (NOT TARGET donut_app)
-	message(FATAL_ERROR "etherealsamples must be configured from the ethereal root CMakeLists.txt "
+	message(FATAL_ERROR "ethereal-samples must be configured from the ethereal root CMakeLists.txt "
 		"(Donut has to be added first).")
 endif()
 

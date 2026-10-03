@@ -1,4 +1,4 @@
-# etherealsamples
+# ethereal-samples
 
 Samples and benchmarks built on the [Donut](../donut) graphics framework (nvrhi, ShaderTool).
 This repository is a sub-project of the `ethereal` aggregate and is configured by its root
@@ -7,7 +7,7 @@ This repository is a sub-project of the `ethereal` aggregate and is configured b
 | Path | Content |
 |---|---|
 | `src/DDGISample`, `src/VXGISample` | Dynamic diffuse GI (RTXGI DDGI) and voxel GI (VXGI) samples |
-| `src/GVDBSamples` | GVDB sparse-voxel library and samples, CUDA (`-DETHEREAL_BUILD_GVDB=ON`; the samples themselves do not compile yet, see `src/GVDBSamples/samples/CMakeLists.txt`) |
+| `src/GVDBSamples` | GVDB sparse-voxel library (COM-style interfaces, Donut scene graph) and the ported GVDB samples, CUDA + optional OptiX 9 (`-DETHEREAL_BUILD_GVDB=ON`, `-DETHEREAL_WITH_OPTIX=ON`; see `src/GVDBSamples/README.md`) |
 | `src/<example>` | The Donut examples from `Donut-Samples/examples` (`basic_triangle`, `rt_shadows`, `meshlets`, ...) |
 | `assets/` | Scenes, configs and textures of the DDGI / VXGI samples |
 | `benchmark/Asteroids` | nvrhi vs. native D3D11/D3D12 CPU-overhead benchmark, see its README |
@@ -26,7 +26,7 @@ From the `ethereal` root (`build.ps1` sets up the Visual Studio environment):
 Run from anywhere; the executables find their shaders next to themselves (`build\bin`).
 
 ```powershell
-build\bin\DDGISample.exe --config etherealsamples\assets\config\cornell.cfg.json   # also: sponza, tunnel, furnace, ...
+build\bin\DDGISample.exe --config ethereal-samples\assets\config\cornell.cfg.json   # also: sponza, tunnel, furnace, ...
 build\bin\VXGISample.exe                                                          # Sponza; --scene <file under assets/vxgi>
 ```
 
@@ -38,10 +38,10 @@ message box and sent to the debugger output).
   `ethereal_use_agility_sdk()` in `src/CMakeLists.txt`: nvrhi marks acceleration-structure buffers with a resource
   flag that the Windows 10 system runtime rejects. The default is a stable release (`ETHEREAL_AGILITY_SDK_VERSION`,
   1.619.6); a `-preview` release only loads with Windows Developer Mode on.
-- GVDBSamples is **not runnable**: its sample programs (`depth_map`, `mesh_voxelize`) are disabled because they
-  reference types that no longer exist (`gvdb::GVDBScene`, `GVDBModel`, ... and five headers that are missing),
-  and the GVDB device layer only compiles against Donut once the `QIB_::` typo in `Foundation.h` is fixed
-  (`QIB_::` should be `QIB::`, two places). With that fixed, `gvdb`, `sample_utils` and `VBXConverter` build.
+- GVDBSamples needs the CUDA toolkit (PTX for `sm_75`); the OptiX renderer and the samples that use it
+  (`point-cloud`, `fluid-surface`, `interactive-optix`) need the OptiX 9 SDK (`OptiX_INSTALL_DIR` or the default
+  install location; `-DETHEREAL_WITH_OPTIX=OFF` drops them). PTX modules land in `buildin\ptx`, assets are
+  read in place from `src/GVDBSamples/samples/assets`.
 
 Executables and shaders land in `build\bin`. Shaders are compiled by ShaderTool through
 `ethereal_compile_shaders()` (`cmake/EtherealShaders.cmake`), which replaces Donut's removed

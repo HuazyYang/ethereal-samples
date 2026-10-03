@@ -7,7 +7,7 @@
 #   asteroids_core     core/      simulation, meshes, textures, camera shared by both
 #   benchmark_common   common/    the benchmark contract (command line, timers, CSV/JSON writers)
 #
-# Added by etherealsamples/benchmark/CMakeLists.txt after Donut.
+# Added by ethereal-samples/benchmark/CMakeLists.txt after Donut.
 
 if (NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
 	message(FATAL_ERROR "The Asteroids benchmark requires Windows x64")

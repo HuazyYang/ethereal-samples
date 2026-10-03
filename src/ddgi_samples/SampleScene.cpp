@@ -95,7 +95,7 @@ void SampleScene::UpdateLightsBuffer(nvrhi::ICommandList *cmdList) {
     bufDesc.initialState = nvrhi::ResourceStates::ShaderResource;
     bufDesc.keepInitialState = true;
     bufDesc.debugName = "Light Buffer";
-    m_LightConstantsBuffer = m_Device->createBuffer(bufDesc);
+    m_Device->createBuffer(bufDesc, &m_LightConstantsBuffer);
 
     cmdList->writeBuffer(m_LightConstantsBuffer, lightConstants.data(),
                          sizeof(Graphics::LightConstants) * lightConstants.size());
@@ -126,7 +126,8 @@ void SampleScene::BuildMeshBLASes(nvrhi::ICommandList* cmdList) {
 
         GetMeshBlasDesc(*mesh, blasDesc);
 
-        nvrhi::rt::AccelStructHandle as = m_Device->createAccelStruct(blasDesc);
+        nvrhi::rt::AccelStructHandle as;
+        m_Device->createAccelStruct(blasDesc, &as);
 
         if (!mesh->skinPrototype)
             nvrhi::utils::BuildBottomLevelAccelStruct(cmdList, as, blasDesc);
@@ -137,7 +138,7 @@ void SampleScene::BuildMeshBLASes(nvrhi::ICommandList* cmdList) {
     nvrhi::rt::AccelStructDesc tlasDesc;
     tlasDesc.isTopLevel = true;
     tlasDesc.topLevelMaxInstances = GetSceneGraph()->GetMeshInstances().size();
-    m_TopLevelAS = cmdList->getDevice()->createAccelStruct(tlasDesc);
+    cmdList->getDevice()->createAccelStruct(tlasDesc, &m_TopLevelAS);
 }
 
 void SampleScene::BuildTLAS(nvrhi::ICommandList* commandList, uint32_t frameIndex)

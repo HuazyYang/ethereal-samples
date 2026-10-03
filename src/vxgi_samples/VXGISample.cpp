@@ -30,6 +30,8 @@ struct Config {
 
     // { RHI Flags
     int adapterIndex = 0;
+    // --debug: graphics API debug runtime plus the nvrhi validation layer
+    bool enableDebug = false;
 
     // Camera
     float cameraClipNear = 1.f;
@@ -82,7 +84,7 @@ class VXGISample : public donut::app::ApplicationBase {
             donut::app::GetShaderTypeName(GetDevice()->getGraphicsAPI());
         auto appShaderPath = rootDir / "shaders/VXGISample" /
                              donut::app::GetShaderTypeName(GetDevice()->getGraphicsAPI());
-        // Scene descriptions live in etherealsamples/assets/vxgi; the directory is baked in at configure time.
+        // Scene descriptions live in ethereal-samples/assets/vxgi; the directory is baked in at configure time.
         auto sceneFilePath = std::filesystem::path(ETHEREAL_ASSETS_DIR) / "vxgi" / m_Config.sceneFile;
 
         m_RootFS = MAKE_RC_OBJ_PTR(donut::vfs::RootFileSystem);
@@ -171,7 +173,7 @@ class VXGISample : public donut::app::ApplicationBase {
             m_VoxelizationPass->Init(voxelParams);
         }
 
-        m_CommandList = GetDevice()->createCommandList();
+        GetDevice()->createCommandList(nvrhi::CommandListParameters(), &m_CommandList);
         m_CommandList->open();
 
         m_CommandList->close();
@@ -264,7 +266,7 @@ class VXGISample : public donut::app::ApplicationBase {
             voxelizationParams.emittanceFormat = m_Config.emittanceFormat;
             voxelizationParams.enableGeometryShaderPassthrough = true;
 
-            m_VoxelizationPass->SetVoxelizationParameters(voxelizationParams);
+            m_VoxelizationPass->SetVoxelizationParameters(m_CommandList, voxelizationParams);
 
             dm::float3 centerPt = m_Camera.GetPosition() + m_Config.clipmapRange * m_Camera.GetDir();
 
@@ -585,6 +587,7 @@ int ParseArgs(int argc, char **argv, Config *config) {
         {0x05, NULL, "ambient-scale", "<Ambient scaling factor>", "Constant ambient term"},
         {0x06, NULL, "clipmap-range", "<VXGI clipmap range>", "VXGI clipmap half-extent"},
         {0x07, NULL, "multi-bounce", "<0|1>", "Enable VXGI multi-bounce feedback"},
+        {0x08, NULL, "debug", NULL, "Enable the graphics API debug runtime and the nvrhi validation layer"},
         {-1, "h", "help", "Print this usage message"}
     };
 
@@ -630,6 +633,9 @@ int ParseArgs(int argc, char **argv, Config *config) {
             } break;
             case 0x07: {
                 config->enableMultiBounce = strtol(cag_option_get_value(&context), NULL, 0) != 0;
+            } break;
+            case 0x08: {
+                config->enableDebug = true;
             } break;
             case 0x11: {
                 optval = cag_option_get_value(&context);
@@ -695,7 +701,8 @@ int main(int __argc, const char **__argv)
     deviceParams.multiViewFeature.enabled = true;
     deviceParams.multiViewFeature.maxMultiviewViewCount = 15;
     deviceParams.multiViewFeature.maxMultiviewInstanceIndex = 5;
-    // deviceParams.enableDebugRuntime = true;
+    deviceParams.enableDebugRuntime = config.enableDebug;
+    deviceParams.enableNvrhiValidationLayer = config.enableDebug;
 
     if (!deviceManager->CreateWindowDeviceAndSwapChain(deviceParams, "VXGISample")) {
         donut::log::fatal("Cannot initialize a graphics device with the requested parameters");

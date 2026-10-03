@@ -50,16 +50,15 @@ void VoxelShadingPass::Init(const CreateParameters& params) {
                                .setAllAddressModes(nvrhi::SamplerAddressMode::Border)
                                .setBorderColor(1.f)
                                .setReductionType(nvrhi::SamplerReductionType::Comparison);
-        m_ShadowSampler = m_Device->createSampler(samplerDesc);
+        m_Device->createSampler(samplerDesc, &m_ShadowSampler);
     }
 
-    m_ForwardViewCB = m_Device->createBuffer(nvrhi::utils::CreateVolatileConstantBufferDesc(
+    m_Device->createBuffer(nvrhi::utils::CreateVolatileConstantBufferDesc(
         sizeof(ForwardShadingViewConstants), "ForwardShadingViewConstants",
-        params.numConstantBufferVersions));
-    m_ForwardLightCB =
-        m_Device->createBuffer(nvrhi::utils::CreateVolatileConstantBufferDesc(
+        params.numConstantBufferVersions), &m_ForwardViewCB);
+    m_Device->createBuffer(nvrhi::utils::CreateVolatileConstantBufferDesc(
             sizeof(ForwardShadingLightConstants), "ForwardShadingLightConstants",
-            params.numConstantBufferVersions));
+            params.numConstantBufferVersions), &m_ForwardLightCB);
 
     m_ViewBindingLayout = CreateViewBindingLayout();
     m_ViewBindingSet = CreateViewBindingSet();
@@ -80,10 +79,11 @@ void VoxelShadingPass::ResetBindingCache() {
     m_InputBindingSets.clear();
 }
 
-void VoxelShadingPass::SetVoxelizationParameters(const vxgi::VoxelizationParameters& params) {
+void VoxelShadingPass::SetVoxelizationParameters(nvrhi::ICommandList* commandList,
+                                                 const vxgi::VoxelizationParameters& params) {
     Status rc;
     bool invalidated;
-    if(VXGI_FAILED(rc = m_VoxelRenderer->setVoxelizationParameters(params, &invalidated))) {
+    if(VXGI_FAILED(rc = m_VoxelRenderer->setVoxelizationParameters(commandList, params, &invalidated))) {
         NVRHI_ASSERT(0);
         return;
     }
@@ -196,8 +196,10 @@ nvrhi::InputLayoutHandle VoxelShadingPass::CreateInputLayout(
             GetVertexAttributeDesc(VertexAttribute::Transform, "TRANSFORM", 4),
         };
 
-        return m_Device->createInputLayout(inputDescs, uint32_t(std::size(inputDescs)),
-                                           vertexShader);
+        nvrhi::InputLayoutHandle inputLayout;
+        m_Device->createInputLayout(inputDescs, uint32_t(std::size(inputDescs)),
+                                           vertexShader, &inputLayout);
+        return inputLayout;
     }
 
     return nullptr;
@@ -211,7 +213,9 @@ nvrhi::BindingLayoutHandle VoxelShadingPass::CreateViewBindingLayout() {
             .addItem(nvrhi::BindingLayoutItem::VolatileConstantBuffer(
                 FORWARD_BINDING_VIEW_CONSTANTS));
 
-    return m_Device->createBindingLayout(bindingLayoutDesc);
+    nvrhi::BindingLayoutHandle bindingLayout;
+    m_Device->createBindingLayout(bindingLayoutDesc, &bindingLayout);
+    return bindingLayout;
 }
 
 nvrhi::BindingSetHandle VoxelShadingPass::CreateViewBindingSet() {
@@ -220,7 +224,9 @@ nvrhi::BindingSetHandle VoxelShadingPass::CreateViewBindingSet() {
                               .addItem(nvrhi::BindingSetItem::ConstantBuffer(
                                   FORWARD_BINDING_VIEW_CONSTANTS, m_ForwardViewCB));
 
-    return m_Device->createBindingSet(bindingSetDesc, m_ViewBindingLayout);
+    nvrhi::BindingSetHandle bindingSet;
+    m_Device->createBindingSet(bindingSetDesc, m_ViewBindingLayout, &bindingSet);
+    return bindingSet;
 }
 
 nvrhi::BindingLayoutHandle VoxelShadingPass::CreateShadingBindingLayout() {
@@ -244,7 +250,9 @@ nvrhi::BindingLayoutHandle VoxelShadingPass::CreateShadingBindingLayout() {
             .addItem(nvrhi::BindingLayoutItem::Sampler(
                 FORWARD_BINDING_ENVIRONMENT_BRDF_SAMPLER));
 
-    return m_Device->createBindingLayout(bindingLayoutDesc);
+    nvrhi::BindingLayoutHandle bindingLayout;
+    m_Device->createBindingLayout(bindingLayoutDesc, &bindingLayout);
+    return bindingLayout;
 }
 
 nvrhi::BindingSetHandle VoxelShadingPass::CreateShadingBindingSet(
@@ -278,7 +286,9 @@ nvrhi::BindingSetHandle VoxelShadingPass::CreateShadingBindingSet(
                 nvrhi::BindingSetItem::Sampler(FORWARD_BINDING_ENVIRONMENT_BRDF_SAMPLER,
                                                m_CommonPasses->m_LinearClampSampler));
 
-    return m_Device->createBindingSet(bindingSetDesc, m_ShadingBindingLayout);
+    nvrhi::BindingSetHandle bindingSet;
+    m_Device->createBindingSet(bindingSetDesc, m_ShadingBindingLayout, &bindingSet);
+    return bindingSet;
 }
 
 nvrhi::GraphicsPipelineHandle VoxelShadingPass::CreateGraphicsPipeline(
@@ -366,7 +376,9 @@ nvrhi::GraphicsPipelineHandle VoxelShadingPass::CreateGraphicsPipeline(
     //         return nullptr;
     // }
 
-    return m_Device->createGraphicsPipeline(pipelineDesc, framebufferInfo);
+    nvrhi::GraphicsPipelineHandle pipeline;
+    m_Device->createGraphicsPipeline1(pipelineDesc, framebufferInfo, &pipeline);
+    return pipeline;
 }
 
 nvrhi::AutoPtr<MaterialBindingCache> VoxelShadingPass::CreateMaterialBindingCache(
@@ -555,13 +567,13 @@ bool VoxelShadingPass::SetupMaterial(GeometryPassContext& abstractContext,
         std::lock_guard<std::mutex> lockGuard(m_Mutex);
 
         if (!pipeline)
-            pipeline = CreateGraphicsPipeline(key, state.framebuffer->getFramebufferInfo());
+            pipeline = CreateGraphicsPipeline(key, state.framebuffer->getFramebufferInfo().getInfo());
 
         if (!pipeline)
             return false;
     }
 
-    assert(pipeline->getFramebufferInfo() == state.framebuffer->getFramebufferInfo());
+    assert(pipeline->getFramebufferInfo() == state.framebuffer->getFramebufferInfo().getInfo());
 
     state.pipeline = pipeline;
     state.bindings = {materialBindingSet, m_ViewBindingSet, context.shadingBindingSet};
@@ -629,7 +641,9 @@ nvrhi::BindingLayoutHandle VoxelShadingPass::CreateInputBindingLayout() {
             .addItem(nvrhi::BindingLayoutItem::PushConstants(FORWARD_BINDING_PUSH_CONSTANTS,
                                                              sizeof(ForwardPushConstants)));
 
-    return m_Device->createBindingLayout(bindingLayoutDesc);
+    nvrhi::BindingLayoutHandle bindingLayout;
+    m_Device->createBindingLayout(bindingLayoutDesc, &bindingLayout);
+    return bindingLayout;
 }
 
 nvrhi::BindingSetHandle VoxelShadingPass::CreateInputBindingSet(
@@ -647,7 +661,9 @@ nvrhi::BindingSetHandle VoxelShadingPass::CreateInputBindingSet(
             .addItem(nvrhi::BindingSetItem::PushConstants(FORWARD_BINDING_PUSH_CONSTANTS,
                                                           sizeof(ForwardPushConstants)));
 
-    return m_Device->createBindingSet(bindingSetDesc, m_InputBindingLayout);
+    nvrhi::BindingSetHandle bindingSet;
+    m_Device->createBindingSet(bindingSetDesc, m_InputBindingLayout, &bindingSet);
+    return bindingSet;
 }
 
 nvrhi::BindingSetHandle VoxelShadingPass::GetOrCreateInputBindingSet(

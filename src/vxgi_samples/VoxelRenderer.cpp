@@ -3,15 +3,201 @@
 #include "ViewTracer.h"
 #include "VoxelTexture.h"
 #include <donut/engine/ShaderFactory.h>
+#include <donut/engine/BindingCache.h>
 #include <donut/core/log.h>
 
 #include "shaders/UserDefined/UserDefinedConstants.hlsli"
 
 namespace vxgi {
 
+namespace {
+// The register class a binding occupies (t/u/b/s): a set binds a layout item when it has an item of the same class
+// in the same slot, which is how nvrhi's validation matches them.
+char RegisterClass(nvrhi::ResourceType type) {
+    switch (type) {
+        case nvrhi::ResourceType::Texture_SRV:
+        case nvrhi::ResourceType::TypedBuffer_SRV:
+        case nvrhi::ResourceType::StructuredBuffer_SRV:
+        case nvrhi::ResourceType::RawBuffer_SRV:
+        case nvrhi::ResourceType::RayTracingAccelStruct:
+            return 't';
+        case nvrhi::ResourceType::Texture_UAV:
+        case nvrhi::ResourceType::TypedBuffer_UAV:
+        case nvrhi::ResourceType::StructuredBuffer_UAV:
+        case nvrhi::ResourceType::RawBuffer_UAV:
+        case nvrhi::ResourceType::SamplerFeedbackTexture_UAV:
+            return 'u';
+        case nvrhi::ResourceType::ConstantBuffer:
+        case nvrhi::ResourceType::VolatileConstantBuffer:
+        case nvrhi::ResourceType::PushConstants:
+            return 'b';
+        case nvrhi::ResourceType::Sampler:
+            return 's';
+        default:
+            return 0;
+    }
+}
+}  // namespace
+
+BindingSetFactory::BindingSetFactory(nvrhi::IDevice* device) : m_Device(device) {}
+
+nvrhi::IRHIObject* BindingSetFactory::GetPlaceholder(nvrhi::ResourceType type, uint32_t slot) {
+    const bool uav = RegisterClass(type) == 'u';
+    const auto key = std::make_pair(type, uav ? slot : 0u);
+    auto it = m_Placeholders.find(key);
+    if (it != m_Placeholders.end())
+        return it->second.Get();
+
+    // keepInitialState: nvrhi moves each placeholder into its state on first use on every backend (a Vulkan
+    // resource starts out undefined), so no command list has to initialize them up front.
+    nvrhi::AutoPtr<nvrhi::IRHIObject> placeholder;
+    switch (type) {
+        case nvrhi::ResourceType::Texture_SRV:
+        case nvrhi::ResourceType::Texture_UAV: {
+            nvrhi::TextureDesc desc;
+            desc.width = 1;
+            desc.height = 1;
+            desc.format = nvrhi::Format::R32_UINT;
+            desc.isUAV = uav;
+            desc.initialState = uav ? nvrhi::ResourceStates::UnorderedAccess : nvrhi::ResourceStates::ShaderResource;
+            desc.keepInitialState = true;
+            desc.debugName = uav ? "VXGI placeholder UAV" : "VXGI placeholder SRV";
+            nvrhi::TextureHandle texture;
+            m_Device->createTexture(desc, &texture);
+            placeholder = texture.Get();
+            break;
+        }
+        case nvrhi::ResourceType::TypedBuffer_SRV:
+        case nvrhi::ResourceType::TypedBuffer_UAV:
+        case nvrhi::ResourceType::StructuredBuffer_SRV:
+        case nvrhi::ResourceType::StructuredBuffer_UAV:
+        case nvrhi::ResourceType::RawBuffer_SRV:
+        case nvrhi::ResourceType::RawBuffer_UAV:
+        case nvrhi::ResourceType::ConstantBuffer: {
+            nvrhi::BufferDesc desc;
+            desc.byteSize = 256;
+            desc.canHaveUAVs = uav;
+            if (type == nvrhi::ResourceType::TypedBuffer_SRV || type == nvrhi::ResourceType::TypedBuffer_UAV) {
+                desc.format = nvrhi::Format::R32_UINT;
+                desc.canHaveTypedViews = true;
+            } else if (type == nvrhi::ResourceType::StructuredBuffer_SRV ||
+                       type == nvrhi::ResourceType::StructuredBuffer_UAV) {
+                desc.structStride = 4;
+            } else if (type == nvrhi::ResourceType::RawBuffer_SRV || type == nvrhi::ResourceType::RawBuffer_UAV) {
+                desc.canHaveRawViews = true;
+            } else {
+                desc.isConstantBuffer = true;
+            }
+            desc.initialState = type == nvrhi::ResourceType::ConstantBuffer ? nvrhi::ResourceStates::ConstantBuffer
+                                : uav ? nvrhi::ResourceStates::UnorderedAccess
+                                      : nvrhi::ResourceStates::ShaderResource;
+            desc.keepInitialState = true;
+            desc.debugName = "VXGI placeholder buffer";
+            nvrhi::BufferHandle buffer;
+            m_Device->createBuffer(desc, &buffer);
+            placeholder = buffer.Get();
+            break;
+        }
+        case nvrhi::ResourceType::Sampler: {
+            nvrhi::SamplerHandle sampler;
+            m_Device->createSampler(nvrhi::SamplerDesc(), &sampler);
+            placeholder = sampler.Get();
+            break;
+        }
+        default:
+            return nullptr;
+    }
+
+    m_Placeholders.emplace(key, placeholder);
+    return placeholder.Get();
+}
+
+nvrhi::BindingSetDesc BindingSetFactory::Complete(const nvrhi::BindingSetDesc& desc, nvrhi::IBindingLayout* layout) {
+    const nvrhi::BindingLayoutDesc* layoutDesc = layout ? layout->getDesc() : nullptr;
+    if (!layoutDesc)
+        return desc;
+
+    nvrhi::BindingSetDesc result = desc;
+    for (const nvrhi::BindingLayoutItem& item : layoutDesc->bindings) {
+        const char regClass = RegisterClass(item.type);
+        for (uint32_t element = 0; element < item.getArraySize(); ++element) {
+            const uint32_t slot = item.slot + element;
+            bool bound = false;
+            for (const nvrhi::BindingSetItem& binding : desc.bindings) {
+                if (RegisterClass(binding.type) == regClass && binding.slot + binding.arrayElement == slot) {
+                    bound = true;
+                    break;
+                }
+            }
+            if (bound)
+                continue;
+
+            nvrhi::BindingSetItem placeholder;
+            if (item.type == nvrhi::ResourceType::PushConstants) {
+                placeholder = nvrhi::BindingSetItem::PushConstants(item.slot, item.size);
+            } else {
+                // VolatileConstantBuffer and anything unexpected: left unbound, so the omission is still reported.
+                nvrhi::IRHIObject* resource = GetPlaceholder(item.type, slot);
+                if (!resource)
+                    continue;
+                auto* texture = static_cast<nvrhi::ITexture*>(resource);
+                auto* buffer = static_cast<nvrhi::IBuffer*>(resource);
+                switch (item.type) {
+                    case nvrhi::ResourceType::Texture_SRV:
+                        placeholder = nvrhi::BindingSetItem::Texture_SRV(item.slot, texture);
+                        break;
+                    case nvrhi::ResourceType::Texture_UAV:
+                        placeholder = nvrhi::BindingSetItem::Texture_UAV(item.slot, texture);
+                        break;
+                    case nvrhi::ResourceType::TypedBuffer_SRV:
+                        placeholder = nvrhi::BindingSetItem::TypedBuffer_SRV(item.slot, buffer);
+                        break;
+                    case nvrhi::ResourceType::TypedBuffer_UAV:
+                        placeholder = nvrhi::BindingSetItem::TypedBuffer_UAV(item.slot, buffer);
+                        break;
+                    case nvrhi::ResourceType::StructuredBuffer_SRV:
+                        placeholder = nvrhi::BindingSetItem::StructuredBuffer_SRV(item.slot, buffer);
+                        break;
+                    case nvrhi::ResourceType::StructuredBuffer_UAV:
+                        placeholder = nvrhi::BindingSetItem::StructuredBuffer_UAV(item.slot, buffer);
+                        break;
+                    case nvrhi::ResourceType::RawBuffer_SRV:
+                        placeholder = nvrhi::BindingSetItem::RawBuffer_SRV(item.slot, buffer);
+                        break;
+                    case nvrhi::ResourceType::RawBuffer_UAV:
+                        placeholder = nvrhi::BindingSetItem::RawBuffer_UAV(item.slot, buffer);
+                        break;
+                    case nvrhi::ResourceType::ConstantBuffer:
+                        placeholder = nvrhi::BindingSetItem::ConstantBuffer(item.slot, buffer);
+                        break;
+                    case nvrhi::ResourceType::Sampler:
+                        placeholder = nvrhi::BindingSetItem::Sampler(item.slot, static_cast<nvrhi::ISampler*>(resource));
+                        break;
+                    default:
+                        continue;
+                }
+            }
+            placeholder.arrayElement = element;
+            result.bindings.push_back(placeholder);
+        }
+    }
+    return result;
+}
+
+nvrhi::BindingSetHandle BindingSetFactory::Create(const nvrhi::BindingSetDesc& desc, nvrhi::IBindingLayout* layout) {
+    nvrhi::BindingSetHandle bindingSet;
+    m_Device->createBindingSet(Complete(desc, layout), layout, &bindingSet);
+    return bindingSet;
+}
+
+nvrhi::BindingSetHandle BindingSetFactory::GetOrCreate(donut::engine::BindingCache& cache,
+                                                       const nvrhi::BindingSetDesc& desc,
+                                                       nvrhi::IBindingLayout* layout) {
+    return cache.GetOrCreateBindingSet(Complete(desc, layout), layout);
+}
+
 VoxelRenderer::VoxelRenderer(nvrhi::IDevice* device, donut::engine::ShaderFactory* shaderFactory)
-    : m_Device(device), m_ShaderFactory(shaderFactory) {
-    m_CommandList = device->createCommandList();
+    : m_Device(device), m_ShaderFactory(shaderFactory), m_BindingSetFactory(device) {
 }
 
 VoxelRenderer::~VoxelRenderer() {
@@ -21,7 +207,8 @@ VoxelRenderer::~VoxelRenderer() {
     m_ViewTracers.clear();
 }
 
-Status VoxelRenderer::setVoxelizationParameters(const VoxelizationParameters& params, bool *invalidated) {
+Status VoxelRenderer::setVoxelizationParameters(nvrhi::ICommandList* commandList,
+                                                const VoxelizationParameters& params, bool *invalidated) {
     Status rc;
     DerivedVoxelizationParameters derivedParams;
 
@@ -36,7 +223,7 @@ Status VoxelRenderer::setVoxelizationParameters(const VoxelizationParameters& pa
     if(derivedParams != m_Parameters) {
         ReleaseResources();
         m_Parameters = derivedParams;
-        rc = AllocateResources();
+        rc = AllocateResources(commandList);
 
         *invalidated = true;
     }
@@ -73,11 +260,12 @@ const ClipmapGeometry* VoxelRenderer::GetClipmapGeometry() { return &m_ClipGeome
 
 AllocationMap* VoxelRenderer::GetAllocationMap() { return m_AllocationMap; }
 
-Status VoxelRenderer::AllocateResources() {
+// Records the initialization of the new resources on the caller's command list. This used to open a command
+// list of its own, but it is called from inside the frame's command list: two immediate command lists open
+// at once, which on D3D11 means two nvrhi command lists driving the one immediate context.
+Status VoxelRenderer::AllocateResources(nvrhi::ICommandList* commandList) {
     Status rc;
     auto params = GetVoxelizationParameters();
-
-    m_CommandList->open();
 
     m_ClipGeometry.resize(m_Parameters.totalLevels);
     m_FullRevoxelizationRequired = true;
@@ -94,7 +282,7 @@ Status VoxelRenderer::AllocateResources() {
         return rc;
 
     m_VoxelTexture = nvrhi::MakeMono<VoxelTexture>(this);
-    if(VXGI_FAILED(rc = m_VoxelTexture->AllocateResources(m_CommandList)))
+    if(VXGI_FAILED(rc = m_VoxelTexture->AllocateResources(commandList)))
         return rc;
 
     // User defined
@@ -136,7 +324,7 @@ Status VoxelRenderer::AllocateResources() {
                 VXGI_EMITTANCE_ODD_B_UAV_SLOT),  // u_EmittanceOddB
             nvrhi::BindingLayoutItem::Sampler(VXGI_IRRADIANCE_MAP_SAMPLER_SLOT)
         };
-        m_VXGIBindingLayout = m_Device->createBindingLayout(bindingLayoutDesc);
+        m_Device->createBindingLayout(bindingLayoutDesc, &m_VXGIBindingLayout);
 
         std::vector<donut::engine::ShaderMacro> voxelizeGS_Macros = {
             {"EXPLICIT_FAST_GS",                 "0"},
@@ -185,24 +373,20 @@ Status VoxelRenderer::AllocateResources() {
     bufDesc.isVolatile = true;
     bufDesc.byteSize = sizeof(AbstractTracingConstants);
     bufDesc.maxVersions = GetNumFramesInFlight();
-    m_pAbstractTracingCB = m_Device->createBuffer(bufDesc);
+    m_Device->createBuffer(bufDesc, &m_pAbstractTracingCB);
 
     bufDesc.byteSize = sizeof(CacheLevelConstants);
-    m_pCacheLevelsCB = m_Device->createBuffer(bufDesc);
+    m_Device->createBuffer(bufDesc, &m_pCacheLevelsCB);
 
     nvrhi::SamplerDesc samplerDesc;
     samplerDesc.setAllAddressModes(nvrhi::SamplerAddressMode::Wrap);
     samplerDesc.mipFilter = false;
-    m_pSamplerLinearWrap = m_Device->createSampler(samplerDesc);
+    m_Device->createSampler(samplerDesc, &m_pSamplerLinearWrap);
 
     for (auto tracer : m_ViewTracers) {
-        if (VXGI_FAILED(rc = tracer->AllocateResources(m_CommandList)))
+        if (VXGI_FAILED(rc = tracer->AllocateResources(commandList)))
             return rc;
     }
-
-    m_CommandList->close();
-    m_Device->executeCommandList(m_CommandList);
-    m_Device->waitForIdle();
 
     return Status::OK;
 }

@@ -62,24 +62,32 @@ bool DDGIRenderPass::CreatePipelines(donut::engine::ShaderFactory* shaderFactory
         psoDesc.globalBindingLayouts = {m_GlobalResources->BindingLayout,
                                         m_GlobalResources->BindlessLayout,
                                         m_GlobalResources->FixedBindlessLayout};
+        nvrhi::ShaderHandle rayGenShader;
+        raygenShaderLib->getShader("RayGen", nvrhi::ShaderType::RayGeneration, &rayGenShader);
+        nvrhi::ShaderHandle missShader;
+        missShaderLib->getShader("Miss", nvrhi::ShaderType::Miss, &missShader);
         psoDesc.shaders = {
             {"DDGIProbeTraceRGS",
-             raygenShaderLib->getShader("RayGen", nvrhi::ShaderType::RayGeneration),
+             rayGenShader,
              nullptr},
             {"DDGIProbeTraceMiss",
-             missShaderLib->getShader("Miss", nvrhi::ShaderType::Miss), nullptr},
+             missShader, nullptr},
         };
+        nvrhi::ShaderHandle chsGiShader;
+        closesthitShaderLib->getShader("CHS_GI", nvrhi::ShaderType::ClosestHit, &chsGiShader);
+        nvrhi::ShaderHandle ahsGiShader;
+        anyhitShaderLib->getShader("AHS_GI", nvrhi::ShaderType::AnyHit, &ahsGiShader);
         psoDesc.hitGroups = {
             {"DDGIProbeTraceHitGroup",
-             closesthitShaderLib->getShader("CHS_GI", nvrhi::ShaderType::ClosestHit),
-             anyhitShaderLib->getShader("AHS_GI", nvrhi::ShaderType::AnyHit), nullptr,
+             chsGiShader,
+             ahsGiShader, nullptr,
              nullptr, false}};
         psoDesc.maxPayloadSize = sizeof(Graphics::PackedPayload);
 
-        auto pipeline = device->createRayTracingPipeline(psoDesc);
-        if (!pipeline) return false;
+        nvrhi::rt::PipelineHandle pipeline;
+        if (NVRHI_FAILED(device->createRayTracingPipeline(psoDesc, &pipeline))) return false;
 
-        m_ProbeTraceShaderTable = pipeline->createShaderTable();
+        pipeline->createShaderTable(nvrhi::rt::ShaderTableDesc(), &m_ProbeTraceShaderTable);
         m_ProbeTraceShaderTable->setRayGenerationShader("DDGIProbeTraceRGS");
         m_ProbeTraceShaderTable->addHitGroup("DDGIProbeTraceHitGroup");
         m_ProbeTraceShaderTable->addMissShader("DDGIProbeTraceMiss");
@@ -95,7 +103,7 @@ bool DDGIRenderPass::CreatePipelines(donut::engine::ShaderFactory* shaderFactory
                                                       nvrhi::ShaderType::Compute);
         psoDesc.CS = indirectCS;
 
-        m_IndirectCSPipeline = device->createComputePipeline(psoDesc);
+        device->createComputePipeline(psoDesc, &m_IndirectCSPipeline);
     }
 
     // Probe Blending
@@ -111,7 +119,7 @@ bool DDGIRenderPass::CreatePipelines(donut::engine::ShaderFactory* shaderFactory
                                               "DDGIProbeBlendingCS", &blendingDefines,
                                               nvrhi::ShaderType::Compute);
         psoDesc.CS = cs;
-        m_ProbeBlendCSPipelines[0] = device->createComputePipeline(psoDesc);
+        device->createComputePipeline(psoDesc, &m_ProbeBlendCSPipelines[0]);
 
         // Probe Blending (distance)
         blendingDefines[1].definition = "0";
@@ -121,7 +129,7 @@ bool DDGIRenderPass::CreatePipelines(donut::engine::ShaderFactory* shaderFactory
                                          "DDGIProbeBlendingCS", &blendingDefines,
                                          nvrhi::ShaderType::Compute);
         psoDesc.CS = cs;
-        m_ProbeBlendCSPipelines[1] = device->createComputePipeline(psoDesc);
+        device->createComputePipeline(psoDesc, &m_ProbeBlendCSPipelines[1]);
     }
 
     // Probe Relocation
@@ -130,13 +138,13 @@ bool DDGIRenderPass::CreatePipelines(donut::engine::ShaderFactory* shaderFactory
                                               "DDGIProbeRelocationCS", &defines,
                                               nvrhi::ShaderType::Compute);
         psoDesc.CS = cs;
-        m_ProbeRelocationCSPipeline = device->createComputePipeline(psoDesc);
+        device->createComputePipeline(psoDesc, &m_ProbeRelocationCSPipeline);
 
         cs = shaderFactory->CreateShader("app/ddgi/ProbeRelocationCS.hlsl",
                                          "DDGIProbeRelocationResetCS", &defines,
                                          nvrhi::ShaderType::Compute);
         psoDesc.CS = cs;
-        m_ProbeRelocationResetCSPipeline = device->createComputePipeline(psoDesc);
+        device->createComputePipeline(psoDesc, &m_ProbeRelocationResetCSPipeline);
     }
 
     // Probe Classification
@@ -145,12 +153,12 @@ bool DDGIRenderPass::CreatePipelines(donut::engine::ShaderFactory* shaderFactory
                                               "DDGIProbeClassificationCS", &defines,
                                               nvrhi::ShaderType::Compute);
         psoDesc.CS = cs;
-        m_ProbeClassificationCSPipeline = device->createComputePipeline(psoDesc);
+        device->createComputePipeline(psoDesc, &m_ProbeClassificationCSPipeline);
         cs = shaderFactory->CreateShader("app/ddgi/ProbeClassificationCS.hlsl",
                                          "DDGIProbeClassificationResetCS", &defines,
                                          nvrhi::ShaderType::Compute);
         psoDesc.CS = cs;
-        m_ProbeClassificationResetCSPipeline = device->createComputePipeline(psoDesc);
+        device->createComputePipeline(psoDesc, &m_ProbeClassificationResetCSPipeline);
     }
 
     nvrhi::WaveLaneCountMinMaxFeatureInfo info;
@@ -165,7 +173,7 @@ bool DDGIRenderPass::CreatePipelines(donut::engine::ShaderFactory* shaderFactory
         auto cs = shaderFactory->CreateShader("app/ddgi/ReductionCS.hlsl", "DDGIReductionCS",
                                               &defines, nvrhi::ShaderType::Compute);
         psoDesc.CS = cs;
-        m_ReductionCSPipeline = device->createComputePipeline(psoDesc);
+        device->createComputePipeline(psoDesc, &m_ReductionCSPipeline);
     }
 
     // Extra reduction
@@ -174,7 +182,7 @@ bool DDGIRenderPass::CreatePipelines(donut::engine::ShaderFactory* shaderFactory
             shaderFactory->CreateShader("app/ddgi/ReductionCS.hlsl", "DDGIExtraReductionCS",
                                         &defines, nvrhi::ShaderType::Compute);
         psoDesc.CS = cs;
-        m_ExtraReductionCSPipeline = device->createComputePipeline(psoDesc);
+        device->createComputePipeline(psoDesc, &m_ExtraReductionCSPipeline);
     }
 
     return true;
@@ -521,7 +529,7 @@ void DDGIRenderPass::ExecuteCalculateDDGIVolumeVariability(
                                      nvrhi::ResourceStates::CopySource);
         commandList->commitBarriers();
 
-        commandList->copyTexture(
+        commandList->copyTexture2(
             resources.probeVariabilityReadbackBuffer,
             nvrhi::TextureSlice().setWidth(1).setHeight(1).setDepth(1),
             resources.probeVariabilityAverageTexture,
@@ -558,7 +566,7 @@ void DDGIRenderPass::ExecuteReadbackDDGIVolumeVariability(
         size_t rowPitch;
         auto pMapped = (float *)commandList->getDevice()->mapStagingTexture(
             resources.probeVariabilityReadbackBuffer, nvrhi::TextureSlice{},
-            nvrhi::CpuAccessMode::Read, &rowPitch);
+            nvrhi::CpuAccessMode::Read, rowPitch);
 
         volume->SetVolumeAverageVariability(pMapped[0]);
 

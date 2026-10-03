@@ -25,10 +25,10 @@ function(ethereal_use_agility_sdk target)
 endfunction()
 
 # --- ethereal samples -----------------------------------------------------------
-add_subdirectory(DDGISample)
-add_subdirectory(VXGISample)
+add_subdirectory(ddgi_samples)
+add_subdirectory(vxgi_samples)
 if (ETHEREAL_BUILD_GVDB)
-	add_subdirectory(GVDBSamples)
+	add_subdirectory(gvdb_samples)
 endif()
 
 # --- Donut examples (from Donut-Samples/examples) --------------------------------

@@ -65,8 +65,7 @@ Status AllocationMap::AllocateResources() {
             nvrhi::BindingLayoutItem::StructuredBuffer_SRV(3)};   // t_InvalidateLightFrusta
         bindingDesc.visibility = nvrhi::ShaderType::Vertex | nvrhi::ShaderType::Pixel |
                                  nvrhi::ShaderType::Compute;
-        m_BindingLayout = m_Device->createBindingLayout(bindingDesc);
-        if (!m_BindingLayout)
+        if (NVRHI_FAILED(m_Device->createBindingLayout(bindingDesc, &m_BindingLayout)))
             return Status::RESOURCE_CREATION_FAILED;
 
         bindingDesc.visibility = nvrhi::ShaderType::Vertex | nvrhi::ShaderType::Pixel;
@@ -75,8 +74,7 @@ Status AllocationMap::AllocateResources() {
             nvrhi::BindingLayoutItem::VolatileConstantBuffer(1),
             nvrhi::BindingLayoutItem::Texture_SRV(0)
         };
-        m_DebugBindingLayout = m_Device->createBindingLayout(bindingDesc);
-        if(!m_DebugBindingLayout)
+        if (NVRHI_FAILED(m_Device->createBindingLayout(bindingDesc, &m_DebugBindingLayout)))
             return Status::RESOURCE_CREATION_FAILED;
     }
 
@@ -91,8 +89,7 @@ Status AllocationMap::AllocateResources() {
     if (!cs)
         return Status::RESOURCE_CREATION_FAILED;
     csoDesc.CS = cs;
-    m_DilateEmissivePagesCS = m_Device->createComputePipeline(csoDesc);
-    if (!m_DilateEmissivePagesCS)
+    if (NVRHI_FAILED(m_Device->createComputePipeline(csoDesc, &m_DilateEmissivePagesCS)))
         return Status::RESOURCE_CREATION_FAILED;
 
     m_VoxelizeDebugPS = m_ShaderFactory->CreateShader("app/AllocationMap/DebugAllocationMapPS.hlsl",
@@ -116,8 +113,7 @@ Status AllocationMap::AllocateResources() {
     if (!cs)
         return Status::RESOURCE_CREATION_FAILED;
     csoDesc.CS = cs;
-    m_InvalidateRegionCS = m_Device->createComputePipeline(csoDesc);
-    if (!m_InvalidateRegionCS)
+    if (NVRHI_FAILED(m_Device->createComputePipeline(csoDesc, &m_InvalidateRegionCS)))
         return Status::RESOURCE_CREATION_FAILED;
 
     cs = m_ShaderFactory->CreateShader("app/AllocationMap/GeneratePageListsCS", "main",
@@ -125,8 +121,7 @@ Status AllocationMap::AllocateResources() {
     if (!cs)
         return Status::RESOURCE_CREATION_FAILED;
     csoDesc.CS = cs;
-    m_GeneratePageListsCS = m_Device->createComputePipeline(csoDesc);
-    if (!m_GeneratePageListsCS)
+    if (NVRHI_FAILED(m_Device->createComputePipeline(csoDesc, &m_GeneratePageListsCS)))
         return Status::RESOURCE_CREATION_FAILED;
 
     cs = m_ShaderFactory->CreateShader(
@@ -135,8 +130,7 @@ Status AllocationMap::AllocateResources() {
     if (!cs)
         return Status::RESOURCE_CREATION_FAILED;
     csoDesc.CS = cs;
-    m_ComputeDispatchArgumentsFilteredCS = m_Device->createComputePipeline(csoDesc);
-    if (!m_ComputeDispatchArgumentsFilteredCS)
+    if (NVRHI_FAILED(m_Device->createComputePipeline(csoDesc, &m_ComputeDispatchArgumentsFilteredCS)))
         return Status::RESOURCE_CREATION_FAILED;
 
     cs = m_ShaderFactory->CreateShader(
@@ -145,8 +139,7 @@ Status AllocationMap::AllocateResources() {
     if (!cs)
         return Status::RESOURCE_CREATION_FAILED;
     csoDesc.CS = cs;
-    m_ComputeIrradianceDispatchArgumentsCS = m_Device->createComputePipeline(csoDesc);
-    if (!m_ComputeIrradianceDispatchArgumentsCS)
+    if (NVRHI_FAILED(m_Device->createComputePipeline(csoDesc, &m_ComputeIrradianceDispatchArgumentsCS)))
         return Status::RESOURCE_CREATION_FAILED;
 
     if (params->persistentVoxelData && params->simplifiedInvalidate) {
@@ -174,10 +167,19 @@ Status AllocationMap::AllocateResources() {
                 .setElementStride(sizeof(RegionToRasterize))
                 .setIsInstanced(true)};
 
-        auto inputLayout = m_Device->createInputLayout(inputDescs, 2, vs);
+        nvrhi::InputLayoutHandle inputLayout;
+        m_Device->createInputLayout(inputDescs, 2, vs, &inputLayout);
+
+        // These shaders only write u_InvalidationBitmap; the AllocationMap layout would also want its volatile
+        // constant buffer bound, which is not written yet when the regions are rasterized.
+        nvrhi::BindingLayoutDesc rasterLayoutDesc;
+        rasterLayoutDesc.visibility = nvrhi::ShaderType::Pixel;
+        rasterLayoutDesc.bindings = {nvrhi::BindingLayoutItem::Texture_UAV(1)};  // u_InvalidationBitmap
+        if (NVRHI_FAILED(m_Device->createBindingLayout(rasterLayoutDesc, &m_RasterizeInvalidateRegionsBindingLayout)))
+            return Status::RESOURCE_CREATION_FAILED;
 
         psoDesc = {};
-        psoDesc.bindingLayouts = {m_BindingLayout};
+        psoDesc.bindingLayouts = {m_RasterizeInvalidateRegionsBindingLayout};
         psoDesc.primType = nvrhi::PrimitiveType::TriangleStrip;
         psoDesc.inputLayout = inputLayout;
         psoDesc.VS = vs;
@@ -185,7 +187,7 @@ Status AllocationMap::AllocateResources() {
         psoDesc.renderState.rasterState.cullMode = nvrhi::RasterCullMode::None;
         psoDesc.renderState.rasterState.scissorEnable = false;
         // No color buffer and depth buffer, only rasterize.
-        m_RasterizeInvalidateRegionsPS = m_Device->createGraphicsPipeline(psoDesc, nvrhi::FramebufferInfo{});
+        m_Device->createGraphicsPipeline1(psoDesc, nvrhi::FramebufferInfo{}, &m_RasterizeInvalidateRegionsPS);
     }
 
     {
@@ -200,8 +202,7 @@ Status AllocationMap::AllocateResources() {
         texDesc.keepInitialState = true;
         texDesc.initialState = nvrhi::ResourceStates::UnorderedAccess;
         texDesc.debugName = "AllocationMap:AllocationMap";
-        m_AllocationMap = m_Device->createTexture(texDesc);
-        if (!m_AllocationMap)
+        if (NVRHI_FAILED(m_Device->createTexture(texDesc, &m_AllocationMap)))
             return Status::RESOURCE_CREATION_FAILED;
     }
 
@@ -212,7 +213,7 @@ Status AllocationMap::AllocateResources() {
         bufDesc.isVolatile = true;
         bufDesc.maxVersions = m_Parent->GetNumFramesInFlight();
         bufDesc.debugName = "AllocationMap:RaycastCB";
-        m_DebugBuffer = m_Device->createBuffer(bufDesc);
+        m_Device->createBuffer(bufDesc, &m_DebugBuffer);
     }
 
     {
@@ -222,7 +223,7 @@ Status AllocationMap::AllocateResources() {
         bufDesc.isVolatile = true;
         bufDesc.maxVersions = m_Parent->GetNumFramesInFlight();
         bufDesc.debugName = "AllocationMap:AllocationMapCB";
-        m_InvalidateCB = m_Device->createBuffer(bufDesc);
+        m_Device->createBuffer(bufDesc, &m_InvalidateCB);
     }
 
     {
@@ -241,13 +242,13 @@ Status AllocationMap::AllocateResources() {
             bufDesc.byteSize = sizeof(VxgiBox4i) * MAX_INVALIDATE_REGIONS;
             bufDesc.structStride = sizeof(VxgiBox4i);
             bufDesc.debugName = "AllocationMap:InvalidateRegions";
-            m_InvalidateBuffer = m_Device->createBuffer(bufDesc);
+            m_Device->createBuffer(bufDesc, &m_InvalidateBuffer);
         }
 
         bufDesc.byteSize = sizeof(Frustum) * MAX_INVALIDATE_REGIONS;
         bufDesc.structStride = sizeof(Frustum);
         bufDesc.debugName = "AllocationMap::InvalidateLightFrusta";
-        m_InvalidateFrustaBuffer = m_Device->createBuffer(bufDesc);
+        m_Device->createBuffer(bufDesc, &m_InvalidateFrustaBuffer);
     }
 
     if (params->persistentVoxelData && params->simplifiedInvalidate) {
@@ -262,7 +263,7 @@ Status AllocationMap::AllocateResources() {
         bitmapDesc.keepInitialState = true;
         bitmapDesc.initialState = nvrhi::ResourceStates::UnorderedAccess;
         bitmapDesc.debugName = "AllocationMap:InvalidateBitmap";
-        m_InvalidateBitmap = m_Device->createTexture(bitmapDesc);
+        m_Device->createTexture(bitmapDesc, &m_InvalidateBitmap);
     } else {
         nvrhi::TextureDesc bitmapDesc;
         bitmapDesc.dimension = nvrhi::TextureDimension::Texture3D;
@@ -274,7 +275,7 @@ Status AllocationMap::AllocateResources() {
         bitmapDesc.keepInitialState = true;
         bitmapDesc.initialState = nvrhi::ResourceStates::ShaderResource;
         bitmapDesc.debugName = "AllocationMap:InvalidateBitmap(Unused)";
-        m_InvalidateBitmap = m_Device->createTexture(bitmapDesc);
+        m_Device->createTexture(bitmapDesc, &m_InvalidateBitmap);
     }
 
     std::vector<uint> pagesPerLevel((size_t)params->stackLevels);
@@ -346,16 +347,19 @@ Status AllocationMap::AllocateResources() {
         m_BindingCache->Clear();
 
         nvrhi::BindingSetDesc bindingSetDesc;
-        bindingSetDesc.bindings = {
-            nvrhi::BindingSetItem::Texture_UAV(1, m_InvalidateBitmap)};
-        m_RasterizeInvalidateRegionsBindingSet = m_Device->createBindingSet(bindingSetDesc, m_BindingLayout);
+        m_RasterizeInvalidateRegionsBindingSet = nullptr;
+        if (m_RasterizeInvalidateRegionsBindingLayout) {
+            bindingSetDesc.bindings = {
+                nvrhi::BindingSetItem::Texture_UAV(1, m_InvalidateBitmap)};
+            m_Device->createBindingSet(bindingSetDesc, m_RasterizeInvalidateRegionsBindingLayout,
+                                       &m_RasterizeInvalidateRegionsBindingSet);
+        }
 
         m_InvalidateRegionsBindingSet = nullptr;
 
         bindingSetDesc.bindings = {nvrhi::BindingSetItem::ConstantBuffer(0, m_InvalidateCB),
                                    nvrhi::BindingSetItem::Texture_UAV(0, m_AllocationMap)};
-        m_DilateEmissivePagesBindingSet =
-            m_Device->createBindingSet(bindingSetDesc, m_BindingLayout);
+        m_DilateEmissivePagesBindingSet = m_Parent->GetBindingSetFactory().Create(bindingSetDesc, m_BindingLayout);
 
         bindingSetDesc.bindings = {
             nvrhi::BindingSetItem::ConstantBuffer(0, m_InvalidateCB),
@@ -370,14 +374,13 @@ Status AllocationMap::AllocateResources() {
         for (int i = 0; i < 2; ++i) {
             bindingSetDesc.bindings[6] = nvrhi::BindingSetItem::TypedBuffer_UAV(
                 6, m_IrradiancePagesToProcess[i].buffer);
-            m_GeneratePageListsBindingSets[i] =
-                m_Device->createBindingSet(bindingSetDesc, m_BindingLayout);
+            m_GeneratePageListsBindingSets[i] = m_Parent->GetBindingSetFactory().Create(bindingSetDesc, m_BindingLayout);
         }
     }
 
     {
         nvrhi::FramebufferDesc fbDesc;
-        m_EmptyFramebuffer = m_Device->createFramebuffer(fbDesc);
+        m_Device->createFramebuffer(fbDesc, &m_EmptyFramebuffer);
     }
 
     return rc;
@@ -497,7 +500,7 @@ void AllocationMap::SnapAndInvalidateRegions(nvrhi::ICommandList* comandList, co
                         bufDesc.isVertexBuffer = true;
                         bufDesc.cpuAccess = nvrhi::CpuAccessMode::Write;
                         bufDesc.debugName = "AllocationMap::InvalidateRegions";
-                        m_InvalidateBuffer = m_Device->createBuffer(bufDesc);
+                        m_Device->createBuffer(bufDesc, &m_InvalidateBuffer);
                         m_InvalidateRegionsBindingSet = nullptr; // require recreate
                     }
 
@@ -635,8 +638,7 @@ void AllocationMap::SnapAndInvalidateRegions(nvrhi::ICommandList* comandList, co
                 nvrhi::BindingSetItem::StructuredBuffer_SRV(3, m_InvalidateFrustaBuffer));
         }
 
-        m_InvalidateRegionsBindingSet =
-            m_Device->createBindingSet(bindingSetDesc, m_BindingLayout);
+        m_InvalidateRegionsBindingSet = m_Parent->GetBindingSetFactory().Create(bindingSetDesc, m_BindingLayout);
     }
 
     nvrhi::ComputeState state;
@@ -685,7 +687,7 @@ void AllocationMap::RenderDebug(nvrhi::ICommandList* commandList, nvrhi::Graphic
     commandList->writeBuffer(m_DebugBuffer, &debugBuffer, sizeof(debugBuffer));
 
     if(m_VoxelizeDebugPSO) {
-        if(m_VoxelizeDebugPSO->getFramebufferInfo() != state.framebuffer->getFramebufferInfo())
+        if(m_VoxelizeDebugPSO->getFramebufferInfo() != state.framebuffer->getFramebufferInfo().getInfo())
             m_VoxelizeDebugPSO = nullptr;
     }
 
@@ -702,7 +704,7 @@ void AllocationMap::RenderDebug(nvrhi::ICommandList* commandList, nvrhi::Graphic
             .setSrcBlend(nvrhi::BlendFactor::SrcAlpha)
             .setDestBlend(nvrhi::BlendFactor::InvSrcAlpha);
 
-        m_VoxelizeDebugPSO = m_Device->createGraphicsPipeline(psoDesc, state.framebuffer->getFramebufferInfo());
+        m_Device->createGraphicsPipeline1(psoDesc, state.framebuffer->getFramebufferInfo().getInfo(), &m_VoxelizeDebugPSO);
         NVRHI_ASSERT(m_VoxelizeDebugPSO);
     }
 
@@ -713,7 +715,7 @@ void AllocationMap::RenderDebug(nvrhi::ICommandList* commandList, nvrhi::Graphic
         nvrhi::BindingSetItem::Texture_SRV(0, m_AllocationMap),
     };
     state.pipeline = m_VoxelizeDebugPSO;
-    state.bindings = { m_BindingCache->GetOrCreateBindingSet(bindingSetDesc, m_DebugBindingLayout) };
+    state.bindings = { m_Parent->GetBindingSetFactory().GetOrCreate(*m_BindingCache, bindingSetDesc, m_DebugBindingLayout) };
     commandList->setGraphicsState(state);
 
     float fullscreenCB[] = { nearClipZ, farClipZ, nearClipZ };
@@ -824,8 +826,7 @@ Status AllocationMap::createMultiPageList(const std::vector<uint>& pageCounts,
     desc.format = nvrhi::Format::R32_UINT;
     desc.keepInitialState = true;
     desc.initialState = nvrhi::ResourceStates::UnorderedAccess;
-    list->buffer = m_Device->createBuffer(desc);
-    if (!list->buffer)
+    if (NVRHI_FAILED(m_Device->createBuffer(desc, &list->buffer)))
         return Status::RESOURCE_CREATION_FAILED;
 
     return Status::OK;
@@ -851,7 +852,7 @@ void AllocationMap::ComputeDispatchArguments(nvrhi::ICommandList* commandList,
         nvrhi::BindingSetItem::ConstantBuffer(0, m_InvalidateCB),
         nvrhi::BindingSetItem::TypedBuffer_UAV(10, list->buffer)
     };
-    state.bindings = { m_BindingCache->GetOrCreateBindingSet(bindingSetDesc, m_BindingLayout) };
+    state.bindings = { m_Parent->GetBindingSetFactory().GetOrCreate(*m_BindingCache, bindingSetDesc, m_BindingLayout) };
     commandList->setComputeState(state);
     commandList->dispatch(NumLevels, 1, 1);
 }

@@ -19,26 +19,32 @@ bool GBufferPass::Initialize(GlobalResources* resources,
                                     m_GlobalResources->BindlessLayout,
                                     m_GlobalResources->FixedBindlessLayout};
 
+    nvrhi::ShaderHandle rayGenShader;
+    raygenShaderLibrary->getShader("RayGen", nvrhi::ShaderType::RayGeneration, &rayGenShader);
+    nvrhi::ShaderHandle missShader;
+    missShaderLibrary->getShader("Miss", nvrhi::ShaderType::Miss, &missShader);
     psoDesc.shaders = {
         {"RayGen",
-         raygenShaderLibrary->getShader("RayGen", nvrhi::ShaderType::RayGeneration),
+         rayGenShader,
          nullptr},
-        {"Miss", missShaderLibrary->getShader("Miss", nvrhi::ShaderType::Miss), nullptr}};
+        {"Miss", missShader, nullptr}};
+    nvrhi::ShaderHandle chsPrimaryShader;
+    closestShaderLibrary->getShader("CHS_PRIMARY", nvrhi::ShaderType::ClosestHit, &chsPrimaryShader);
+    nvrhi::ShaderHandle ahsPrimaryShader;
+    anyhitShaderLibrary->getShader("AHS_PRIMARY", nvrhi::ShaderType::AnyHit, &ahsPrimaryShader);
     psoDesc.hitGroups = {{
         "HitGroup",
-        closestShaderLibrary->getShader("CHS_PRIMARY", nvrhi::ShaderType::ClosestHit),
-        anyhitShaderLibrary->getShader("AHS_PRIMARY", nvrhi::ShaderType::AnyHit),
+        chsPrimaryShader,
+        ahsPrimaryShader,
         nullptr,
         nullptr,
         false}};
 
     psoDesc.maxPayloadSize = sizeof(Graphics::PackedPayload);
 
-    m_GBufferPipeline = m_GlobalResources->Device->createRayTracingPipeline(psoDesc);
-    if (!m_GBufferPipeline) return false;
+    if (NVRHI_FAILED(m_GlobalResources->Device->createRayTracingPipeline(psoDesc, &m_GBufferPipeline))) return false;
 
-    m_GBufferShaderTable = m_GBufferPipeline->createShaderTable();
-    if (!m_GBufferShaderTable) return false;
+    if (NVRHI_FAILED(m_GBufferPipeline->createShaderTable(nvrhi::rt::ShaderTableDesc(), &m_GBufferShaderTable))) return false;
 
     m_GBufferShaderTable->setRayGenerationShader("RayGen");
     m_GBufferShaderTable->addHitGroup("HitGroup");

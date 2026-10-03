@@ -157,7 +157,8 @@ inline void InvalidateFramebuffer(nvrhi::IDevice *device, const nvrhi::Framebuff
     }
 
     if(invalidated) {
-        auto newFb = device->createFramebuffer(fbDec);
+        nvrhi::FramebufferHandle newFb;
+        device->createFramebuffer(fbDec, &newFb);
         (*framebuffer) = newFb;
         newFb->AddRef();
     }

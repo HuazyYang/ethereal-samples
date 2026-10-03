@@ -152,7 +152,7 @@ class DDGISample : public donut::app::ApplicationBase {
 
         m_Camera.SetMoveSpeed(3.f);
 
-        m_CommandList = GetDevice()->createCommandList();
+        GetDevice()->createCommandList(nvrhi::CommandListParameters(), &m_CommandList);
 
         m_CommandList->open();
 
@@ -206,11 +206,14 @@ class DDGISample : public donut::app::ApplicationBase {
         desc.width = w;
         desc.height = h;
         desc.format = nvrhi::Format::RGBA8_UNORM;
-        desc.initialState = nvrhi::ResourceStates::CopyDest;
+        // Created in Common, the state a new texture is really in on every backend (a Vulkan image starts in
+        // VK_IMAGE_LAYOUT_UNDEFINED whatever initialState says); writeTexture moves it to CopyDest.
+        desc.initialState = nvrhi::ResourceStates::Common;
         desc.debugName = "Blue Noise";
 
-        auto blueNoiseTexture = GetDevice()->createTexture(desc);
-        m_CommandList->beginTrackingTextureState(blueNoiseTexture, nvrhi::AllSubresources, nvrhi::ResourceStates::CopyDest);
+        nvrhi::TextureHandle blueNoiseTexture;
+        GetDevice()->createTexture(desc, &blueNoiseTexture);
+        m_CommandList->beginTrackingTextureState(blueNoiseTexture, nvrhi::AllSubresources, nvrhi::ResourceStates::Common);
         m_CommandList->writeTexture(blueNoiseTexture, 0, 0, data, w * 4);
         stbi_image_free(data);
         m_CommandList->setPermanentTextureState(blueNoiseTexture,

@@ -28,38 +28,42 @@ bool DDGIVisualizationPass::CreatePipelines(donut::engine::ShaderFactory* shader
         psoDesc.globalBindingLayouts = {m_GlobalResources->BindingLayout, m_GlobalResources->BindlessLayout,
                                         m_GlobalResources->FixedBindlessLayout};
 
+        nvrhi::ShaderHandle rayGenShader;
+        raygenShaderLibrary->getShader("RayGen", nvrhi::ShaderType::RayGeneration, &rayGenShader);
+        nvrhi::ShaderHandle missShader;
+        missShaderLibrary->getShader("Miss", nvrhi::ShaderType::Miss, &missShader);
         psoDesc.shaders = {
             {"DDGIVisProbesRGS",
-             raygenShaderLibrary->getShader("RayGen", nvrhi::ShaderType::RayGeneration),
+             rayGenShader,
              nullptr},
             {"DDGIVisProbesMiss",
-             missShaderLibrary->getShader("Miss", nvrhi::ShaderType::Miss), nullptr}};
+             missShader, nullptr}};
+        nvrhi::ShaderHandle chsShader;
+        closestShaderLibrary->getShader("CHS", nvrhi::ShaderType::ClosestHit, &chsShader);
         psoDesc.hitGroups = {
             {"DDGIVisProbesHitGroup",
-             closestShaderLibrary->getShader("CHS", nvrhi::ShaderType::ClosestHit), nullptr,
+             chsShader, nullptr,
              nullptr, nullptr, false}};
 
         psoDesc.maxPayloadSize = sizeof(Graphics::PackedPayload);
 
-        auto pipeline = m_GlobalResources->Device->createRayTracingPipeline(psoDesc);
-        if (!pipeline) return false;
+        nvrhi::rt::PipelineHandle pipeline;
+        if (NVRHI_FAILED(m_GlobalResources->Device->createRayTracingPipeline(psoDesc, &pipeline))) return false;
 
-        m_ShaderTable = pipeline->createShaderTable();
-        if (!m_ShaderTable) return false;
+        if (NVRHI_FAILED(pipeline->createShaderTable(nvrhi::rt::ShaderTableDesc(), &m_ShaderTable))) return false;
 
         m_ShaderTable->setRayGenerationShader("DDGIVisProbesRGS");
         m_ShaderTable->addHitGroup("DDGIVisProbesHitGroup");
         m_ShaderTable->addMissShader("DDGIVisProbesMiss");
 
+        nvrhi::ShaderHandle rayGenHideInactiveShader;
+        raygenShaderLibrary->getShader("RayGenHideInactive", nvrhi::ShaderType::RayGeneration, &rayGenHideInactiveShader);
         psoDesc.shaders[0] = {"DDGIVisProbesRGS",
-                              raygenShaderLibrary->getShader(
-                                  "RayGenHideInactive", nvrhi::ShaderType::RayGeneration),
+                              rayGenHideInactiveShader,
                               nullptr};
-        pipeline = m_GlobalResources->Device->createRayTracingPipeline(psoDesc);
-        if (!pipeline) return false;
+        if (NVRHI_FAILED(m_GlobalResources->Device->createRayTracingPipeline(psoDesc, &pipeline))) return false;
 
-        m_HideInactiveShaderTable = pipeline->createShaderTable();
-        if (!m_HideInactiveShaderTable) return false;
+        if (NVRHI_FAILED(pipeline->createShaderTable(nvrhi::rt::ShaderTableDesc(), &m_HideInactiveShaderTable))) return false;
 
         m_HideInactiveShaderTable->setRayGenerationShader("DDGIVisProbesRGS");
         m_HideInactiveShaderTable->addHitGroup("DDGIVisProbesHitGroup");
@@ -74,8 +78,7 @@ bool DDGIVisualizationPass::CreatePipelines(donut::engine::ShaderFactory* shader
         psoDesc.CS = cs;
         psoDesc.bindingLayouts = {m_GlobalResources->BindingLayout, m_GlobalResources->BindlessLayout,
                                   m_GlobalResources->FixedBindlessLayout};
-        m_VisTexturesPipeline = m_GlobalResources->Device->createComputePipeline(psoDesc);
-        if(!m_VisTexturesPipeline) return false;
+        if (NVRHI_FAILED(m_GlobalResources->Device->createComputePipeline(psoDesc, &m_VisTexturesPipeline))) return false;
     }
 
     return true;

@@ -83,24 +83,31 @@ bool PathTracingPass::CreateRTPipeline(donut::engine::ShaderFactory* shaderFacto
                                     m_GlobalResources->BindlessLayout,
                                     m_GlobalResources->FixedBindlessLayout};
 
+    nvrhi::ShaderHandle rayGenShader;
+    raygenShaderLibrary->getShader("RayGen", nvrhi::ShaderType::RayGeneration, &rayGenShader);
+    nvrhi::ShaderHandle missShader;
+    missShaderLibrary->getShader("Miss", nvrhi::ShaderType::Miss, &missShader);
     psoDesc.shaders = {
         {"RayGen",
-         raygenShaderLibrary->getShader("RayGen", nvrhi::ShaderType::RayGeneration),
+         rayGenShader,
          nullptr},
-        {"Miss", missShaderLibrary->getShader("Miss", nvrhi::ShaderType::Miss), nullptr}};
+        {"Miss", missShader, nullptr}};
+    nvrhi::ShaderHandle chsLod0Shader;
+    closestShaderLibrary->getShader("CHS_LOD0", nvrhi::ShaderType::ClosestHit, &chsLod0Shader);
+    nvrhi::ShaderHandle ahsLod0Shader;
+    anyhitShaderLibrary->getShader("AHS_LOD0", nvrhi::ShaderType::AnyHit, &ahsLod0Shader);
     psoDesc.hitGroups = {
         {"HitGroup",
-         closestShaderLibrary->getShader("CHS_LOD0", nvrhi::ShaderType::ClosestHit),
-         anyhitShaderLibrary->getShader("AHS_LOD0", nvrhi::ShaderType::AnyHit), nullptr,
+         chsLod0Shader,
+         ahsLod0Shader, nullptr,
          nullptr, false}};
 
     psoDesc.maxPayloadSize = sizeof(Graphics::PackedPayload);
 
-    auto pipeline = m_GlobalResources->Device->createRayTracingPipeline(psoDesc);
-    if (!pipeline) return false;
+    nvrhi::rt::PipelineHandle pipeline;
+    if (NVRHI_FAILED(m_GlobalResources->Device->createRayTracingPipeline(psoDesc, &pipeline))) return false;
 
-    m_ShaderTable = pipeline->createShaderTable();
-    if (!m_ShaderTable) return false;
+    if (NVRHI_FAILED(pipeline->createShaderTable(nvrhi::rt::ShaderTableDesc(), &m_ShaderTable))) return false;
 
     m_ShaderTable->setRayGenerationShader("RayGen");
     m_ShaderTable->addHitGroup("HitGroup");

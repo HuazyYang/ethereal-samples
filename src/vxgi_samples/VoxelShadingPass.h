@@ -199,7 +199,7 @@ class VoxelShadingPass : public donut::render::IGeometryPass {
 
     void ResetBindingCache();
 
-    void SetVoxelizationParameters(const vxgi::VoxelizationParameters &params);
+    void SetVoxelizationParameters(nvrhi::ICommandList *commandList, const vxgi::VoxelizationParameters &params);
     void PrepareForOpacityVoxelization(nvrhi::ICommandList *commandList, UpdateVoxelizationParameters& params, bool* performOpacityVoxelization,
                                        bool* performEmittanceVoxelization);
     void GetVoxelizationViewMatrix(dm::float4x4& viewMatrix);

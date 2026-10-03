@@ -6,12 +6,38 @@
 #include <donut/render/DrawStrategy.h>
 #include <nvrhi/nvrhi.h>
 #include "ClipmapGeometry.h"
+#include <map>
 
 namespace donut::engine {
 class ShaderFactory;
+class BindingCache;
 }
 
 namespace vxgi {
+
+// nvrhi requires a binding set to bind every item of its layout, and it has no null textures. The VXGI passes
+// share one binding layout per subsystem (like the original SDK's root signatures) while each dispatch binds only
+// the resources its shader uses. BindingSetFactory binds an inert placeholder to every other slot of the layout.
+// No shader reads one: the compilers drop resources a shader does not use, so those slots are not even declared
+// by it. Every UAV slot gets a placeholder of its own (D3D11 rejects one resource in two UAV slots of a stage).
+// Volatile constant buffers get no placeholder (one would have to be written in every command list), so a set
+// that leaves one out is still reported.
+class BindingSetFactory {
+ public:
+    explicit BindingSetFactory(nvrhi::IDevice *device);
+
+    nvrhi::BindingSetDesc Complete(const nvrhi::BindingSetDesc &desc, nvrhi::IBindingLayout *layout);
+    nvrhi::BindingSetHandle Create(const nvrhi::BindingSetDesc &desc, nvrhi::IBindingLayout *layout);
+    nvrhi::BindingSetHandle GetOrCreate(donut::engine::BindingCache &cache, const nvrhi::BindingSetDesc &desc,
+                                        nvrhi::IBindingLayout *layout);
+
+ private:
+    nvrhi::IRHIObject *GetPlaceholder(nvrhi::ResourceType type, uint32_t slot);
+
+    nvrhi::IDevice *m_Device;
+    // Keyed by (resource type, slot); placeholders that are not UAVs are shared by all slots (slot 0).
+    std::map<std::pair<nvrhi::ResourceType, uint32_t>, nvrhi::AutoPtr<nvrhi::IRHIObject>> m_Placeholders;
+};
 
 class VoxelRenderer;
 struct AllocationMap;
@@ -27,7 +53,9 @@ class VoxelRenderer : public nvrhi::ObjectImpl<nvrhi::IObject>  {
     VoxelRenderer(nvrhi::IDevice *device, donut::engine::ShaderFactory *shaderFactory);
     ~VoxelRenderer();
 
-    Status setVoxelizationParameters(const VoxelizationParameters &params, bool *invalidated);
+    // Resources are (re)allocated and initialized on commandList, which must be open.
+    Status setVoxelizationParameters(nvrhi::ICommandList *commandList, const VoxelizationParameters &params,
+                                     bool *invalidated);
 
     Status createNewTracer(ViewTracer **ppViewTracer, bool ambientOcclusion);
 
@@ -39,7 +67,8 @@ class VoxelRenderer : public nvrhi::ObjectImpl<nvrhi::IObject>  {
     PerGPUData *GetCurrentPerGPUData();
     const ClipmapGeometry *GetClipmapGeometry();
     AllocationMap *GetAllocationMap();
-    Status AllocateResources();
+    BindingSetFactory &GetBindingSetFactory() { return m_BindingSetFactory; }
+    Status AllocateResources(nvrhi::ICommandList *commandList);
     void ReleaseResources();
 
     Status TranslateVoxelizationParameters(const VoxelizationParameters &inParams,
@@ -90,7 +119,7 @@ class VoxelRenderer : public nvrhi::ObjectImpl<nvrhi::IObject>  {
  private:
     nvrhi::IDevice *m_Device;
     nvrhi::AutoPtr<donut::engine::ShaderFactory> m_ShaderFactory;
-    nvrhi::CommandListHandle m_CommandList;
+    BindingSetFactory m_BindingSetFactory;
     nvrhi::MonoPtr<AllocationMap> m_AllocationMap;
     nvrhi::MonoPtr<VoxelTexture> m_VoxelTexture;
     box3 m_SceneExtents;

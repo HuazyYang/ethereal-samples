@@ -70,8 +70,7 @@ bool CompositePass::CreatePipeline(donut::engine::ShaderFactory* shaderFactory) 
     psoDesc.renderState.rasterState.frontCounterClockwise = true;
     psoDesc.renderState.rasterState.setCullBack();
     psoDesc.renderState.depthStencilState.depthTestEnable = false;
-    m_CompositePipeline = m_GlobalResources->Device->createGraphicsPipeline(psoDesc, m_GlobalResources->CompositeFramebuffer->getFramebufferInfo());
-    if (!m_CompositePipeline) return false;
+    if (NVRHI_FAILED(m_GlobalResources->Device->createGraphicsPipeline1(psoDesc, m_GlobalResources->CompositeFramebuffer->getFramebufferInfo().getInfo(), &m_CompositePipeline))) return false;
 
     return true;
 }

@@ -4,7 +4,7 @@
 #include <nvrhi/core/foundation.h>
 #include <nvrhi/core/autoptr.h>
 #include <nvrhi/nvrhi.h>
-#include <donut/core/salieri.h>
+#include <nvrhi/core/salieri.h>
 #include <donut/engine/ShaderFactory.h>
 
 namespace donut::engine {

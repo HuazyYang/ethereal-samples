@@ -188,11 +188,11 @@ Status VoxelTexture::AllocateResources(nvrhi::ICommandList *commandList) {
                 nvrhi::BindingLayoutItem::Texture_UAV(9),
                 nvrhi::BindingLayoutItem::Sampler(0)};
 
-            m_BindingLayout = m_Device->createBindingLayout(bindingLayoutDesc);
+            m_Device->createBindingLayout(bindingLayoutDesc, &m_BindingLayout);
 
             bindingLayoutDesc.bindings = {nvrhi::BindingLayoutItem::TypedBuffer_UAV(4)};
             bindingLayoutDesc.registerSpaceIsDescriptorSet = true;
-            m_NormalizationIrradianceScaleBindingLayout = m_Device->createBindingLayout(bindingLayoutDesc);
+            m_Device->createBindingLayout(bindingLayoutDesc, &m_NormalizationIrradianceScaleBindingLayout);
         }
 
         {
@@ -215,7 +215,7 @@ Status VoxelTexture::AllocateResources(nvrhi::ICommandList *commandList) {
                 nvrhi::BindingLayoutItem::Texture_SRV(VXGI_EMITTANCE_ODD_B_SRV_SLOT),
                 nvrhi::BindingLayoutItem::Sampler(VXGI_VOXELTEX_SAMPLER_SLOT)};
 
-            m_TracingBindingLayout = m_Device->createBindingLayout(bindingLayoutDesc);
+            m_Device->createBindingLayout(bindingLayoutDesc, &m_TracingBindingLayout);
         }
 
         {
@@ -230,14 +230,14 @@ Status VoxelTexture::AllocateResources(nvrhi::ICommandList *commandList) {
                 nvrhi::BindingLayoutItem::Texture_SRV(2),
                 nvrhi::BindingLayoutItem::Texture_SRV(3),
                 nvrhi::BindingLayoutItem::Texture_SRV(4)};
-            m_DebugBindingLayout = m_Device->createBindingLayout(bindingLayoutDesc);
+            m_Device->createBindingLayout(bindingLayoutDesc, &m_DebugBindingLayout);
             NVRHI_ASSERT(m_DebugBindingLayout);
         }
 
         nvrhi::SamplerDesc samplerDesc;
         samplerDesc.setAllAddressModes(nvrhi::SamplerAddressMode::Wrap);
         samplerDesc.setAllFilters(true);
-        m_LinearWrapSampler = m_Device->createSampler(samplerDesc);
+        m_Device->createSampler(samplerDesc, &m_LinearWrapSampler);
     }
 
     nvrhi::ShaderHandle cs;
@@ -248,19 +248,19 @@ Status VoxelTexture::AllocateResources(nvrhi::ICommandList *commandList) {
         "app/VoxelTexture/WrapOpacityClipmapCS.hlsl", "main", nullptr,
         nvrhi::ShaderType::Compute);
     csoDesc.CS = cs;
-    m_WrapOpacityClipmapCS = m_Device->createComputePipeline(csoDesc);
+    m_Device->createComputePipeline(csoDesc, &m_WrapOpacityClipmapCS);
 
     cs = m_ShaderFactory->CreateShader(
         "app/VoxelTexture/WrapOpacityMipmapCS.hlsl", "main", nullptr,
         nvrhi::ShaderType::Compute);
     csoDesc.CS = cs;
-    m_WrapOpacityMipmapCS = m_Device->createComputePipeline(csoDesc);
+    m_Device->createComputePipeline(csoDesc, &m_WrapOpacityMipmapCS);
 
     cs = m_ShaderFactory->CreateShader(
         "app/VoxelTexture/GenerateOpacityMipmapCS.hlsl", "main", nullptr,
         nvrhi::ShaderType::Compute);
     csoDesc.CS = cs;
-    m_GenerateOpacityMipmapCS = m_Device->createComputePipeline(csoDesc);
+    m_Device->createComputePipeline(csoDesc, &m_GenerateOpacityMipmapCS);
 
     if (params->emittanceFormat != EmittanceFormat::NONE) {
         std::vector<donut::engine::ShaderMacro> emittanceWrapMacros{
@@ -270,13 +270,13 @@ Status VoxelTexture::AllocateResources(nvrhi::ICommandList *commandList) {
             "app/VoxelTexture/WrapEmittanceClipmapCS.hlsl", "main",
             &emittanceWrapMacros, nvrhi::ShaderType::Compute);
         csoDesc.CS = cs;
-        m_WrapEmittanceClipmapCS = m_Device->createComputePipeline(csoDesc);
+        m_Device->createComputePipeline(csoDesc, &m_WrapEmittanceClipmapCS);
 
         cs = m_ShaderFactory->CreateShader(
             "app/VoxelTexture/WrapEmittanceMipmapCS.hlsl", "main",
             &emittanceWrapMacros, nvrhi::ShaderType::Compute);
         csoDesc.CS = cs;
-        m_WrapEmittanceMipmapCS = m_Device->createComputePipeline(csoDesc);
+        m_Device->createComputePipeline(csoDesc, &m_WrapEmittanceMipmapCS);
 
         std::vector<donut::engine::ShaderMacro> emittanceMipmapMacros{
             GetEmittanceFormatMacro(),
@@ -288,7 +288,7 @@ Status VoxelTexture::AllocateResources(nvrhi::ICommandList *commandList) {
             "app/VoxelTexture/GenerateEmittanceMipmapCS.hlsl", "main",
             &emittanceMipmapMacros, nvrhi::ShaderType::Compute);
         csoDesc.CS = cs;
-        m_GenerateEmittanceMipmapCS = m_Device->createComputePipeline(csoDesc);
+        m_Device->createComputePipeline(csoDesc, &m_GenerateEmittanceMipmapCS);
     }
 
     // Debug Graphics Pipelines
@@ -340,8 +340,7 @@ Status VoxelTexture::AllocateResources(nvrhi::ICommandList *commandList) {
                 pipelines.resize(shaderPermutations.size());
                 for (uint i = 0; i < (uint)shaderPermutations.size(); ++i) {
                     csoDesc.CS = shaderPermutations[i];
-                    pipelines[i] = m_Device->createComputePipeline(csoDesc);
-                    if (!pipelines[i])
+                    if (NVRHI_FAILED(m_Device->createComputePipeline(csoDesc, &pipelines[i])))
                         return Status::RESOURCE_CREATION_FAILED;
                 }
 
@@ -430,8 +429,7 @@ Status VoxelTexture::AllocateResources(nvrhi::ICommandList *commandList) {
         texDesc.format = format;
         texDesc.debugName = debugName;
 
-        texture = m_Device->createTexture(texDesc);
-        if (!texture)
+        if (NVRHI_FAILED(m_Device->createTexture(texDesc, &texture)))
             return Status::RESOURCE_CREATION_FAILED;
         return Status::OK;
     };
@@ -478,8 +476,7 @@ Status VoxelTexture::AllocateResources(nvrhi::ICommandList *commandList) {
         desc.debugName = "textureIrradiance";
         desc.keepInitialState = true;
         desc.initialState = nvrhi::ResourceStates::ShaderResource;
-        m_IrradianceTexture = m_Device->createTexture(desc);
-        if (!m_IrradianceTexture)
+        if (NVRHI_FAILED(m_Device->createTexture(desc, &m_IrradianceTexture)))
             return Status::RESOURCE_CREATION_FAILED;
 
         nvrhi::BufferDesc sumDesc;
@@ -489,8 +486,7 @@ Status VoxelTexture::AllocateResources(nvrhi::ICommandList *commandList) {
         sumDesc.canHaveTypedViews = true;
         sumDesc.keepInitialState = true;
         sumDesc.initialState = nvrhi::ResourceStates::UnorderedAccess;
-        m_IrradianceNormalizationBuffer = m_Device->createBuffer(sumDesc);
-        if (!m_IrradianceNormalizationBuffer)
+        if (NVRHI_FAILED(m_Device->createBuffer(sumDesc, &m_IrradianceNormalizationBuffer)))
             return Status::RESOURCE_CREATION_FAILED;
 
         const char groupSizes[][4] = {"1", "2", "4", "8", "16"};
@@ -505,8 +501,7 @@ Status VoxelTexture::AllocateResources(nvrhi::ICommandList *commandList) {
         if (!cs)
             return Status::RESOURCE_CREATION_FAILED;
         csoDesc.CS = cs;
-        m_ClearIrradianceMapCS = m_Device->createComputePipeline(csoDesc);
-        if (!m_ClearIrradianceMapCS)
+        if (NVRHI_FAILED(m_Device->createComputePipeline(csoDesc, &m_ClearIrradianceMapCS)))
             return Status::RESOURCE_CREATION_FAILED;
 
         traceIrradianceMapMacros.push_back(GetEmittanceFormatMacroForSampling());
@@ -517,8 +512,7 @@ Status VoxelTexture::AllocateResources(nvrhi::ICommandList *commandList) {
             return Status::RESOURCE_CREATION_FAILED;
         csoDesc.CS = cs;
         csoDesc.bindingLayouts.push_back(m_TracingBindingLayout);
-        m_TraceIrradianceMapCS = m_Device->createComputePipeline(csoDesc);
-        if (!m_TraceIrradianceMapCS)
+        if (NVRHI_FAILED(m_Device->createComputePipeline(csoDesc, &m_TraceIrradianceMapCS)))
             return Status::RESOURCE_CREATION_FAILED;
 
         csoDesc.bindingLayouts.pop_back();
@@ -530,8 +524,7 @@ Status VoxelTexture::AllocateResources(nvrhi::ICommandList *commandList) {
             return Status::RESOURCE_CREATION_FAILED;
         csoDesc.bindingLayouts = { m_NormalizationIrradianceScaleBindingLayout };
         csoDesc.CS = cs;
-        m_NormalizeIrradianceScaleCS = m_Device->createComputePipeline(csoDesc);
-        if (!m_NormalizeIrradianceScaleCS)
+        if (NVRHI_FAILED(m_Device->createComputePipeline(csoDesc, &m_NormalizeIrradianceScaleCS)))
             return Status::RESOURCE_CREATION_FAILED;
 
         nvrhi::BufferDesc bufDesc;
@@ -540,8 +533,7 @@ Status VoxelTexture::AllocateResources(nvrhi::ICommandList *commandList) {
         bufDesc.isVolatile = true;
         bufDesc.maxVersions = m_Parent->GetNumFramesInFlight();
         bufDesc.debugName = "VoxelTexture:TraceIrradianceBuffer";
-        m_TraceIrradianceBuffer = m_Device->createBuffer(bufDesc);
-        if (!m_TraceIrradianceBuffer)
+        if (NVRHI_FAILED(m_Device->createBuffer(bufDesc, &m_TraceIrradianceBuffer)))
             return Status::RESOURCE_CREATION_FAILED;
     } else {
         nvrhi::TextureDesc desc;
@@ -559,13 +551,13 @@ Status VoxelTexture::AllocateResources(nvrhi::ICommandList *commandList) {
         // why disabling multi-bounce aborted on startup. Matches the multi-bounce branch.
         desc.keepInitialState = true;
         desc.initialState = nvrhi::ResourceStates::ShaderResource;
-        m_IrradianceTexture = m_Device->createTexture(desc);
+        m_Device->createTexture(desc, &m_IrradianceTexture);
     }
 
     nvrhi::SamplerDesc samplerDesc;
     samplerDesc.setAllAddressModes(nvrhi::SamplerAddressMode::Clamp);
     samplerDesc.setMipFilter(false);
-    m_IrradianceSampler = m_Device->createSampler(samplerDesc);
+    m_Device->createSampler(samplerDesc, &m_IrradianceSampler);
 
     // Emittance textures
     {
@@ -616,7 +608,7 @@ Status VoxelTexture::AllocateResources(nvrhi::ICommandList *commandList) {
         bufDesc.isVolatile = true;
         bufDesc.maxVersions = m_Parent->GetNumFramesInFlight();
         bufDesc.debugName = "VoxelTexture:Debug";
-        m_DebugBuffer = m_Device->createBuffer(bufDesc);
+        m_Device->createBuffer(bufDesc, &m_DebugBuffer);
 
         bufDesc.byteSize = sizeof(VoxelizationBuffer);
         bufDesc.isVolatile = false;
@@ -624,7 +616,7 @@ Status VoxelTexture::AllocateResources(nvrhi::ICommandList *commandList) {
         bufDesc.keepInitialState = true;                         // Required by vulkan
         bufDesc.initialState = nvrhi::ResourceStates::CopyDest;  // Required by vulkan
         bufDesc.debugName = "VoxelTexture:Voxelization";
-        m_VoxelizationBuffer = m_Device->createBuffer(bufDesc);
+        m_Device->createBuffer(bufDesc, &m_VoxelizationBuffer);
 
         bufDesc.byteSize = sizeof(VoxelizationMaterialBuffer);
         bufDesc.isVolatile = false;
@@ -632,7 +624,7 @@ Status VoxelTexture::AllocateResources(nvrhi::ICommandList *commandList) {
         bufDesc.keepInitialState = true; // Required by vulkan
         bufDesc.initialState = nvrhi::ResourceStates::CopyDest; // Required by vulkan
         bufDesc.debugName = "VoxelTexture:Material";
-        m_VoxelizationMaterialBuffer = m_Device->createBuffer(bufDesc);
+        m_Device->createBuffer(bufDesc, &m_VoxelizationMaterialBuffer);
 
         bufDesc.byteSize = sizeof(ListProcessingBuffer);
         bufDesc.isVolatile = true;
@@ -640,7 +632,7 @@ Status VoxelTexture::AllocateResources(nvrhi::ICommandList *commandList) {
         bufDesc.debugName = "VoxelTexture:ListProcessing";
         m_ListProcessingBuffers.resize(params->totalLevels);
         for (uint level = 0; level < params->totalLevels; ++level) {
-            m_ListProcessingBuffers[level] = m_Device->createBuffer(bufDesc);
+            m_Device->createBuffer(bufDesc, &m_ListProcessingBuffers[level]);
         }
 
         if (m_Device->getGraphicsAPI() == nvrhi::GraphicsAPI::D3D11 ||
@@ -663,8 +655,7 @@ Status VoxelTexture::AllocateResources(nvrhi::ICommandList *commandList) {
             projectedCoverageDesc.isTypeless = true;
             projectedCoverageDesc.isUAV = false;
             projectedCoverageDesc.debugName = "projectedCoverage";
-            m_ProjectedCoverageTexture =
-                m_Device->createTexture(projectedCoverageDesc);
+            m_Device->createTexture(projectedCoverageDesc, &m_ProjectedCoverageTexture);
             commandList->beginTrackingTextureState(m_ProjectedCoverageTexture, nvrhi::AllSubresources,
                                                    nvrhi::ResourceStates::Common);
             commandList->clearDepthStencilTexture(m_ProjectedCoverageTexture, nvrhi::AllSubresources, true, 1.f,
@@ -674,10 +665,10 @@ Status VoxelTexture::AllocateResources(nvrhi::ICommandList *commandList) {
 
             nvrhi::FramebufferDesc fbDesc;
             fbDesc.depthAttachment = {m_ProjectedCoverageTexture};
-            m_ProjectedCoverageFramebuffer = m_Device->createFramebuffer(fbDesc);
+            m_Device->createFramebuffer(fbDesc, &m_ProjectedCoverageFramebuffer);
         } else {
             nvrhi::FramebufferDesc fbDesc;
-            m_ProjectedCoverageFramebuffer = m_Device->createFramebuffer(fbDesc);
+            m_Device->createFramebuffer(fbDesc, &m_ProjectedCoverageFramebuffer);
         }
 
         bufDesc.isConstantBuffer = false;
@@ -687,7 +678,7 @@ Status VoxelTexture::AllocateResources(nvrhi::ICommandList *commandList) {
         bufDesc.structStride = sizeof(ScissorStats);
         bufDesc.canHaveUAVs = 1;
         bufDesc.debugName = "VoxelTexture:ScissorStats";
-        m_ScissorStatsBuffer = m_Device->createBuffer(bufDesc);
+        m_Device->createBuffer(bufDesc, &m_ScissorStatsBuffer);
     }
 
     {
@@ -696,7 +687,7 @@ Status VoxelTexture::AllocateResources(nvrhi::ICommandList *commandList) {
         coverageMasksBufferDesc.structStride = sizeof(uint4);
         coverageMasksBufferDesc.initialState = nvrhi::ResourceStates::CopyDest;
         coverageMasksBufferDesc.debugName = "VoxelTexture:CoverageMasksBuffer";
-        m_CoverageMasksBuffer = m_Device->createBuffer(coverageMasksBufferDesc);
+        m_Device->createBuffer(coverageMasksBufferDesc, &m_CoverageMasksBuffer);
 
         commandList->beginTrackingBufferState(m_CoverageMasksBuffer,
                                               nvrhi::ResourceStates::CopyDest);
@@ -745,7 +736,7 @@ void VoxelTexture::ClearOpacityPages(nvrhi::ICommandList *commandList) {
                     1, m_TextureCoverage_Neg, nvrhi::Format::R32_UINT));
 
             auto bindingSet =
-                m_BindingCache->GetOrCreateBindingSet(bindingDesc, m_BindingLayout);
+                m_Parent->GetBindingSetFactory().GetOrCreate(*m_BindingCache, bindingDesc, m_BindingLayout);
 
             state.pipeline = m_ClearOpacityPagesCS[level];
             state.bindings[0] = bindingSet;
@@ -786,7 +777,7 @@ void VoxelTexture::RestoreOpacityPages(nvrhi::ICommandList *commandList) {
 
             state.pipeline = m_RestoreOpacityPagesCS[level];
             state.bindings[0] =
-                m_BindingCache->GetOrCreateBindingSet(bindingDesc, m_BindingLayout);
+                m_Parent->GetBindingSetFactory().GetOrCreate(*m_BindingCache, bindingDesc, m_BindingLayout);
             state.indirectParams = m_AllocationMap->m_OpacityPagesToRestore.buffer;
 
             dispatchBufferOffset =
@@ -803,7 +794,7 @@ void VoxelTexture::RestoreOpacityPages(nvrhi::ICommandList *commandList) {
                     nvrhi::BindingSetItem::Texture_SRV(1, m_TextureBackupOpacity_Neg);
 
                 state.bindings[0] =
-                    m_BindingCache->GetOrCreateBindingSet(bindingDesc, m_BindingLayout);
+                    m_Parent->GetBindingSetFactory().GetOrCreate(*m_BindingCache, bindingDesc, m_BindingLayout);
 
                 commandList->setComputeState(state);
                 commandList->dispatchIndirect(dispatchBufferOffset);
@@ -845,7 +836,7 @@ void VoxelTexture::ClearEmittancePages(nvrhi::ICommandList *commandList) {
 
                 state.pipeline = m_ClearEmittancePagesCS[level];
                 state.bindings[0] =
-                    m_BindingCache->GetOrCreateBindingSet(bindingDesc, m_BindingLayout);
+                    m_Parent->GetBindingSetFactory().GetOrCreate(*m_BindingCache, bindingDesc, m_BindingLayout);
                 state.indirectParams = m_AllocationMap->m_EmittancePagesToClear.buffer;
                 dispatchBufferOffset =
                     m_AllocationMap->m_EmittancePagesToClear.getDispatchArgumentsOffset(
@@ -906,7 +897,7 @@ void VoxelTexture::ConvertEmissivePages(nvrhi::ICommandList *commandList) {
 
             state.pipeline = m_ConvertEmissivePagesCS[level];
             state.bindings[0] =
-                m_BindingCache->GetOrCreateBindingSet(bindingDesc, m_BindingLayout);
+                m_Parent->GetBindingSetFactory().GetOrCreate(*m_BindingCache, bindingDesc, m_BindingLayout);
             state.indirectParams =
                 m_AllocationMap->m_PagesWithEmissiveMaterialsToVoxelize.buffer;
 
@@ -932,7 +923,7 @@ void VoxelTexture::WrapOpacity(nvrhi::ICommandList *commandList) {
 
     state.pipeline = m_WrapOpacityClipmapCS;
     state.bindings = {
-        m_BindingCache->GetOrCreateBindingSet(bindingDesc, m_BindingLayout)};
+        m_Parent->GetBindingSetFactory().GetOrCreate(*m_BindingCache, bindingDesc, m_BindingLayout)};
 
     commandList->setComputeState(state);
 
@@ -945,7 +936,7 @@ void VoxelTexture::WrapOpacity(nvrhi::ICommandList *commandList) {
         bindingDesc.bindings[1] = nvrhi::BindingSetItem::Texture_UAV(
             0, m_TextureCoverage_Neg, nvrhi::Format::R32_UINT);
         state.bindings[0] =
-            m_BindingCache->GetOrCreateBindingSet(bindingDesc, m_BindingLayout);
+            m_Parent->GetBindingSetFactory().GetOrCreate(*m_BindingCache, bindingDesc, m_BindingLayout);
         commandList->setComputeState(state);
         commandList->dispatch(numGroups.x, numGroups.y, numGroups.z);
     }
@@ -961,7 +952,7 @@ void VoxelTexture::WrapOpacity(nvrhi::ICommandList *commandList) {
             0, m_TextureCoverage_Pos, nvrhi::Format::R32_UINT);
 
         state.bindings[0] =
-            m_BindingCache->GetOrCreateBindingSet(bindingDesc, m_BindingLayout);
+            m_Parent->GetBindingSetFactory().GetOrCreate(*m_BindingCache, bindingDesc, m_BindingLayout);
 
         numGroups.x = numGroups.y = (levelSize + 9) / 8;
         numGroups.z = 2;
@@ -974,7 +965,7 @@ void VoxelTexture::WrapOpacity(nvrhi::ICommandList *commandList) {
                 0, m_TextureCoverage_Neg, nvrhi::Format::R32_UINT);
 
             state.bindings[0] =
-                m_BindingCache->GetOrCreateBindingSet(bindingDesc, m_BindingLayout);
+                m_Parent->GetBindingSetFactory().GetOrCreate(*m_BindingCache, bindingDesc, m_BindingLayout);
 
             commandList->setComputeState(state);
             commandList->dispatch(numGroups.x, numGroups.y, numGroups.z);
@@ -997,7 +988,7 @@ void VoxelTexture::GenerateOpacityMipmaps(nvrhi::ICommandList *commandList) {
                                                nvrhi::Format::R32_UINT)};
 
         state.bindings[0] =
-            m_BindingCache->GetOrCreateBindingSet(bindingDesc, m_BindingLayout);
+            m_Parent->GetBindingSetFactory().GetOrCreate(*m_BindingCache, bindingDesc, m_BindingLayout);
 
         uint levelSize = GetLevelSize(level);
         uint3 numGroups{div_ceil(levelSize, 4u)};
@@ -1009,7 +1000,7 @@ void VoxelTexture::GenerateOpacityMipmaps(nvrhi::ICommandList *commandList) {
                 0, m_TextureCoverage_Neg, nvrhi::Format::R32_UINT);
 
             state.bindings[0] =
-                m_BindingCache->GetOrCreateBindingSet(bindingDesc, m_BindingLayout);
+                m_Parent->GetBindingSetFactory().GetOrCreate(*m_BindingCache, bindingDesc, m_BindingLayout);
 
             commandList->setComputeState(state);
             commandList->dispatch(numGroups.x, numGroups.y, numGroups.z);
@@ -1046,7 +1037,7 @@ void VoxelTexture::GenerateEmittanceMipmaps(nvrhi::ICommandList *commandList) {
 
             state.pipeline = m_GenerateEmittanceMipmapCS;
             state.bindings[0] =
-                m_BindingCache->GetOrCreateBindingSet(bindingDesc, m_BindingLayout);
+                m_Parent->GetBindingSetFactory().GetOrCreate(*m_BindingCache, bindingDesc, m_BindingLayout);
             commandList->setComputeState(state);
 
             uint levelSize = GetLevelSize(level);
@@ -1067,7 +1058,7 @@ void VoxelTexture::GenerateEmittanceMipmaps(nvrhi::ICommandList *commandList) {
             }
 
             state.bindings[0] =
-                m_BindingCache->GetOrCreateBindingSet(bindingDesc, m_BindingLayout);
+                m_Parent->GetBindingSetFactory().GetOrCreate(*m_BindingCache, bindingDesc, m_BindingLayout);
             commandList->setComputeState(state);
 
             numGroups.x = numGroups.y = (levelSize + 9u) / 8u;
@@ -1098,7 +1089,7 @@ void VoxelTexture::DownsampleOpacityPages(nvrhi::ICommandList *commandList) {
 
         state.pipeline = m_DownsampleOpacityPagesCS[level];
         state.bindings[0] =
-            m_BindingCache->GetOrCreateBindingSet(bindingDesc, m_BindingLayout);
+            m_Parent->GetBindingSetFactory().GetOrCreate(*m_BindingCache, bindingDesc, m_BindingLayout);
         state.indirectParams = m_AllocationMap->m_OpacityPagesToDownsample.buffer;
 
         commandList->setComputeState(state);
@@ -1115,7 +1106,7 @@ void VoxelTexture::DownsampleOpacityPages(nvrhi::ICommandList *commandList) {
                 nvrhi::BindingSetItem::Texture_SRV(1, m_TextureBackupOpacity_Neg);
 
             state.bindings[0] =
-                m_BindingCache->GetOrCreateBindingSet(bindingDesc, m_BindingLayout);
+                m_Parent->GetBindingSetFactory().GetOrCreate(*m_BindingCache, bindingDesc, m_BindingLayout);
 
             commandList->setComputeState(state);
             commandList->dispatchIndirect(dispatchBufferOffset);
@@ -1140,7 +1131,7 @@ void VoxelTexture::DownsampleEmittancePages(nvrhi::ICommandList *commandList) {
                 GetEmittanceUAVFormat()));
         }
         state.bindings[0] =
-            m_BindingCache->GetOrCreateBindingSet(bindingDesc, m_BindingLayout);
+            m_Parent->GetBindingSetFactory().GetOrCreate(*m_BindingCache, bindingDesc, m_BindingLayout);
 
         uint3 numGroups;
         numGroups.x = (params->mapSize + 9) / 8;
@@ -1173,7 +1164,7 @@ void VoxelTexture::DownsampleEmittancePages(nvrhi::ICommandList *commandList) {
             bindingDesc.bindings.push_back(
                 nvrhi::BindingSetItem::Sampler(0, m_LinearWrapSampler));
             state.bindings[0] =
-                m_BindingCache->GetOrCreateBindingSet(bindingDesc, m_BindingLayout);
+                m_Parent->GetBindingSetFactory().GetOrCreate(*m_BindingCache, bindingDesc, m_BindingLayout);
 
             state.indirectParams =
                 m_AllocationMap->m_EmittancePagesToDownsample.buffer;
@@ -1234,7 +1225,7 @@ void VoxelTexture::ConvertCoverageToOpacity(nvrhi::ICommandList *commandList) {
         }
 
         state.bindings[0] =
-            m_BindingCache->GetOrCreateBindingSet(bindingDesc, m_BindingLayout);
+            m_Parent->GetBindingSetFactory().GetOrCreate(*m_BindingCache, bindingDesc, m_BindingLayout);
 
         state.indirectParams = m_AllocationMap->m_OpacityPagesToVoxelize.buffer;
         dispatchBufferOffset =
@@ -1567,8 +1558,7 @@ nvrhi::IBindingSet *VoxelTexture::GetBindingSetForIrradianceMapTracing() {
         bindingDesc.bindings.push_back(nvrhi::BindingSetItem::Sampler(
             VXGI_VOXELTEX_SAMPLER_SLOT, m_Parent->GetLinearWrapSampler()));
 
-        m_TracingBindingSet =
-            m_Device->createBindingSet(bindingDesc, m_TracingBindingLayout);
+        m_TracingBindingSet = m_Parent->GetBindingSetFactory().Create(bindingDesc, m_TracingBindingLayout);
     }
 
     return m_TracingBindingSet;
@@ -1751,7 +1741,7 @@ Status VoxelTexture::getVoxelizationState(nvrhi::ICommandList *commandList,
     }
 
     *bindingSet =
-        m_BindingCache->GetOrCreateBindingSet(bindingDesc, bindingLayout)
+        m_Parent->GetBindingSetFactory().GetOrCreate(*m_BindingCache, bindingDesc, bindingLayout)
             .Detach();
     commandList->writeBuffer(m_VoxelizationBuffer, &voxelizationBuffer,
                              sizeof(voxelizationBuffer));
@@ -1916,7 +1906,7 @@ void VoxelTexture::TraceIrradianceMap(
                 nvrhi::BindingSetItem::Texture_UAV(3, m_IrradianceTexture),
             };
             state.bindings = {
-                m_BindingCache->GetOrCreateBindingSet(bindingDesc, m_BindingLayout)};
+                m_Parent->GetBindingSetFactory().GetOrCreate(*m_BindingCache, bindingDesc, m_BindingLayout)};
             state.indirectParams = prevIrradiancePageList->buffer;
 
             commandList->setComputeState(state);
@@ -1952,7 +1942,7 @@ void VoxelTexture::TraceIrradianceMap(
 
         state.bindings.resize(2);
         state.bindings[0] =
-            m_BindingCache->GetOrCreateBindingSet(bindingDesc, m_BindingLayout);
+            m_Parent->GetBindingSetFactory().GetOrCreate(*m_BindingCache, bindingDesc, m_BindingLayout);
         state.bindings[1] = GetBindingSetForIrradianceMapTracing();
         state.indirectParams = IrradiancePageList->buffer;
         commandList->setComputeState(state);
@@ -1967,7 +1957,7 @@ void VoxelTexture::TraceIrradianceMap(
 
             bindingDesc.bindings = {nvrhi::BindingSetItem::TypedBuffer_UAV(4, m_IrradianceNormalizationBuffer)};
 
-            state.bindings = {m_BindingCache->GetOrCreateBindingSet(bindingDesc, m_NormalizationIrradianceScaleBindingLayout)};
+            state.bindings = {m_Parent->GetBindingSetFactory().GetOrCreate(*m_BindingCache, bindingDesc, m_NormalizationIrradianceScaleBindingLayout)};
 
             commandList->setComputeState(state);
             commandList->dispatch(1, 1, 1);
@@ -1987,7 +1977,7 @@ void VoxelTexture::RenderDebugOpacity(nvrhi::ICommandList *commandList,
 
     if (m_OpacityRaycastPSO) {
         if (m_OpacityRaycastPSO->getFramebufferInfo() !=
-            state.framebuffer->getFramebufferInfo())
+            state.framebuffer->getFramebufferInfo().getInfo())
             m_OpacityRaycastPSO = nullptr;
     }
 
@@ -2004,8 +1994,8 @@ void VoxelTexture::RenderDebugOpacity(nvrhi::ICommandList *commandList,
             .setSrcBlend(nvrhi::BlendFactor::SrcAlpha)
             .setDestBlend(nvrhi::BlendFactor::InvSrcAlpha);
 
-        m_OpacityRaycastPSO = m_Device->createGraphicsPipeline(
-            psoDesc, state.framebuffer->getFramebufferInfo());
+        m_Device->createGraphicsPipeline1(
+            psoDesc, state.framebuffer->getFramebufferInfo().getInfo(), &m_OpacityRaycastPSO);
         NVRHI_ASSERT(m_OpacityRaycastPSO);
     }
 
@@ -2044,7 +2034,7 @@ void VoxelTexture::RenderDebugOpacity(nvrhi::ICommandList *commandList,
             nvrhi::BindingSetItem::Texture_SRV(0, m_TextureCoverage_Pos),
             nvrhi::BindingSetItem::Texture_SRV(1, m_TextureCoverage_Neg)};
 
-        state.bindings = {m_BindingCache->GetOrCreateBindingSet(
+        state.bindings = {m_Parent->GetBindingSetFactory().GetOrCreate(*m_BindingCache, 
             bindingSetDesc, m_DebugBindingLayout)};
 
         commandList->setGraphicsState(state);
@@ -2069,7 +2059,7 @@ void VoxelTexture::RenderDebugEmittance(nvrhi::ICommandList *commandList,
 
     if (m_EmittanceRaycastPSO) {
         if (m_EmittanceRaycastPSO->getFramebufferInfo() !=
-            state.framebuffer->getFramebufferInfo())
+            state.framebuffer->getFramebufferInfo().getInfo())
             m_EmittanceRaycastPSO = nullptr;
     }
 
@@ -2086,8 +2076,8 @@ void VoxelTexture::RenderDebugEmittance(nvrhi::ICommandList *commandList,
             .setSrcBlend(nvrhi::BlendFactor::SrcAlpha)
             .setDestBlend(nvrhi::BlendFactor::InvSrcAlpha);
 
-        m_EmittanceRaycastPSO = m_Device->createGraphicsPipeline(
-            psoDesc, state.framebuffer->getFramebufferInfo());
+        m_Device->createGraphicsPipeline1(
+            psoDesc, state.framebuffer->getFramebufferInfo().getInfo(), &m_EmittanceRaycastPSO);
         NVRHI_ASSERT(m_EmittanceRaycastPSO);
     }
 
@@ -2137,7 +2127,7 @@ void VoxelTexture::RenderDebugEmittance(nvrhi::ICommandList *commandList,
                 emittanceSRVFormat));
         }
 
-        state.bindings = {m_BindingCache->GetOrCreateBindingSet(
+        state.bindings = {m_Parent->GetBindingSetFactory().GetOrCreate(*m_BindingCache, 
             bindingSetDesc, m_DebugBindingLayout)};
 
         commandList->setGraphicsState(state);
@@ -2156,7 +2146,7 @@ void VoxelTexture::RenderDebugIrradiance(
     const float3 &cameraPos, uint voxelToSkip, float targetOpacity) {
     if (m_IrradianceRaycastPSO) {
         if (m_IrradianceRaycastPSO->getFramebufferInfo() !=
-            state.framebuffer->getFramebufferInfo())
+            state.framebuffer->getFramebufferInfo().getInfo())
             m_IrradianceRaycastPSO = nullptr;
     }
 
@@ -2173,8 +2163,8 @@ void VoxelTexture::RenderDebugIrradiance(
             .setSrcBlend(nvrhi::BlendFactor::SrcAlpha)
             .setDestBlend(nvrhi::BlendFactor::InvSrcAlpha);
 
-        m_IrradianceRaycastPSO = m_Device->createGraphicsPipeline(
-            psoDesc, state.framebuffer->getFramebufferInfo());
+        m_Device->createGraphicsPipeline1(
+            psoDesc, state.framebuffer->getFramebufferInfo().getInfo(), &m_IrradianceRaycastPSO);
         NVRHI_ASSERT(m_IrradianceRaycastPSO);
     }
 
@@ -2206,7 +2196,7 @@ void VoxelTexture::RenderDebugIrradiance(
             nvrhi::BindingSetItem::PushConstants(0, 3 * sizeof(float)),
             nvrhi::BindingSetItem::ConstantBuffer(1, m_DebugBuffer),
             nvrhi::BindingSetItem::Texture_SRV(0, m_IrradianceTexture)};
-        state.bindings = {m_BindingCache->GetOrCreateBindingSet(
+        state.bindings = {m_Parent->GetBindingSetFactory().GetOrCreate(*m_BindingCache, 
             bindingSetDesc, m_DebugBindingLayout)};
 
         commandList->setGraphicsState(state);

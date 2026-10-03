@@ -125,26 +125,32 @@ bool RTAOPass::CreatePipelines(donut::engine::ShaderFactory* shaderFactory) {
                                         m_GlobalResources->BindlessLayout,
                                         m_GlobalResources->FixedBindlessLayout};
 
+        nvrhi::ShaderHandle rayGenShader;
+        raygenShaderLibrary->getShader("RayGen", nvrhi::ShaderType::RayGeneration, &rayGenShader);
+        nvrhi::ShaderHandle missShader;
+        missShaderLibrary->getShader("Miss", nvrhi::ShaderType::Miss, &missShader);
         psoDesc.shaders = {
             {"RTAOTraceRGS",
-             raygenShaderLibrary->getShader("RayGen", nvrhi::ShaderType::RayGeneration),
+             rayGenShader,
              nullptr},
-            {"RTAOMiss", missShaderLibrary->getShader("Miss", nvrhi::ShaderType::Miss),
+            {"RTAOMiss", missShader,
              nullptr}};
+        nvrhi::ShaderHandle chsVisibilityShader;
+        closestShaderLibrary->getShader("CHS_VISIBILITY", nvrhi::ShaderType::ClosestHit, &chsVisibilityShader);
+        nvrhi::ShaderHandle ahsGiShader;
+        anyhitShaderLibrary->getShader("AHS_GI", nvrhi::ShaderType::AnyHit, &ahsGiShader);
         psoDesc.hitGroups = {
             {"RTAOHitGroup",
-             closestShaderLibrary->getShader("CHS_VISIBILITY",
-                                             nvrhi::ShaderType::ClosestHit),
-             anyhitShaderLibrary->getShader("AHS_GI", nvrhi::ShaderType::AnyHit), nullptr,
+             chsVisibilityShader,
+             ahsGiShader, nullptr,
              nullptr, false}};
 
         psoDesc.maxPayloadSize = sizeof(Graphics::PackedPayload);
 
-        auto pipeline = m_GlobalResources->Device->createRayTracingPipeline(psoDesc);
-        if (!pipeline) return false;
+        nvrhi::rt::PipelineHandle pipeline;
+        if (NVRHI_FAILED(m_GlobalResources->Device->createRayTracingPipeline(psoDesc, &pipeline))) return false;
 
-        m_ShaderTable = pipeline->createShaderTable();
-        if (!m_ShaderTable) return false;
+        if (NVRHI_FAILED(pipeline->createShaderTable(nvrhi::rt::ShaderTableDesc(), &m_ShaderTable))) return false;
 
         m_ShaderTable->setRayGenerationShader("RTAOTraceRGS");
         m_ShaderTable->addHitGroup("RTAOHitGroup");
@@ -158,8 +164,7 @@ bool RTAOPass::CreatePipelines(donut::engine::ShaderFactory* shaderFactory) {
         psoDesc.bindingLayouts = { m_GlobalResources->BindingLayout, m_GlobalResources->BindlessLayout, m_GlobalResources->FixedBindlessLayout };
         psoDesc.CS = cs;
 
-        m_AOFilterPipeline = m_GlobalResources->Device->createComputePipeline(psoDesc);
-        if (!m_AOFilterPipeline) return false;
+        if (NVRHI_FAILED(m_GlobalResources->Device->createComputePipeline(psoDesc, &m_AOFilterPipeline))) return false;
     }
 
     return true;

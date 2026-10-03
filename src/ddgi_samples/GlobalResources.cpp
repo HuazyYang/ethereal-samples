@@ -143,6 +143,7 @@ void GlobalResources::Update(const Config* config,
 }
 
 void GlobalResources::Execute(nvrhi::ICommandList* commandList, dm::uint fbIndex) {
+    CommitInitialStates(commandList);
 
     if(IsGlobalConstsDirty) {
         commandList->beginTrackingBufferState(GlobalConstBuffer,
@@ -211,6 +212,7 @@ void GlobalResources::LoadDDGIVolumes(nvrhi::ICommandList *commandList, const Co
 
     CreateDDGIVolumeBuffers();
     CreateDDGIVolumeTextures();
+    CommitInitialStates(commandList);
 
     numVolumes = GetNumVolumes();
     for (dm::uint volumeIndex = 0; volumeIndex < numVolumes; ++volumeIndex)
@@ -245,11 +247,12 @@ void GlobalResources::CreateBindingSets() {
         // nvrhi requires a binding set to provide every item of its layout.
         nvrhi::BindingSetItem::StructuredBuffer_SRV(5, DDGIVolumeDescsBuffer),
         nvrhi::BindingSetItem::StructuredBuffer_SRV(6, DDGIVolumeResourceIndicesBuffer),
-        nvrhi::BindingSetItem::Sampler(0, Samplers[0]),
-        nvrhi::BindingSetItem::Sampler(1, Samplers[1]),
-        nvrhi::BindingSetItem::Sampler(2, Samplers[2])};
+        // Descriptors.hlsli declares "SamplerState Samplers[3] : register(s0)": one 3-element array.
+        nvrhi::BindingSetItem::Sampler(0, Samplers[0]).setArrayElement(0),
+        nvrhi::BindingSetItem::Sampler(0, Samplers[1]).setArrayElement(1),
+        nvrhi::BindingSetItem::Sampler(0, Samplers[2]).setArrayElement(2)};
 
-    BindingSet = Device->createBindingSet(desc, BindingLayout);
+    Device->createBindingSet(desc, BindingLayout, &BindingSet);
 
     desc.bindings = {
         nvrhi::BindingSetItem::PushConstants(0, sizeof(Graphics::GlobalRootConstants)),
@@ -262,11 +265,12 @@ void GlobalResources::CreateBindingSets() {
         nvrhi::BindingSetItem::RayTracingAccelStruct(4, SceneTLAS),
         nvrhi::BindingSetItem::StructuredBuffer_SRV(5, DDGIVolumeDescsBuffer),
         nvrhi::BindingSetItem::StructuredBuffer_SRV(6, DDGIVolumeResourceIndicesBuffer),
-        nvrhi::BindingSetItem::Sampler(0, Samplers[0]),
-        nvrhi::BindingSetItem::Sampler(1, Samplers[1]),
-        nvrhi::BindingSetItem::Sampler(2, Samplers[2])};
+        // Descriptors.hlsli declares "SamplerState Samplers[3] : register(s0)": one 3-element array.
+        nvrhi::BindingSetItem::Sampler(0, Samplers[0]).setArrayElement(0),
+        nvrhi::BindingSetItem::Sampler(0, Samplers[1]).setArrayElement(1),
+        nvrhi::BindingSetItem::Sampler(0, Samplers[2]).setArrayElement(2)};
 
-    DDGIBindingSet = Device->createBindingSet(desc, BindingLayout);
+    Device->createBindingSet(desc, BindingLayout, &DDGIBindingSet);
 }
 
 void GlobalResources::CreateDDGIVolumeBuffers() {
@@ -278,12 +282,12 @@ void GlobalResources::CreateDDGIVolumeBuffers() {
     buffDesc.keepInitialState = false;  // written every frame, so its state must be tracked
     buffDesc.canHaveTypedViews = true;
     buffDesc.debugName = "DDGIVolumeDescsBuffer";
-    DDGIVolumeDescsBuffer = Device->createBuffer(buffDesc);
+    Device->createBuffer(buffDesc, &DDGIVolumeDescsBuffer);
 
     buffDesc.byteSize = numVolumes * sizeof(ddgi::DDGIVolumeResourceIndices);
     buffDesc.structStride = sizeof(ddgi::DDGIVolumeResourceIndices);
     buffDesc.debugName = "DDGIVolumeResourceIndicesBuffer";
-    DDGIVolumeResourceIndicesBuffer = Device->createBuffer(buffDesc);
+    Device->createBuffer(buffDesc, &DDGIVolumeResourceIndicesBuffer);
 }
 
 void GlobalResources::CreateDDGIVolumeTextures() {
@@ -308,7 +312,6 @@ void GlobalResources::CreateDDGIVolumeTextures() {
     }
 
     texDesc.dimension = nvrhi::TextureDimension::Texture2DArray;
-    texDesc.initialState = nvrhi::ResourceStates::UnorderedAccess;
     texDesc.isUAV = true;
 
     DDGIVolumeResourceIndices.resize(numVolumes);
@@ -336,7 +339,7 @@ void GlobalResources::CreateDDGIVolumeTextures() {
             texDesc.format = format;
             texDesc.debugName = debugNamePrefix + "probeRayData";
 
-            resources.rayDataTexture = Device->createTexture(texDesc);
+            CreateTrackedTexture(texDesc, nvrhi::ResourceStates::UnorderedAccess, resources.rayDataTexture);
             Device->writeDescriptorTable(FixedDescriptorTable,
                                          nvrhi::BindingSetItem::Texture_SRV(
                                              descriptorIndex, resources.rayDataTexture));
@@ -359,7 +362,7 @@ void GlobalResources::CreateDDGIVolumeTextures() {
             texDesc.format = format;
             texDesc.debugName = debugNamePrefix + "probeIrradiance";
 
-            resources.probeIrradianceTexture = Device->createTexture(texDesc);
+            CreateTrackedTexture(texDesc, nvrhi::ResourceStates::UnorderedAccess, resources.probeIrradianceTexture);
             Device->writeDescriptorTable(FixedDescriptorTable,
                                          nvrhi::BindingSetItem::Texture_SRV(
                                              descriptorIndex, resources.probeIrradianceTexture));
@@ -383,7 +386,7 @@ void GlobalResources::CreateDDGIVolumeTextures() {
             texDesc.format = format;
             texDesc.debugName = debugNamePrefix + "probeDistance";
 
-            resources.probeDistanceTexture = Device->createTexture(texDesc);
+            CreateTrackedTexture(texDesc, nvrhi::ResourceStates::UnorderedAccess, resources.probeDistanceTexture);
             Device->writeDescriptorTable(
                 FixedDescriptorTable, nvrhi::BindingSetItem::Texture_SRV(
                                           descriptorIndex, resources.probeDistanceTexture));
@@ -406,7 +409,7 @@ void GlobalResources::CreateDDGIVolumeTextures() {
             texDesc.format = format;
             texDesc.debugName = debugNamePrefix + "probeData";
 
-            resources.probeDataTexture = Device->createTexture(texDesc);
+            CreateTrackedTexture(texDesc, nvrhi::ResourceStates::UnorderedAccess, resources.probeDataTexture);
             Device->writeDescriptorTable(FixedDescriptorTable,
                                          nvrhi::BindingSetItem::Texture_SRV(
                                              descriptorIndex, resources.probeDataTexture));
@@ -429,7 +432,7 @@ void GlobalResources::CreateDDGIVolumeTextures() {
             texDesc.format = format;
             texDesc.debugName = debugNamePrefix + "probeVariability";
 
-            resources.probeVariabilityTexture = Device->createTexture(texDesc);
+            CreateTrackedTexture(texDesc, nvrhi::ResourceStates::UnorderedAccess, resources.probeVariabilityTexture);
             Device->writeDescriptorTable(
                 FixedDescriptorTable,
                 nvrhi::BindingSetItem::Texture_SRV(descriptorIndex,
@@ -455,7 +458,7 @@ void GlobalResources::CreateDDGIVolumeTextures() {
             texDesc.format = format;
             texDesc.debugName = debugNamePrefix + "probeVariabilityAverage";
 
-            resources.probeVariabilityAverageTexture = Device->createTexture(texDesc);
+            CreateTrackedTexture(texDesc, nvrhi::ResourceStates::UnorderedAccess, resources.probeVariabilityAverageTexture);
             Device->writeDescriptorTable(
                 FixedDescriptorTable,
                 nvrhi::BindingSetItem::Texture_SRV(
@@ -474,7 +477,7 @@ void GlobalResources::CreateDDGIVolumeTextures() {
             buffDesc.height = 1;
             buffDesc.format = nvrhi::Format::RG32_FLOAT;
             buffDesc.debugName = debugNamePrefix + "probeVariabilityReadback";
-            resources.probeVariabilityReadbackBuffer = Device->createStagingTexture(buffDesc, nvrhi::CpuAccessMode::Read);
+            Device->createStagingTexture(buffDesc, nvrhi::CpuAccessMode::Read, &resources.probeVariabilityReadbackBuffer);
         }
     }
 }
@@ -504,13 +507,12 @@ void GlobalResources::CreateResizableResources(dm::uint2 size) {
     desc.isUAV = true;
     desc.isRenderTarget = false;
     desc.keepInitialState = false;
-    desc.initialState = nvrhi::ResourceStates::ShaderResource;
 
     // GBuffers
     {
         desc.format = nvrhi::Format::RGBA8_UNORM;
         desc.debugName = "GBufferA";
-        GBufferA = Device->createTexture(desc);
+        CreateTrackedTexture(desc, nvrhi::ResourceStates::ShaderResource, GBufferA);
         Device->writeDescriptorTable(
             FixedDescriptorTable,
             nvrhi::BindingSetItem::Texture_SRV(GBUFFERA_SRV_INDEX, GBufferA));
@@ -520,7 +522,7 @@ void GlobalResources::CreateResizableResources(dm::uint2 size) {
 
         desc.format = nvrhi::Format::RGBA32_FLOAT;
         desc.debugName = "GBufferB";
-        GBufferB = Device->createTexture(desc);
+        CreateTrackedTexture(desc, nvrhi::ResourceStates::ShaderResource, GBufferB);
         Device->writeDescriptorTable(
             FixedDescriptorTable,
             nvrhi::BindingSetItem::Texture_SRV(GBUFFERB_SRV_INDEX, GBufferB));
@@ -530,7 +532,7 @@ void GlobalResources::CreateResizableResources(dm::uint2 size) {
 
         desc.format = nvrhi::Format::RGBA32_FLOAT;
         desc.debugName = "GBufferC";
-        GBufferC = Device->createTexture(desc);
+        CreateTrackedTexture(desc, nvrhi::ResourceStates::ShaderResource, GBufferC);
         Device->writeDescriptorTable(
             FixedDescriptorTable,
             nvrhi::BindingSetItem::Texture_SRV(GBUFFERC_SRV_INDEX, GBufferC));
@@ -540,7 +542,7 @@ void GlobalResources::CreateResizableResources(dm::uint2 size) {
 
         desc.format = nvrhi::Format::RGBA32_FLOAT;
         desc.debugName = "GBufferD";
-        GBufferD = Device->createTexture(desc);
+        CreateTrackedTexture(desc, nvrhi::ResourceStates::ShaderResource, GBufferD);
         Device->writeDescriptorTable(
             FixedDescriptorTable,
             nvrhi::BindingSetItem::Texture_SRV(GBUFFERD_SRV_INDEX, GBufferD));
@@ -552,17 +554,16 @@ void GlobalResources::CreateResizableResources(dm::uint2 size) {
     // Path tracing
     {
         desc.format = nvrhi::Format::RGBA8_UNORM;
-        desc.initialState = nvrhi::ResourceStates::ShaderResource;
         desc.debugName = "PTOutputTexture";
-        PTOutputTexture = Device->createTexture(desc);
+        CreateTrackedTexture(desc, nvrhi::ResourceStates::ShaderResource, PTOutputTexture);
         Device->writeDescriptorTable(
             FixedDescriptorTable,
             nvrhi::BindingSetItem::Texture_UAV(PT_OUTPUT_UAV_INDEX, PTOutputTexture));
 
         desc.format = nvrhi::Format::RGBA32_FLOAT;
-        desc.initialState = nvrhi::ResourceStates::UnorderedAccess;
         desc.debugName = "PTAccumulationTexture";
-        PTAccumulationTexture = Device->createTexture(desc);
+        // Only ever accessed through its bindless UAV descriptor, never transitioned by a pass.
+        CreateTrackedTexture(desc, nvrhi::ResourceStates::UnorderedAccess, PTAccumulationTexture);
         Device->writeDescriptorTable(FixedDescriptorTable,
                                      nvrhi::BindingSetItem::Texture_UAV(
                                          PT_ACCUMULATION_UAV_INDEX, PTAccumulationTexture));
@@ -570,9 +571,11 @@ void GlobalResources::CreateResizableResources(dm::uint2 size) {
 
     // Create DDGI output texture
     {
+        // DDGIRenderPass and RTAOPass begin tracking these textures as ShaderResource every frame and leave
+        // them there, so that is their steady state.
         desc.format = nvrhi::Format::RGBA16_FLOAT;
         desc.debugName = "DDGIOuputTexture";
-        DDGIOutputTexture = Device->createTexture(desc);
+        CreateTrackedTexture(desc, nvrhi::ResourceStates::ShaderResource, DDGIOutputTexture);
         Device->writeDescriptorTable(
             FixedDescriptorTable,
             nvrhi::BindingSetItem::Texture_SRV(DDGI_OUTPUT_SRV_INDEX, DDGIOutputTexture));
@@ -585,7 +588,7 @@ void GlobalResources::CreateResizableResources(dm::uint2 size) {
     {
         desc.format = nvrhi::Format::R8_UNORM;
         desc.debugName = "RTAO Output";
-        RTAOOutputTexture = Device->createTexture(desc);
+        CreateTrackedTexture(desc, nvrhi::ResourceStates::ShaderResource, RTAOOutputTexture);
         Device->writeDescriptorTable(
             FixedDescriptorTable,
             nvrhi::BindingSetItem::Texture_SRV(RTAO_OUTPUT_SRV_INDEX, RTAOOutputTexture));
@@ -594,7 +597,7 @@ void GlobalResources::CreateResizableResources(dm::uint2 size) {
             nvrhi::BindingSetItem::Texture_UAV(RTAO_OUTPUT_UAV_INDEX, RTAOOutputTexture));
 
         desc.debugName = "RTAO Raw";
-        RTAORawTexture = Device->createTexture(desc);
+        CreateTrackedTexture(desc, nvrhi::ResourceStates::ShaderResource, RTAORawTexture);
         Device->writeDescriptorTable(
             FixedDescriptorTable,
             nvrhi::BindingSetItem::Texture_SRV(RTAO_RAW_SRV_INDEX, RTAORawTexture));
@@ -610,12 +613,34 @@ void GlobalResources::CreateResizableResources(dm::uint2 size) {
         desc.initialState = nvrhi::ResourceStates::ShaderResource;
         desc.keepInitialState = true;
         desc.debugName = "CompositeOutputTexture";
-        CompositeOutputTexture = Device->createTexture(desc);
+        Device->createTexture(desc, &CompositeOutputTexture);
 
         nvrhi::FramebufferDesc fbDesc;
         fbDesc.addColorAttachment(CompositeOutputTexture);
-        CompositeFramebuffer = Device->createFramebuffer(fbDesc);
+        Device->createFramebuffer(fbDesc, &CompositeFramebuffer);
     }
+}
+
+void GlobalResources::CreateTrackedTexture(nvrhi::TextureDesc desc, nvrhi::ResourceStates steadyState,
+                                           nvrhi::TextureHandle& texture) {
+    desc.initialState = nvrhi::ResourceStates::Common;
+    desc.keepInitialState = false;
+    texture = nullptr;
+    Device->createTexture(desc, &texture);
+    PendingInitialStates.emplace_back(texture, steadyState);
+}
+
+void GlobalResources::CommitInitialStates(nvrhi::ICommandList* commandList) {
+    if (PendingInitialStates.empty())
+        return;
+
+    for (auto& [texture, state] : PendingInitialStates) {
+        commandList->beginTrackingTextureState(texture, nvrhi::AllSubresources,
+                                               nvrhi::ResourceStates::Common);
+        commandList->setTextureState(texture, nvrhi::AllSubresources, state);
+    }
+    commandList->commitBarriers();
+    PendingInitialStates.clear();
 }
 
 void GlobalResources::CreateBindingLayout() {
@@ -634,11 +659,11 @@ void GlobalResources::CreateBindingLayout() {
         nvrhi::BindingLayoutItem::StructuredBuffer_SRV(5),    // DDGIVolumes
         nvrhi::BindingLayoutItem::StructuredBuffer_SRV(6),    // DDGIVolumeBindless
 
-        nvrhi::BindingLayoutItem::Sampler(0),
-        nvrhi::BindingLayoutItem::Sampler(1),
-        nvrhi::BindingLayoutItem::Sampler(2),
+        // "SamplerState Samplers[3] : register(s0)" is a single array binding. D3D flattens it to s0..s2
+        // either way, but on Vulkan it is one binding with descriptorCount 3, not three bindings of 1.
+        nvrhi::BindingLayoutItem::Sampler(0).setSize(3),
     };
-    BindingLayout = Device->createBindingLayout(globalBindingLayoutDesc);
+    Device->createBindingLayout(globalBindingLayoutDesc, &BindingLayout);
 }
 
 void GlobalResources::CreateBindlessLayout() {
@@ -648,7 +673,7 @@ void GlobalResources::CreateBindlessLayout() {
     bindlessLayoutDesc.maxCapacity = 1024;
     bindlessLayoutDesc.registerSpaces = {nvrhi::BindingLayoutItem::RawBuffer_SRV(1),
                                          nvrhi::BindingLayoutItem::Texture_SRV(2)};
-    BindlessLayout = Device->createBindlessLayout(bindlessLayoutDesc);
+    Device->createBindlessLayout(bindlessLayoutDesc, &BindlessLayout);
 
     if (Device->getGraphicsAPI() == nvrhi::GraphicsAPI::D3D12) {
         bindlessLayoutDesc.registerSpaces = {nvrhi::BindingLayoutItem::Texture_SRV(3),
@@ -659,7 +684,7 @@ void GlobalResources::CreateBindlessLayout() {
         bindlessLayoutDesc.registerSpaces = {nvrhi::BindingLayoutItem::Texture_SRV(0),
                                              nvrhi::BindingLayoutItem::Texture_UAV(1)};
     }
-    FixedBindlessLayout = Device->createBindlessLayout(bindlessLayoutDesc);
+    Device->createBindlessLayout(bindlessLayoutDesc, &FixedBindlessLayout);
 }
 
 void GlobalResources::CreateSamplers() {
@@ -668,18 +693,18 @@ void GlobalResources::CreateSamplers() {
     samplerDesc.magFilter = true;
     samplerDesc.mipFilter = false;
     samplerDesc.setAllAddressModes(nvrhi::SamplerAddressMode::Wrap);
-    Samplers[0] = Device->createSampler(samplerDesc);
+    Device->createSampler(samplerDesc, &Samplers[0]);
 
     samplerDesc.minFilter = false;
     samplerDesc.magFilter = false;
     samplerDesc.mipFilter = false;
     samplerDesc.setAllAddressModes(nvrhi::SamplerAddressMode::Clamp);
-    Samplers[1] = Device->createSampler(samplerDesc);
+    Device->createSampler(samplerDesc, &Samplers[1]);
 
     samplerDesc.setAllFilters(true)
         .setAllAddressModes(nvrhi::SamplerAddressMode::Wrap)
         .setMaxAnisotropy(16.f);
-    Samplers[2] = Device->createSampler(samplerDesc);
+    Device->createSampler(samplerDesc, &Samplers[2]);
 }
 
 void GlobalResources::CreateConstantBuffers() {
@@ -690,7 +715,7 @@ void GlobalResources::CreateConstantBuffers() {
     bufDesc.maxVersions = 0;
     bufDesc.initialState = nvrhi::ResourceStates::ConstantBuffer;
     bufDesc.debugName = "GlobalConstBuffer";
-    GlobalConstBuffer = Device->createBuffer(bufDesc);
+    Device->createBuffer(bufDesc, &GlobalConstBuffer);
 
     bufDesc.isConstantBuffer = true;
     bufDesc.isVolatile = true;
@@ -699,7 +724,7 @@ void GlobalResources::CreateConstantBuffers() {
     bufDesc.byteSize = sizeof(Graphics::FrameConstants);
     bufDesc.maxVersions = NumFramesInFlight;
     bufDesc.debugName = "FrameConstBuffer";
-    FrameConstBuffer = Device->createBuffer(bufDesc);
+    Device->createBuffer(bufDesc, &FrameConstBuffer);
 
     // DDGI Upload buffer
     {
@@ -712,16 +737,16 @@ void GlobalResources::CreateConstantBuffers() {
         bufDesc.initialState = nvrhi::ResourceStates::CopySource;
 
         bufDesc.debugName = "DDGIVolumeDescsBufferUpload";
-        DDGIVolumeDescsBufferUpload = Device->createBuffer(bufDesc);
+        Device->createBuffer(bufDesc, &DDGIVolumeDescsBufferUpload);
 
         bufDesc.byteSize = DDGIVolumeResourceIndicesSizeGranularity * NumFramesInFlight;
         bufDesc.debugName = "DDGIVolumeResourceIndicesBufferUpload";
-        DDGIVolumeResourceIndicesBufferUpload = Device->createBuffer(bufDesc);
+        Device->createBuffer(bufDesc, &DDGIVolumeResourceIndicesBufferUpload);
     }
 }
 
 void GlobalResources::CreateFixedDescriptorTable() {
-    FixedDescriptorTable = Device->createDescriptorTable(FixedBindlessLayout);
+    Device->createDescriptorTable(FixedBindlessLayout, &FixedDescriptorTable);
     Device->resizeDescriptorTable(FixedDescriptorTable, NUM_RESOURCE_DESCRIPTOR_OFFSETS + 6 * 2 * DDGIMaxNumVolumes);
 
     GlobalConsts.fixedRes.fixedResourceIndexOffset =

@@ -33,7 +33,7 @@ import sys
 from collections import Counter, defaultdict
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-ETHEREAL = os.path.dirname(os.path.dirname(os.path.dirname(ROOT)))   # benchmark/Asteroids -> benchmark -> etherealsamples -> ethereal
+ETHEREAL = os.path.dirname(os.path.dirname(os.path.dirname(ROOT)))   # benchmark/Asteroids -> benchmark -> ethereal-samples -> ethereal
 BIN = os.path.join(ETHEREAL, 'build', 'bin')
 DBGHELP_CANDIDATES = [
     r'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\dbghelp.dll',

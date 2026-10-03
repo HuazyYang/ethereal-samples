@@ -22,11 +22,11 @@ bool SampleRenderTargets::Init(dm::uint2 size) {
 
     desc.format = nvrhi::Format::RGBA8_UNORM;
     desc.debugName = "GBufferDiffuse";
-    GBufferDiffuse = Device->createTexture(desc);
+    Device->createTexture(desc, &GBufferDiffuse);
 
     desc.format = nvrhi::Format::RGBA16_FLOAT;
     desc.debugName = "GBufferNormals";
-    GBufferNormals = Device->createTexture(desc);
+    Device->createTexture(desc, &GBufferNormals);
 
     const nvrhi::Format depthFormats[] = {nvrhi::Format::D24S8, nvrhi::Format::D32S8, nvrhi::Format::D32,
                                           nvrhi::Format::D16};
@@ -39,7 +39,7 @@ bool SampleRenderTargets::Init(dm::uint2 size) {
     desc.initialState = nvrhi::ResourceStates::DepthWrite;
     desc.clearValue = nvrhi::Color{1.f};
     desc.debugName = "GBufferDepth";
-    GBufferDepth = Device->createTexture(desc);
+    Device->createTexture(desc, &GBufferDepth);
 
     GBufferFramebuffer = MAKE_RC_OBJ_PTR(donut::engine::FramebufferFactory, Device);
     GBufferFramebuffer->RenderTargets = {
@@ -54,7 +54,7 @@ bool SampleRenderTargets::Init(dm::uint2 size) {
     desc.isUAV = true;
     desc.initialState = nvrhi::ResourceStates::UnorderedAccess;
     desc.debugName = "ShaderColor";
-    HdrColorBuffer = Device->createTexture(desc);
+    Device->createTexture(desc, &HdrColorBuffer);
 
     HdrFramebuffer = MAKE_RC_OBJ_PTR(donut::engine::FramebufferFactory, Device);
     HdrFramebuffer->RenderTargets = { HdrColorBuffer };
