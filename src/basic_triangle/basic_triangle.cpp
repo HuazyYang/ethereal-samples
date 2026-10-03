@@ -58,7 +58,7 @@ public:
             return false;
         }
         
-        m_CommandList = GetDevice()->createCommandList();
+        GetDevice()->createCommandList(nvrhi::CommandListParameters(), &m_CommandList);
 
         return true;
     }
@@ -83,7 +83,7 @@ public:
             psoDesc.primType = nvrhi::PrimitiveType::TriangleList;
             psoDesc.renderState.depthStencilState.depthTestEnable = false;
 
-            m_Pipeline = GetDevice()->createGraphicsPipeline(psoDesc, framebuffer->getFramebufferInfo());
+            GetDevice()->createGraphicsPipeline1(psoDesc, framebuffer->getFramebufferInfo().getInfo(), &m_Pipeline);
         }
 
         m_CommandList->open();

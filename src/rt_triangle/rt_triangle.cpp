@@ -85,18 +85,24 @@ public:
             nvrhi::BindingLayoutItem::Texture_UAV(0)
         };
 
-        m_BindingLayout = GetDevice()->createBindingLayout(globalBindingLayoutDesc);
+        GetDevice()->createBindingLayout(globalBindingLayoutDesc, &m_BindingLayout);
 
         nvrhi::rt::PipelineDesc pipelineDesc;
         pipelineDesc.globalBindingLayouts = { m_BindingLayout };
+        nvrhi::ShaderHandle rayGenShader;
+        m_ShaderLibrary->getShader("RayGen", nvrhi::ShaderType::RayGeneration, &rayGenShader);
+        nvrhi::ShaderHandle missShader;
+        m_ShaderLibrary->getShader("Miss", nvrhi::ShaderType::Miss, &missShader);
         pipelineDesc.shaders = {
-            { "", m_ShaderLibrary->getShader("RayGen", nvrhi::ShaderType::RayGeneration), nullptr },
-            { "", m_ShaderLibrary->getShader("Miss", nvrhi::ShaderType::Miss), nullptr }
+            { "", rayGenShader, nullptr },
+            { "", missShader, nullptr }
         };
 
+        nvrhi::ShaderHandle closestHitShader;
+        m_ShaderLibrary->getShader("ClosestHit", nvrhi::ShaderType::ClosestHit, &closestHitShader);
         pipelineDesc.hitGroups = { { 
             "HitGroup", 
-            m_ShaderLibrary->getShader("ClosestHit", nvrhi::ShaderType::ClosestHit), 
+            closestHitShader, 
             nullptr, // anyHitShader
             nullptr, // intersectionShader
             nullptr, // bindingLayout
@@ -105,15 +111,15 @@ public:
 
         pipelineDesc.maxPayloadSize = sizeof(dm::float4);
 
-        m_Pipeline = GetDevice()->createRayTracingPipeline(pipelineDesc);
+        GetDevice()->createRayTracingPipeline(pipelineDesc, &m_Pipeline);
 
-        m_ShaderTable = m_Pipeline->createShaderTable();
+        m_Pipeline->createShaderTable(nvrhi::rt::ShaderTableDesc(), &m_ShaderTable);
         m_ShaderTable->setRayGenerationShader("RayGen");
         m_ShaderTable->addHitGroup("HitGroup");
         m_ShaderTable->addMissShader("Miss");
 
 
-        m_CommandList = GetDevice()->createCommandList();
+        GetDevice()->createCommandList(nvrhi::CommandListParameters(), &m_CommandList);
 
         m_CommandList->open();
 
@@ -122,9 +128,11 @@ public:
         bufferDesc.initialState = nvrhi::ResourceStates::ShaderResource;
         bufferDesc.keepInitialState = true;
         bufferDesc.isAccelStructBuildInput = true;
-        nvrhi::BufferHandle indexBuffer = GetDevice()->createBuffer(bufferDesc);
+        nvrhi::BufferHandle indexBuffer;
+        GetDevice()->createBuffer(bufferDesc, &indexBuffer);
         bufferDesc.byteSize = sizeof(float3) * 3;
-        nvrhi::BufferHandle vertexBuffer = GetDevice()->createBuffer(bufferDesc);
+        nvrhi::BufferHandle vertexBuffer;
+        GetDevice()->createBuffer(bufferDesc, &vertexBuffer);
 
         uint indices[3] = { 0, 1, 2 };
         m_CommandList->writeBuffer(indexBuffer, indices, sizeof(indices));
@@ -146,14 +154,14 @@ public:
         geometryDesc.flags = nvrhi::rt::GeometryFlags::Opaque;
         blasDesc.bottomLevelGeometries.push_back(geometryDesc);
 
-        m_BottomLevelAS = GetDevice()->createAccelStruct(blasDesc);
+        GetDevice()->createAccelStruct(blasDesc, &m_BottomLevelAS);
         nvrhi::utils::BuildBottomLevelAccelStruct(m_CommandList, m_BottomLevelAS, blasDesc);
 
         nvrhi::rt::AccelStructDesc tlasDesc;
         tlasDesc.isTopLevel = true;
         tlasDesc.topLevelMaxInstances = 1;
         
-        m_TopLevelAS = GetDevice()->createAccelStruct(tlasDesc);
+        GetDevice()->createAccelStruct(tlasDesc, &m_TopLevelAS);
 
         nvrhi::rt::InstanceDesc instanceDesc;
         instanceDesc.bottomLevelAS = m_BottomLevelAS;
@@ -191,7 +199,7 @@ public:
             textureDesc.initialState = nvrhi::ResourceStates::UnorderedAccess;
             textureDesc.keepInitialState = true;
             textureDesc.format = nvrhi::Format::RGBA8_UNORM;
-            m_RenderTarget = GetDevice()->createTexture(textureDesc);
+            GetDevice()->createTexture(textureDesc, &m_RenderTarget);
 
             nvrhi::BindingSetDesc bindingSetDesc;
             bindingSetDesc.bindings = {
@@ -199,7 +207,7 @@ public:
                 nvrhi::BindingSetItem::Texture_UAV(0, m_RenderTarget)
             };
 
-            m_BindingSet = GetDevice()->createBindingSet(bindingSetDesc, m_BindingLayout);
+            GetDevice()->createBindingSet(bindingSetDesc, m_BindingLayout, &m_BindingSet);
         }
 
         const auto& fbinfo = framebuffer->getFramebufferInfo();

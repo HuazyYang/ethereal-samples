@@ -82,7 +82,7 @@ public:
         desc.format = nvrhi::Format::D24S8;
         desc.initialState = nvrhi::ResourceStates::DepthWrite;
         desc.debugName = "DepthBuffer";
-        m_Depth = device->createTexture(desc);
+        device->createTexture(desc, &m_Depth);
 
         desc.clearValue = nvrhi::Color(0.f);
         desc.isTypeless = false;
@@ -90,30 +90,30 @@ public:
         desc.initialState = nvrhi::ResourceStates::RenderTarget;
         desc.isUAV = true;
         desc.debugName = "HdrColor";
-        m_HdrColor = device->createTexture(desc);
+        device->createTexture(desc, &m_HdrColor);
         desc.debugName = "ResolvedColor";
-        m_ResolvedColor = device->createTexture(desc);
+        device->createTexture(desc, &m_ResolvedColor);
 
         desc.format = nvrhi::Format::RGBA16_SNORM;
         desc.debugName = "TemporalFeedback1";
-        m_TemporalFeedback1 = device->createTexture(desc);
+        device->createTexture(desc, &m_TemporalFeedback1);
         desc.debugName = "TemporalFeedback2";
-        m_TemporalFeedback2 = device->createTexture(desc);
+        device->createTexture(desc, &m_TemporalFeedback2);
 
         desc.format = nvrhi::Format::RG16_FLOAT;
         desc.debugName = "MotionVectors";
-        m_MotionVectors = device->createTexture(desc);
+        device->createTexture(desc, &m_MotionVectors);
 
         desc.format = nvrhi::Format::SRGBA8_UNORM;
         desc.isUAV = false;
         desc.debugName = "GBufferDiffuse";
-        m_GBufferDiffuse = device->createTexture(desc);
+        device->createTexture(desc, &m_GBufferDiffuse);
         desc.format = nvrhi::Format::SRGBA8_UNORM;
         desc.debugName = "GBufferSpecular";
-        m_GBufferSpecular = device->createTexture(desc);
+        device->createTexture(desc, &m_GBufferSpecular);
         desc.format = nvrhi::Format::RGBA16_SNORM;
         desc.debugName = "GBufferNormals";
-        m_GBufferNormals = device->createTexture(desc);
+        device->createTexture(desc, &m_GBufferNormals);
 
         m_HdrFramebuffer = MAKE_RC_OBJ_PTR(engine::FramebufferFactory, device);
         m_HdrFramebuffer->RenderTargets = { m_HdrColor };
@@ -227,16 +227,16 @@ public:
         m_Camera.LookAt(float3(0.f, 1.8f, 0.f), float3(1.f, 1.8f, 0.f));
         m_Camera.SetMoveSpeed(3.f);
 
-        m_ConstantBuffer = GetDevice()->createBuffer(nvrhi::utils::CreateVolatileConstantBufferDesc(sizeof(LightingConstants), "LightingConstants", engine::c_MaxRenderPassConstantBufferVersions));
+        GetDevice()->createBuffer(nvrhi::utils::CreateVolatileConstantBufferDesc(sizeof(LightingConstants), "LightingConstants", engine::c_MaxRenderPassConstantBufferVersions), &m_ConstantBuffer);
 
-        m_CommandList = GetDevice()->createCommandList();
+        GetDevice()->createCommandList(nvrhi::CommandListParameters(), &m_CommandList);
         
 #if DONUT_WITH_DX12
         // Query VRS tile size (it can vary depending on hardware)
         if (m_UseRawD3D12)
         {
             D3D12_FEATURE_DATA_D3D12_OPTIONS6 options = {};
-            ID3D12Device* device = GetDevice()->getNativeObject(nvrhi::ObjectTypes::D3D12_Device);
+            ID3D12Device* device = static_cast<ID3D12Device*>(GetDevice()->getNativeObject(nvrhi::ObjectTypes::D3D12_Device));
             auto hr = device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS6, &options, sizeof(options));
             m_vrsTileSize = options.ShadingRateImageTileSize;
         }
@@ -336,7 +336,7 @@ public:
             // Important!  VRS surface should be R8_UINT format
             desc.format = nvrhi::Format::R8_UINT;
 
-            m_shadingRateSurface = GetDevice()->createTexture(desc);
+            GetDevice()->createTexture(desc, &m_shadingRateSurface);
         }
 
         if (!m_ForwardPass)
@@ -376,7 +376,7 @@ public:
                 nvrhi::BindingLayoutItem::Texture_SRV(0),
                 nvrhi::BindingLayoutItem::Texture_SRV(1)
             };
-            m_bindingLayout = GetDevice()->createBindingLayout(layoutDesc);
+            GetDevice()->createBindingLayout(layoutDesc, &m_bindingLayout);
 
             nvrhi::BindingSetDesc bindingSetDesc;
             bindingSetDesc.bindings = {
@@ -384,13 +384,13 @@ public:
                 nvrhi::BindingSetItem::Texture_SRV(0, m_RenderTargets->m_MotionVectors, nvrhi::Format::RG16_FLOAT),
                 nvrhi::BindingSetItem::Texture_SRV(1, m_RenderTargets->m_HdrColor, nvrhi::Format::RGBA16_FLOAT)
             };
-            m_bindingSet = GetDevice()->createBindingSet(bindingSetDesc, m_bindingLayout);
+            GetDevice()->createBindingSet(bindingSetDesc, m_bindingLayout, &m_bindingSet);
 
             nvrhi::ComputePipelineDesc psoDesc = {};
             psoDesc.CS = m_shadingRateSurfaceShader;
             psoDesc.bindingLayouts = { m_bindingLayout };
 
-            m_Pipeline = GetDevice()->createComputePipeline(psoDesc);
+            GetDevice()->createComputePipeline(psoDesc, &m_Pipeline);
         }
 
         m_CommandList->open();
@@ -419,10 +419,10 @@ public:
         if (m_UseRawD3D12)
         {
             // VRS command list methods require ID3D12GraphicsCommandList5
-            ID3D12GraphicsCommandList* d3dcmdlist = m_CommandList->getNativeObject(nvrhi::ObjectTypes::D3D12_GraphicsCommandList);
+            ID3D12GraphicsCommandList* d3dcmdlist = static_cast<ID3D12GraphicsCommandList*>(m_CommandList->getNativeObject(nvrhi::ObjectTypes::D3D12_GraphicsCommandList));
             ID3D12GraphicsCommandList5* vrscmdlist = nullptr;
             HRESULT hr = d3dcmdlist->QueryInterface(IID_PPV_ARGS(&vrscmdlist));
-            ID3D12Resource* vrsResource = m_shadingRateSurface->getNativeObject(nvrhi::ObjectTypes::D3D12_Resource);
+            ID3D12Resource* vrsResource = static_cast<ID3D12Resource*>(m_shadingRateSurface->getNativeObject(nvrhi::ObjectTypes::D3D12_Resource));
             
             D3D12_RESOURCE_BARRIER barrier = {};
             barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
@@ -461,10 +461,10 @@ public:
 #if DONUT_WITH_DX12
         if (m_UseRawD3D12)
         {
-            ID3D12GraphicsCommandList* d3dcmdlist = m_CommandList->getNativeObject(nvrhi::ObjectTypes::D3D12_GraphicsCommandList);
+            ID3D12GraphicsCommandList* d3dcmdlist = static_cast<ID3D12GraphicsCommandList*>(m_CommandList->getNativeObject(nvrhi::ObjectTypes::D3D12_GraphicsCommandList));
             ID3D12GraphicsCommandList5* vrscmdlist = nullptr;
             HRESULT hr = d3dcmdlist->QueryInterface(IID_PPV_ARGS(&vrscmdlist));
-            ID3D12Resource* vrsResource = m_shadingRateSurface->getNativeObject(nvrhi::ObjectTypes::D3D12_Resource);
+            ID3D12Resource* vrsResource = static_cast<ID3D12Resource*>(m_shadingRateSurface->getNativeObject(nvrhi::ObjectTypes::D3D12_Resource));
             D3D12_RESOURCE_BARRIER barrier = {};
             barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
             barrier.Transition.pResource = vrsResource;

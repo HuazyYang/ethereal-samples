@@ -70,7 +70,7 @@ public:
         textureDesc.width = size.x;
         textureDesc.height = size.y;
         textureDesc.sampleCount = sampleCount;
-        ShadedColor = device->createTexture(textureDesc);
+        device->createTexture(textureDesc, &ShadedColor);
     }
 };
 
@@ -195,7 +195,7 @@ private:
         desc.structStride = needStructuredBuffer ? sizeof(InstanceData) : 0;
         desc.debugName = debugName;
         desc.initialState = nvrhi::ResourceStates::CopyDest;
-        bufHandle = device->createBuffer(desc);
+        device->createBuffer(desc, &bufHandle);
 
         if (data)
         {
@@ -217,7 +217,8 @@ private:
         bufferDesc.isConstantBuffer = true;
         bufferDesc.initialState = nvrhi::ResourceStates::ConstantBuffer;
         bufferDesc.keepInitialState = true;
-        nvrhi::BufferHandle buffer = device->createBuffer(bufferDesc);
+        nvrhi::BufferHandle buffer;
+        device->createBuffer(bufferDesc, &buffer);
 
         MaterialConstants constants;
         material->FillConstantBuffer(constants);
@@ -282,7 +283,7 @@ public:
 
         m_TextureCache = MAKE_RC_OBJ_PTR(TextureCache, GetDevice(), nativeFS, nullptr);
 
-        m_CommandList = GetDevice()->createCommandList();
+        GetDevice()->createCommandList(nvrhi::CommandListParameters(), &m_CommandList);
 
         return m_Scene.Init(GetDevice(), m_CommandList, m_TextureCache);
     }

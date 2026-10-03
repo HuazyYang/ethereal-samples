@@ -58,7 +58,7 @@ public:
             return false;
         }
         
-        m_CommandList = GetDevice()->createCommandList();
+        GetDevice()->createCommandList(nvrhi::CommandListParameters(), &m_CommandList);
 
         return true;
     }
@@ -88,16 +88,18 @@ public:
                 nvrhi::ShaderSpecialization vertexShaderSpecializations[] = {
                     nvrhi::ShaderSpecialization::Float( 0, float(i) * 0.5f - 0.75f)
                 };
-                nvrhi::ShaderHandle vertexShader = device->createShaderSpecialization(m_VertexShader, 
-                    vertexShaderSpecializations, uint32_t(std::size(vertexShaderSpecializations)));
+                nvrhi::ShaderHandle vertexShader;
+                device->createShaderSpecialization(m_VertexShader, 
+                    vertexShaderSpecializations, uint32_t(std::size(vertexShaderSpecializations)), &vertexShader);
                 
                 // Pixel shader specialization
                 uint32_t colors[4] = { 0x0000ff, 0x00ff00, 0xff0000, 0xff00ff };
                 nvrhi::ShaderSpecialization pixelShaderSpecializations[] = {
                     nvrhi::ShaderSpecialization::UInt32(1, colors[i])
                 };
-                nvrhi::ShaderHandle pixelShader = device->createShaderSpecialization(m_PixelShader, 
-                    pixelShaderSpecializations, uint32_t(std::size(pixelShaderSpecializations)));
+                nvrhi::ShaderHandle pixelShader;
+                device->createShaderSpecialization(m_PixelShader, 
+                    pixelShaderSpecializations, uint32_t(std::size(pixelShaderSpecializations)), &pixelShader);
 
                 // Pipeline
                 nvrhi::GraphicsPipelineDesc psoDesc;
@@ -106,8 +108,9 @@ public:
                 psoDesc.primType = nvrhi::PrimitiveType::TriangleList;
                 psoDesc.renderState.depthStencilState.depthTestEnable = false;
 
-                nvrhi::GraphicsPipelineHandle pipeline = device->createGraphicsPipeline(psoDesc,
-                    framebuffer->getFramebufferInfo());
+                nvrhi::GraphicsPipelineHandle pipeline;
+                device->createGraphicsPipeline1(psoDesc,
+                    framebuffer->getFramebufferInfo().getInfo(), &pipeline);
                 assert(pipeline);
 
                 m_Pipelines.push_back(pipeline);

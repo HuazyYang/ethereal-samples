@@ -125,7 +125,7 @@ public:
             return false;
         }
 
-        m_Sampler = GetDevice()->createSampler({});
+        GetDevice()->createSampler({}, &m_Sampler);
 
         {
 	        nvrhi::BindingLayoutDesc layoutDesc;
@@ -133,7 +133,7 @@ public:
         		.setVisibility(nvrhi::ShaderType::Pixel)
 				.addItem(nvrhi::BindingLayoutItem::Texture_SRV(0))
                 .addItem(nvrhi::BindingLayoutItem::Sampler(0));
-            m_DrawBindingLayout = GetDevice()->createBindingLayout(layoutDesc);
+            GetDevice()->createBindingLayout(layoutDesc, &m_DrawBindingLayout);
         }
         {
             nvrhi::BindingLayoutDesc layoutDesc;
@@ -141,27 +141,27 @@ public:
                 .setVisibility(nvrhi::ShaderType::Compute)
 				.addItem(nvrhi::BindingLayoutItem::PushConstants(0, sizeof(uint32_t)))
                 .addItem(nvrhi::BindingLayoutItem::Texture_UAV(0));
-            m_ComputeBindingLayout = GetDevice()->createBindingLayout(layoutDesc);
+            GetDevice()->createBindingLayout(layoutDesc, &m_ComputeBindingLayout);
         }
 
         nvrhi::ComputePipelineDesc psoDesc;
         psoDesc
 			.setComputeShader(m_ComputeShader)
 			.addBindingLayout(m_ComputeBindingLayout);
-        m_ComputePipeline = GetDevice()->createComputePipeline(psoDesc);
+        GetDevice()->createComputePipeline(psoDesc, &m_ComputePipeline);
 
         m_DrawBindings = nvrhi::MakeMono<engine::BindingCache>(GetDevice());
         m_ComputeBindings = nvrhi::MakeMono<engine::BindingCache>(GetDevice());
 
-        m_CommandListLifetimeTracker = GetDevice()->createCommandListLifetimeTracker(nvrhi::CommandQueue::Compute);
+        GetDevice()->createCommandListLifetimeTracker(nvrhi::CommandQueue::Compute, &m_CommandListLifetimeTracker);
 
-        m_DrawCommandList = GetDevice()->createCommandList();
+        GetDevice()->createCommandList(nvrhi::CommandListParameters(), &m_DrawCommandList);
         nvrhi::CommandListParameters params;
         params
     		.setEnableImmediateExecution(false)
 			.setQueueType(nvrhi::CommandQueue::Compute)
     		.setLifetimeTracker(m_CommandListLifetimeTracker);
-        m_ComputeCommandList = GetDevice()->createCommandList(params);
+        GetDevice()->createCommandList(params, &m_ComputeCommandList);
 
         nvrhi::TextureDesc texDesc;
         texDesc
@@ -174,7 +174,9 @@ public:
         constexpr size_t NumTextures = 2;
         for (size_t i = 0; i < NumTextures; i++)
         {
-	        m_RenderToComputeQueue.Push(GetDevice()->createTexture(texDesc), 0);
+	        nvrhi::TextureHandle texture;
+	        GetDevice()->createTexture(texDesc, &texture);
+	        m_RenderToComputeQueue.Push(std::move(texture), 0);
         }
 
         m_ComputeThread = std::thread([this](){ this->AsyncThreadProc(); });
@@ -203,7 +205,7 @@ public:
             psoDesc.renderState.depthStencilState.depthTestEnable = false;
             psoDesc.bindingLayouts = { m_DrawBindingLayout };
 
-            m_GraphicsPipeline = GetDevice()->createGraphicsPipeline(psoDesc, framebuffer->getFramebufferInfo());
+            GetDevice()->createGraphicsPipeline1(psoDesc, framebuffer->getFramebufferInfo().getInfo(), &m_GraphicsPipeline);
         }
 
         nvrhi::TextureHandle newTexture;

@@ -140,8 +140,8 @@ public:
             return false;
         }
 
-        m_ConstantBuffer = GetDevice()->createBuffer(nvrhi::utils::CreateStaticConstantBufferDesc(sizeof(ConstantBufferEntry) * c_NumViews, "ConstantBuffer")
-            .setInitialState(nvrhi::ResourceStates::ConstantBuffer).setKeepInitialState(true));
+        GetDevice()->createBuffer(nvrhi::utils::CreateStaticConstantBufferDesc(sizeof(ConstantBufferEntry) * c_NumViews, "ConstantBuffer")
+            .setInitialState(nvrhi::ResourceStates::ConstantBuffer).setKeepInitialState(true), &m_ConstantBuffer);
         
         nvrhi::VertexAttributeDesc attributes[] = {
             nvrhi::VertexAttributeDesc()
@@ -157,13 +157,13 @@ public:
                 .setBufferIndex(1)
                 .setElementStride(sizeof(Vertex)),
         };
-        m_InputLayout = GetDevice()->createInputLayout(attributes, uint32_t(std::size(attributes)), m_VertexShader);
+        GetDevice()->createInputLayout(attributes, uint32_t(std::size(attributes)), m_VertexShader, &m_InputLayout);
 
 
         engine::CommonRenderPasses commonPasses(GetDevice(), shaderFactory);
         engine::TextureCache textureCache(GetDevice(), nativeFS, nullptr);
 
-        m_CommandList = GetDevice()->createCommandList();
+        GetDevice()->createCommandList(nvrhi::CommandListParameters(), &m_CommandList);
         m_CommandList->open();
 
         nvrhi::BufferDesc vertexBufferDesc;
@@ -171,7 +171,7 @@ public:
         vertexBufferDesc.isVertexBuffer = true;
         vertexBufferDesc.debugName = "VertexBuffer";
         vertexBufferDesc.initialState = nvrhi::ResourceStates::CopyDest;
-        m_VertexBuffer = GetDevice()->createBuffer(vertexBufferDesc);
+        GetDevice()->createBuffer(vertexBufferDesc, &m_VertexBuffer);
 
         m_CommandList->beginTrackingBufferState(m_VertexBuffer, nvrhi::ResourceStates::CopyDest);
         m_CommandList->writeBuffer(m_VertexBuffer, g_Vertices, sizeof(g_Vertices));
@@ -182,7 +182,7 @@ public:
         indexBufferDesc.isIndexBuffer = true;
         indexBufferDesc.debugName = "IndexBuffer";
         indexBufferDesc.initialState = nvrhi::ResourceStates::CopyDest;
-        m_IndexBuffer = GetDevice()->createBuffer(indexBufferDesc);
+        GetDevice()->createBuffer(indexBufferDesc, &m_IndexBuffer);
 
         m_CommandList->beginTrackingBufferState(m_IndexBuffer, nvrhi::ResourceStates::CopyDest);
         m_CommandList->writeBuffer(m_IndexBuffer, g_Indices, sizeof(g_Indices));
@@ -250,7 +250,7 @@ public:
             psoDesc.primType = nvrhi::PrimitiveType::TriangleList;
             psoDesc.renderState.depthStencilState.depthTestEnable = false;
 
-            m_Pipeline = GetDevice()->createGraphicsPipeline(psoDesc, framebuffer->getFramebufferInfo());
+            GetDevice()->createGraphicsPipeline1(psoDesc, framebuffer->getFramebufferInfo().getInfo(), &m_Pipeline);
         }
 
         m_CommandList->open();

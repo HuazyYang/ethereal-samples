@@ -92,8 +92,8 @@ const char* BindingModeName(BindingMode mode)
 nvrhi::BufferHandle CreateStaticBuffer(nvrhi::IDevice* device, nvrhi::ICommandList* commandList, nvrhi::BufferDesc desc,
                                        const void* data, nvrhi::ResourceStates state)
 {
-    nvrhi::BufferHandle buffer = device->createBuffer(desc);
-    if (!buffer) return nullptr;
+    nvrhi::BufferHandle buffer;
+    if (NVRHI_FAILED(device->createBuffer(desc, &buffer))) return nullptr;
     commandList->beginTrackingBufferState(buffer, nvrhi::ResourceStates::Common);
     commandList->writeBuffer(buffer, data, size_t(desc.byteSize));
     commandList->setPermanentBufferState(buffer, state);
@@ -155,7 +155,8 @@ bool AsteroidsRenderer::Init(donut::engine::ShaderFactory& shaderFactory, const 
     }
 
     // ---- static resources, uploaded with a temporary command list ----
-    nvrhi::CommandListHandle initCommandList = m_Device->createCommandList();
+    nvrhi::CommandListHandle initCommandList;
+    m_Device->createCommandList(nvrhi::CommandListParameters(), &initCommandList);
     initCommandList->open();
 
     const Mesh* meshes = m_Simulation->Meshes();
@@ -197,8 +198,7 @@ bool AsteroidsRenderer::Init(donut::engine::ShaderFactory& shaderFactory, const 
         for (uint32_t t = 0; t < NUM_UNIQUE_TEXTURES; ++t)
         {
             textureDesc.debugName = "Asteroid texture " + std::to_string(t);
-            m_Textures[t] = m_Device->createTexture(textureDesc);
-            if (!m_Textures[t]) return false;
+            if (NVRHI_FAILED(m_Device->createTexture(textureDesc, &m_Textures[t]))) return false;
             initCommandList->beginTrackingTextureState(m_Textures[t], nvrhi::AllSubresources, nvrhi::ResourceStates::Common);
             const D3D11_SUBRESOURCE_DATA* data = m_Simulation->TextureData(t);
             for (uint32_t slice = 0; slice < arraySize; ++slice)
@@ -238,10 +238,10 @@ bool AsteroidsRenderer::Init(donut::engine::ShaderFactory& shaderFactory, const 
     m_Device->runGarbageCollection();
 
     // ---- sampler: anisotropic 2x, wrap (the sampler of the Diligent renderer) ----
-    m_Sampler = m_Device->createSampler(nvrhi::SamplerDesc()
+    m_Device->createSampler(nvrhi::SamplerDesc()
         .setAllFilters(true)
         .setMaxAnisotropy(float(TEXTURE_ANISO))
-        .setAllAddressModes(nvrhi::SamplerAddressMode::Wrap));
+        .setAllAddressModes(nvrhi::SamplerAddressMode::Wrap), &m_Sampler);
 
     // ---- vertex layouts ----
     {
@@ -249,11 +249,11 @@ bool AsteroidsRenderer::Init(donut::engine::ShaderFactory& shaderFactory, const 
             nvrhi::VertexAttributeDesc().setName("POSITION").setFormat(nvrhi::Format::RGB32_FLOAT).setBufferIndex(0).setOffset(0).setElementStride(sizeof(Vertex)),
             nvrhi::VertexAttributeDesc().setName("NORMAL").setFormat(nvrhi::Format::RGB32_FLOAT).setBufferIndex(0).setOffset(12).setElementStride(sizeof(Vertex)),
             nvrhi::VertexAttributeDesc().setName("INSTANCEID").setFormat(nvrhi::Format::R32_UINT).setBufferIndex(1).setOffset(0).setElementStride(sizeof(uint32_t)).setIsInstanced(true)};
-        m_AsteroidInputLayout = m_Device->createInputLayout(attributes, bindless ? 3 : 2, m_AsteroidVS);
+        m_Device->createInputLayout(attributes, bindless ? 3 : 2, m_AsteroidVS, &m_AsteroidInputLayout);
 
         nvrhi::VertexAttributeDesc skyboxAttribute =
             nvrhi::VertexAttributeDesc().setName("POSITION").setFormat(nvrhi::Format::RGB32_FLOAT).setBufferIndex(0).setOffset(0).setElementStride(sizeof(SkyboxVertex));
-        m_SkyboxInputLayout = m_Device->createInputLayout(&skyboxAttribute, 1, m_SkyboxVS);
+        m_Device->createInputLayout(&skyboxAttribute, 1, m_SkyboxVS, &m_SkyboxInputLayout);
     }
 
     // ---- binding layouts ----
@@ -280,30 +280,30 @@ bool AsteroidsRenderer::Init(donut::engine::ShaderFactory& shaderFactory, const 
                 break;
         }
         layout0.addItem(nvrhi::BindingLayoutItem::Sampler(0));
-        m_Layout0 = m_Device->createBindingLayout(layout0);
+        m_Device->createBindingLayout(layout0, &m_Layout0);
 
         if (bindless)
         {
-            m_Layout1 = m_Device->createBindlessLayout(nvrhi::BindlessLayoutDesc()
+            m_Device->createBindlessLayout(nvrhi::BindlessLayoutDesc()
                 .setVisibility(nvrhi::ShaderType::Pixel)
                 .setFirstSlot(0)
                 .setMaxCapacity(NUM_UNIQUE_TEXTURES)
-                .addRegisterSpace(nvrhi::BindingLayoutItem::Texture_SRV(1)));
+                .addRegisterSpace(nvrhi::BindingLayoutItem::Texture_SRV(1)), &m_Layout1);
         }
         else
         {
-            m_Layout1 = m_Device->createBindingLayout(nvrhi::BindingLayoutDesc()
+            m_Device->createBindingLayout(nvrhi::BindingLayoutDesc()
                 .setVisibility(nvrhi::ShaderType::Pixel)
                 .setRegisterSpaceAndDescriptorSet(1)
-                .addItem(nvrhi::BindingLayoutItem::Texture_SRV(0)));
+                .addItem(nvrhi::BindingLayoutItem::Texture_SRV(0)), &m_Layout1);
         }
 
-        m_SkyboxLayout = m_Device->createBindingLayout(nvrhi::BindingLayoutDesc()
+        m_Device->createBindingLayout(nvrhi::BindingLayoutDesc()
             .setVisibility(nvrhi::ShaderType::AllGraphics)
             .setRegisterSpaceAndDescriptorSet(0)
             .addItem(nvrhi::BindingLayoutItem::VolatileConstantBuffer(0))
             .addItem(nvrhi::BindingLayoutItem::Texture_SRV(0))
-            .addItem(nvrhi::BindingLayoutItem::Sampler(0)));
+            .addItem(nvrhi::BindingLayoutItem::Sampler(0)), &m_SkyboxLayout);
 
         if (!m_Layout0 || !m_Layout1 || !m_SkyboxLayout) return false;
     }
@@ -311,7 +311,7 @@ bool AsteroidsRenderer::Init(donut::engine::ShaderFactory& shaderFactory, const 
     // ---- texture binding sets, created up front (after the textures became permanent) ----
     if (bindless)
     {
-        m_TextureTable = m_Device->createDescriptorTable(m_Layout1);
+        m_Device->createDescriptorTable(m_Layout1, &m_TextureTable);
         m_Device->resizeDescriptorTable(m_TextureTable, NUM_UNIQUE_TEXTURES, false);
         for (uint32_t t = 0; t < NUM_UNIQUE_TEXTURES; ++t)
             if (!m_Device->writeDescriptorTable(m_TextureTable, nvrhi::BindingSetItem::Texture_SRV(t, m_Textures[t])))
@@ -329,10 +329,9 @@ bool AsteroidsRenderer::Init(donut::engine::ShaderFactory& shaderFactory, const 
         for (uint32_t i = 0; i < setCount; ++i)
         {
             const uint32_t texture = m_Desc.binding == BindingMode::Mut ? staticData[i].textureIndex : i;
-            m_TextureSets[i] = m_Device->createBindingSet(nvrhi::BindingSetDesc()
+            if (NVRHI_FAILED(m_Device->createBindingSet(nvrhi::BindingSetDesc()
                 .setTrackLiveness(m_Desc.trackLiveness)
-                .addItem(nvrhi::BindingSetItem::Texture_SRV(0, m_Textures[texture])), m_Layout1);
-            if (!m_TextureSets[i])
+                .addItem(nvrhi::BindingSetItem::Texture_SRV(0, m_Textures[texture])), m_Layout1, &m_TextureSets[i])))
             {
                 donut::log::error("cannot create texture binding set %u of %u", i, setCount);
                 return false;
@@ -342,15 +341,14 @@ bool AsteroidsRenderer::Init(donut::engine::ShaderFactory& shaderFactory, const 
     }
 
     // ---- skybox ----
-    m_SkyboxConstantBuffer = m_Device->createBuffer(nvrhi::BufferDesc()
+    m_Device->createBuffer(nvrhi::BufferDesc()
         .setByteSize(sizeof(FrameConstants)).setIsConstantBuffer(true).setIsVolatile(true).setMaxVersions(kVolatileFrames * 2)
-        .setDebugName("Skybox constants"));
-    m_SkyboxBindingSet = m_Device->createBindingSet(nvrhi::BindingSetDesc()
+        .setDebugName("Skybox constants"), &m_SkyboxConstantBuffer);
+    if (NVRHI_FAILED(m_Device->createBindingSet(nvrhi::BindingSetDesc()
         .setTrackLiveness(m_Desc.trackLiveness)
         .addItem(nvrhi::BindingSetItem::ConstantBuffer(0, m_SkyboxConstantBuffer))
         .addItem(nvrhi::BindingSetItem::Texture_SRV(0, m_SkyboxTexture))
-        .addItem(nvrhi::BindingSetItem::Sampler(0, m_Sampler)), m_SkyboxLayout);
-    if (!m_SkyboxBindingSet) return false;
+        .addItem(nvrhi::BindingSetItem::Sampler(0, m_Sampler)), m_SkyboxLayout, &m_SkyboxBindingSet))) return false;
 
     CreateThreadResources();
 
@@ -358,7 +356,8 @@ bool AsteroidsRenderer::Init(donut::engine::ShaderFactory& shaderFactory, const 
     {
         for (uint32_t i = 0; i < kGpuTimerQueries; ++i)
         {
-            nvrhi::TimerQueryHandle query = m_Device->createTimerQuery();
+            nvrhi::TimerQueryHandle query;
+            m_Device->createTimerQuery(&query);
             if (query) m_FreeQueries.push_back(query);
         }
     }
@@ -366,7 +365,7 @@ bool AsteroidsRenderer::Init(donut::engine::ShaderFactory& shaderFactory, const 
     if (m_Api == nvrhi::GraphicsAPI::D3D12)
     {
         // Is a mapped upload buffer write-combined memory? (Recorded only; nvrhi's upload chunks are such buffers.)
-        ID3D12Device* d3d12 = m_Device->getNativeObject(nvrhi::ObjectTypes::D3D12_Device);
+        ID3D12Device* d3d12 = static_cast<ID3D12Device*>(m_Device->getNativeObject(nvrhi::ObjectTypes::D3D12_Device));
         D3D12_HEAP_PROPERTIES heap{};
         heap.Type = D3D12_HEAP_TYPE_UPLOAD;
         D3D12_RESOURCE_DESC desc{};
@@ -414,7 +413,7 @@ void AsteroidsRenderer::CreateThreadResources()
     for (auto& ctxPtr : m_Threads)
     {
         ThreadContext& ctx = *ctxPtr;
-        ctx.commandList = m_Device->createCommandList(commandListParams);
+        m_Device->createCommandList(commandListParams, &ctx.commandList);
 
         nvrhi::BindingSetDesc set0;
         set0.setTrackLiveness(m_Desc.trackLiveness);
@@ -424,17 +423,17 @@ void AsteroidsRenderer::CreateThreadResources()
             // compare-exchange, so a buffer shared by all threads would make them contend on it.
             const uint32_t versions = ctx.count * kVolatileFrames;
             m_VolatileVersions = std::max(m_VolatileVersions, versions); // the last subset may be smaller
-            ctx.constantBuffer = m_Device->createBuffer(nvrhi::BufferDesc()
+            m_Device->createBuffer(nvrhi::BufferDesc()
                 .setByteSize(sizeof(DrawConstants)).setIsConstantBuffer(true).setIsVolatile(true)
-                .setMaxVersions(versions).setDebugName("Draw constants"));
+                .setMaxVersions(versions).setDebugName("Draw constants"), &ctx.constantBuffer);
             set0.addItem(nvrhi::BindingSetItem::ConstantBuffer(0, ctx.constantBuffer));
         }
         else
         {
             m_VolatileVersions = std::max(m_VolatileVersions, kVolatileFrames * 2);
-            ctx.constantBuffer = m_Device->createBuffer(nvrhi::BufferDesc()
+            m_Device->createBuffer(nvrhi::BufferDesc()
                 .setByteSize(sizeof(FrameConstants)).setIsConstantBuffer(true).setIsVolatile(true)
-                .setMaxVersions(kVolatileFrames * 2).setDebugName("Frame constants"));
+                .setMaxVersions(kVolatileFrames * 2).setDebugName("Frame constants"), &ctx.constantBuffer);
             if (m_Desc.binding == BindingMode::TexMutPC)
             {
                 set0.addItem(nvrhi::BindingSetItem::PushConstants(0, sizeof(AsteroidData)));
@@ -442,22 +441,22 @@ void AsteroidsRenderer::CreateThreadResources()
             }
             else
             {
-                ctx.instanceData = m_Device->createBuffer(nvrhi::BufferDesc()
+                m_Device->createBuffer(nvrhi::BufferDesc()
                     .setByteSize(uint64_t(ctx.count) * sizeof(AsteroidData)).setStructStride(sizeof(AsteroidData))
-                    .enableAutomaticStateTracking(nvrhi::ResourceStates::ShaderResource).setDebugName("Asteroid instance data"));
+                    .enableAutomaticStateTracking(nvrhi::ResourceStates::ShaderResource).setDebugName("Asteroid instance data"), &ctx.instanceData);
                 ctx.staging.resize(ctx.count);
                 set0.addItem(nvrhi::BindingSetItem::ConstantBuffer(0, ctx.constantBuffer));
                 set0.addItem(nvrhi::BindingSetItem::StructuredBuffer_SRV(0, ctx.instanceData));
             }
         }
         set0.addItem(nvrhi::BindingSetItem::Sampler(0, m_Sampler));
-        ctx.bindingSet0 = m_Device->createBindingSet(set0, m_Layout0);
+        m_Device->createBindingSet(set0, m_Layout0, &ctx.bindingSet0);
         if (!ctx.commandList || !ctx.constantBuffer || !ctx.bindingSet0)
             donut::log::error("cannot create the per-thread resources");
     }
 
     if (multithreaded)
-        m_PostCommandList = m_Device->createCommandList(commandListParams);
+        m_Device->createCommandList(commandListParams, &m_PostCommandList);
 }
 
 void AsteroidsRenderer::CreatePipelines(nvrhi::IFramebuffer* framebuffer)
@@ -480,7 +479,7 @@ void AsteroidsRenderer::CreatePipelines(nvrhi::IFramebuffer* framebuffer)
     asteroidDesc.PS          = m_AsteroidPS;
     asteroidDesc.renderState = renderState;
     asteroidDesc.bindingLayouts = {m_Layout0, m_Layout1};
-    m_AsteroidPipeline = m_Device->createGraphicsPipeline(asteroidDesc, framebuffer);
+    m_Device->createGraphicsPipeline2(asteroidDesc, framebuffer, &m_AsteroidPipeline);
 
     nvrhi::GraphicsPipelineDesc skyboxDesc;
     skyboxDesc.primType    = nvrhi::PrimitiveType::TriangleList;
@@ -489,7 +488,7 @@ void AsteroidsRenderer::CreatePipelines(nvrhi::IFramebuffer* framebuffer)
     skyboxDesc.PS          = m_SkyboxPS;
     skyboxDesc.renderState = renderState;
     skyboxDesc.bindingLayouts = {m_SkyboxLayout};
-    m_SkyboxPipeline = m_Device->createGraphicsPipeline(skyboxDesc, framebuffer);
+    m_Device->createGraphicsPipeline2(skyboxDesc, framebuffer, &m_SkyboxPipeline);
 
     if (!m_AsteroidPipeline || !m_SkyboxPipeline)
         donut::log::error("cannot create the graphics pipelines");
@@ -525,15 +524,15 @@ void AsteroidsRenderer::BackBufferResized(uint32_t width, uint32_t height, uint3
         .enableAutomaticStateTracking(nvrhi::ResourceStates::DepthWrite)
         .setDebugName("Depth buffer");
     depthDesc.isShaderResource = false; // never sampled; D3D11 rejects a non-typeless D32 texture with an SRV bind flag
-    m_DepthBuffer = m_Device->createTexture(depthDesc);
+    m_Device->createTexture(depthDesc, &m_DepthBuffer);
 
     donut::app::DeviceManager* deviceManager = GetDeviceManager();
     const uint32_t backBufferCount = deviceManager->GetBackBufferCount();
     m_Framebuffers.resize(backBufferCount);
     for (uint32_t i = 0; i < backBufferCount; ++i)
-        m_Framebuffers[i] = m_Device->createFramebuffer(nvrhi::FramebufferDesc()
+        m_Device->createFramebuffer(nvrhi::FramebufferDesc()
             .addColorAttachment(deviceManager->GetBackBuffer(i))
-            .setDepthAttachment(m_DepthBuffer));
+            .setDepthAttachment(m_DepthBuffer), &m_Framebuffers[i]);
 
     if (!m_AsteroidPipeline)
         CreatePipelines(m_Framebuffers[0]);
@@ -852,7 +851,7 @@ void AsteroidsRenderer::Render(nvrhi::IFramebuffer* framebuffer)
         if (multithreaded) m_PostCommandList->open();
         RecordSkybox(lastCommandList);
         if (capture)
-            lastCommandList->copyTexture(m_CaptureStaging, nvrhi::TextureSlice(), m_CaptureTexture, nvrhi::TextureSlice());
+            lastCommandList->copyTexture2(m_CaptureStaging, nvrhi::TextureSlice(), m_CaptureTexture, nvrhi::TextureSlice());
         EndGpuTimer(lastCommandList);
 
         if (multithreaded) JoinWorkers(); // the workers close their command lists themselves
@@ -946,7 +945,8 @@ void AsteroidsRenderer::ProbeCommandListPlacement(ThreadContext& main)
             if (m_PlacementCandidates >= kPlacementCandidatesMax)
                 Benchmark::Fail("-cb_page_split_*: no command list with the requested placement among " +
                                 std::to_string(kPlacementCandidatesMax) + " candidates");
-            nvrhi::CommandListHandle candidate = m_Device->createCommandList(m_CommandListParams);
+            nvrhi::CommandListHandle candidate;
+            m_Device->createCommandList(m_CommandListParams, &candidate);
             ++m_PlacementCandidates;
             if (suitable(candidate))
             {
@@ -1025,18 +1025,18 @@ void AsteroidsRenderer::PrepareCapture()
     desc.debugName      = "Capture target";
     desc.setClearValue(nvrhi::Color(0.f));
     desc.enableAutomaticStateTracking(nvrhi::ResourceStates::RenderTarget);
-    m_CaptureTexture = m_Device->createTexture(desc);
+    m_Device->createTexture(desc, &m_CaptureTexture);
 
-    m_CaptureFramebuffer = m_Device->createFramebuffer(nvrhi::FramebufferDesc()
+    m_Device->createFramebuffer(nvrhi::FramebufferDesc()
         .addColorAttachment(m_CaptureTexture)
-        .setDepthAttachment(m_DepthBuffer));
+        .setDepthAttachment(m_DepthBuffer), &m_CaptureFramebuffer);
 
     nvrhi::TextureDesc stagingDesc;
     stagingDesc.width     = m_Width;
     stagingDesc.height    = m_Height;
     stagingDesc.format    = format;
     stagingDesc.debugName = "Capture staging";
-    m_CaptureStaging = m_Device->createStagingTexture(stagingDesc, nvrhi::CpuAccessMode::Read);
+    m_Device->createStagingTexture(stagingDesc, nvrhi::CpuAccessMode::Read, &m_CaptureStaging);
     m_CapturePending = true;
 }
 
@@ -1047,7 +1047,7 @@ void AsteroidsRenderer::FinishCapture()
 
     m_Device->waitForIdle();
     size_t rowPitch = 0;
-    const void* pixels = m_Device->mapStagingTexture(m_CaptureStaging, nvrhi::TextureSlice(), nvrhi::CpuAccessMode::Read, &rowPitch);
+    const void* pixels = m_Device->mapStagingTexture(m_CaptureStaging, nvrhi::TextureSlice(), nvrhi::CpuAccessMode::Read, rowPitch);
     if (!pixels)
     {
         donut::log::error("capture: cannot map the staging texture");

@@ -98,7 +98,7 @@ public:
             nvrhi::BindingLayoutItem::RawBuffer_SRV(1),
             nvrhi::BindingLayoutItem::Texture_SRV(2)
         };
-        m_BindlessLayout = GetDevice()->createBindlessLayout(bindlessLayoutDesc);
+        GetDevice()->createBindlessLayout(bindlessLayoutDesc, &m_BindlessLayout);
 
         nvrhi::BindingLayoutDesc globalBindingLayoutDesc;
         globalBindingLayoutDesc.visibility = nvrhi::ShaderType::All;
@@ -111,7 +111,7 @@ public:
             nvrhi::BindingLayoutItem::Sampler(0),
             nvrhi::BindingLayoutItem::Texture_UAV(0)
         };
-        m_BindingLayout = GetDevice()->createBindingLayout(globalBindingLayoutDesc);
+        GetDevice()->createBindingLayout(globalBindingLayoutDesc, &m_BindingLayout);
 
         m_DescriptorTable = MAKE_RC_OBJ_PTR(engine::DescriptorTableManager, GetDevice(), m_BindlessLayout);
 
@@ -133,8 +133,8 @@ public:
         m_Camera.LookAt(float3(0.f, 1.8f, 0.f), float3(1.f, 1.8f, 0.f));
         m_Camera.SetMoveSpeed(3.f);
 
-        m_ConstantBuffer = GetDevice()->createBuffer(nvrhi::utils::CreateVolatileConstantBufferDesc(
-            sizeof(LightingConstants), "LightingConstants", engine::c_MaxRenderPassConstantBufferVersions));
+        GetDevice()->createBuffer(nvrhi::utils::CreateVolatileConstantBufferDesc(
+            sizeof(LightingConstants), "LightingConstants", engine::c_MaxRenderPassConstantBufferVersions), &m_ConstantBuffer);
 
         if (useRayQuery)
         {
@@ -147,7 +147,7 @@ public:
                 return false;
         }
 
-        m_CommandList = GetDevice()->createCommandList();
+        GetDevice()->createCommandList(nvrhi::CommandListParameters(), &m_CommandList);
 
         m_CommandList->open();
 
@@ -239,15 +239,23 @@ public:
 
         nvrhi::rt::PipelineDesc pipelineDesc;
         pipelineDesc.globalBindingLayouts = { m_BindingLayout, m_BindlessLayout };
+        nvrhi::ShaderHandle rayGenShader;
+        m_ShaderLibrary->getShader("RayGen", nvrhi::ShaderType::RayGeneration, &rayGenShader);
+        nvrhi::ShaderHandle missShader;
+        m_ShaderLibrary->getShader("Miss", nvrhi::ShaderType::Miss, &missShader);
         pipelineDesc.shaders = {
-            { "", m_ShaderLibrary->getShader("RayGen", nvrhi::ShaderType::RayGeneration), nullptr },
-            { "", m_ShaderLibrary->getShader("Miss", nvrhi::ShaderType::Miss), nullptr }
+            { "", rayGenShader, nullptr },
+            { "", missShader, nullptr }
         };
 
+        nvrhi::ShaderHandle closestHitShader;
+        m_ShaderLibrary->getShader("ClosestHit", nvrhi::ShaderType::ClosestHit, &closestHitShader);
+        nvrhi::ShaderHandle anyHitShader;
+        m_ShaderLibrary->getShader("AnyHit", nvrhi::ShaderType::AnyHit, &anyHitShader);
         pipelineDesc.hitGroups = { {
             "HitGroup",
-            m_ShaderLibrary->getShader("ClosestHit", nvrhi::ShaderType::ClosestHit),
-            m_ShaderLibrary->getShader("AnyHit", nvrhi::ShaderType::AnyHit),
+            closestHitShader,
+            anyHitShader,
             nullptr, // intersectionShader
             nullptr, // bindingLayout
             false  // isProceduralPrimitive
@@ -255,7 +263,7 @@ public:
 
         pipelineDesc.maxPayloadSize = sizeof(float) * 6;
 
-        m_RayPipeline = GetDevice()->createRayTracingPipeline(pipelineDesc);
+        GetDevice()->createRayTracingPipeline(pipelineDesc, &m_RayPipeline);
 
         if (!m_RayPipeline)
             return false;
@@ -263,7 +271,7 @@ public:
         auto shaderTableDesc = nvrhi::rt::ShaderTableDesc()
             .enableCaching(3)
             .setDebugName("Shader Table");
-        m_ShaderTable = m_RayPipeline->createShaderTable(shaderTableDesc);
+        m_RayPipeline->createShaderTable(shaderTableDesc, &m_ShaderTable);
 
         if (!m_ShaderTable)
             return false;
@@ -288,7 +296,7 @@ public:
             .addBindingLayout(m_BindingLayout)
             .addBindingLayout(m_BindlessLayout);
 
-        m_ComputePipeline = GetDevice()->createComputePipeline(pipelineDesc);
+        GetDevice()->createComputePipeline(pipelineDesc, &m_ComputePipeline);
 
         if (!m_ComputePipeline)
             return false;
@@ -343,7 +351,8 @@ public:
 
             GetMeshBlasDesc(*mesh, blasDesc);
 
-            nvrhi::rt::AccelStructHandle as = GetDevice()->createAccelStruct(blasDesc);
+            nvrhi::rt::AccelStructHandle as;
+            GetDevice()->createAccelStruct(blasDesc, &as);
 
             if (!mesh->skinPrototype)
                 nvrhi::utils::BuildBottomLevelAccelStruct(commandList, as, blasDesc);
@@ -355,7 +364,7 @@ public:
         nvrhi::rt::AccelStructDesc tlasDesc;
         tlasDesc.isTopLevel = true;
         tlasDesc.topLevelMaxInstances = m_Scene->GetSceneGraph()->GetMeshInstances().size();
-        m_TopLevelAS = GetDevice()->createAccelStruct(tlasDesc);
+        GetDevice()->createAccelStruct(tlasDesc, &m_TopLevelAS);
     }
 
     void BuildTLAS(nvrhi::ICommandList* commandList, uint32_t frameIndex) const
@@ -432,7 +441,7 @@ public:
             desc.format = nvrhi::Format::RGBA16_FLOAT;
             desc.initialState = nvrhi::ResourceStates::UnorderedAccess;
             desc.debugName = "ColorBuffer";
-            m_ColorBuffer = GetDevice()->createTexture(desc);
+            GetDevice()->createTexture(desc, &m_ColorBuffer);
 
             nvrhi::BindingSetDesc bindingSetDesc;
             bindingSetDesc.bindings = {
@@ -445,7 +454,7 @@ public:
                 nvrhi::BindingSetItem::Texture_UAV(0, m_ColorBuffer)
             };
 
-            m_BindingSet = GetDevice()->createBindingSet(bindingSetDesc, m_BindingLayout);
+            GetDevice()->createBindingSet(bindingSetDesc, m_BindingLayout, &m_BindingSet);
         }
 
         nvrhi::Viewport windowViewport(float(fbinfo.width), float(fbinfo.height));

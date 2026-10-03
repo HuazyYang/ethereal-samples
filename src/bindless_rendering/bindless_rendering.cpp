@@ -95,14 +95,14 @@ public:
             nvrhi::BindingLayoutItem::RawBuffer_SRV(1),
             nvrhi::BindingLayoutItem::Texture_SRV(2)
         };
-        m_BindlessLayout = GetDevice()->createBindlessLayout(bindlessLayoutDesc);
+        GetDevice()->createBindlessLayout(bindlessLayoutDesc, &m_BindlessLayout);
 
         m_DescriptorTableManager = MAKE_RC_OBJ_PTR(engine::DescriptorTableManager, GetDevice(), m_BindlessLayout);
 
         auto nativeFS = MAKE_RC_OBJ_PTR(vfs::NativeFileSystem);
         m_TextureCache = MAKE_RC_OBJ_PTR(engine::TextureCache, GetDevice(), nativeFS, m_DescriptorTableManager);
 
-        m_CommandList = GetDevice()->createCommandList();
+        GetDevice()->createCommandList(nvrhi::CommandListParameters(), &m_CommandList);
         
         SetAsynchronousLoadingEnabled(false);
         BeginLoadingScene(nativeFS, sceneFileName);
@@ -112,7 +112,7 @@ public:
         m_Camera.LookAt(float3(0.f, 1.8f, 0.f), float3(1.f, 1.8f, 0.f));
         m_Camera.SetMoveSpeed(3.f);
 
-        m_ViewConstants = GetDevice()->createBuffer(nvrhi::utils::CreateVolatileConstantBufferDesc(sizeof(PlanarViewConstants), "ViewConstants", engine::c_MaxRenderPassConstantBufferVersions));
+        GetDevice()->createBuffer(nvrhi::utils::CreateVolatileConstantBufferDesc(sizeof(PlanarViewConstants), "ViewConstants", engine::c_MaxRenderPassConstantBufferVersions), &m_ViewConstants);
         
         GetDevice()->waitForIdle();
 
@@ -189,7 +189,7 @@ public:
             pipelineDesc.renderState.depthStencilState.depthFunc = nvrhi::ComparisonFunc::GreaterOrEqual;
             pipelineDesc.renderState.rasterState.frontCounterClockwise = true;
             pipelineDesc.renderState.rasterState.setCullBack();
-            m_GraphicsPipeline = GetDevice()->createGraphicsPipeline(pipelineDesc, fbinfo);
+            GetDevice()->createGraphicsPipeline1(pipelineDesc, fbinfo.getInfo(), &m_GraphicsPipeline);
         }
 
         nvrhi::Viewport windowViewport(float(fbinfo.width), float(fbinfo.height));

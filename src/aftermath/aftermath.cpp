@@ -94,7 +94,7 @@ public:
             return false;
         }
         
-        m_CommandList = GetDevice()->createCommandList();
+        GetDevice()->createCommandList(nvrhi::CommandListParameters(), &m_CommandList);
 
         nvrhi::BufferDesc bufDesc = {};
         bufDesc.setByteSize(1024)
@@ -104,7 +104,7 @@ public:
             .setInitialState(nvrhi::ResourceStates::UnorderedAccess)
             .setKeepInitialState(true)
             .setStructStride(sizeof(float));
-        m_Buffer = GetDevice()->createBuffer(bufDesc);
+        GetDevice()->createBuffer(bufDesc, &m_Buffer);
         m_WaitingForCrash = false;
         
         return true;
@@ -130,14 +130,14 @@ public:
                 nvrhi::BindingLayoutItem::PushConstants(0, sizeof(uint32_t)),
                 nvrhi::BindingLayoutItem::StructuredBuffer_UAV(0)
             };
-            m_BindingLayout = GetDevice()->createBindingLayout(bindingLayoutDesc);
+            GetDevice()->createBindingLayout(bindingLayoutDesc, &m_BindingLayout);
 
             nvrhi::BindingSetDesc bindingSetDesc;
             bindingSetDesc.bindings = {
                 nvrhi::BindingSetItem::PushConstants(0, sizeof(uint32_t)),
                 nvrhi::BindingSetItem::StructuredBuffer_UAV(0, m_Buffer)
             };
-            m_BindingSet = GetDevice()->createBindingSet(bindingSetDesc, m_BindingLayout);
+            GetDevice()->createBindingSet(bindingSetDesc, m_BindingLayout, &m_BindingSet);
 
             nvrhi::GraphicsPipelineDesc psoDesc;
             psoDesc.VS = m_VertexShader;
@@ -146,7 +146,7 @@ public:
             psoDesc.renderState.depthStencilState.depthTestEnable = false;
             psoDesc.bindingLayouts = { m_BindingLayout };
 
-            m_Pipeline = GetDevice()->createGraphicsPipeline(psoDesc, framebuffer);
+            GetDevice()->createGraphicsPipeline2(psoDesc, framebuffer, &m_Pipeline);
         }
 
 
@@ -162,15 +162,15 @@ public:
 #if DONUT_WITH_DX12
             if (api == nvrhi::GraphicsAPI::D3D12)
             {
-                ID3D12Resource* resource = m_Buffer->getNativeObject(nvrhi::ObjectTypes::D3D12_Resource);
+                ID3D12Resource* resource = static_cast<ID3D12Resource*>(m_Buffer->getNativeObject(nvrhi::ObjectTypes::D3D12_Resource));
                 resource->Release();
             }
 #endif
 #if DONUT_WITH_VULKAN
             if (api == nvrhi::GraphicsAPI::VULKAN)
             {
-                vk::DeviceMemory memory = vk::DeviceMemory(m_Buffer->getNativeObject(nvrhi::ObjectTypes::VK_DeviceMemory));
-                vk::Device device = vk::Device(GetDevice()->getNativeObject(nvrhi::ObjectTypes::VK_Device));
+                vk::DeviceMemory memory = vk::DeviceMemory(static_cast<VkDeviceMemory>(m_Buffer->getNativeObject(nvrhi::ObjectTypes::VK_DeviceMemory)));
+                vk::Device device = vk::Device(static_cast<VkDevice>(GetDevice()->getNativeObject(nvrhi::ObjectTypes::VK_Device)));
                 device.freeMemory(memory);
             }
 #endif

@@ -190,7 +190,7 @@ public:
             nvrhi::BindingLayoutItem::RawBuffer_SRV(1),
             nvrhi::BindingLayoutItem::Texture_SRV(2)
         };
-        m_BindlessLayout = GetDevice()->createBindlessLayout(bindlessLayoutDesc);
+        GetDevice()->createBindlessLayout(bindlessLayoutDesc, &m_BindlessLayout);
 
         nvrhi::BindingLayoutDesc globalBindingLayoutDesc;
         globalBindingLayoutDesc.visibility = nvrhi::ShaderType::All;
@@ -204,13 +204,13 @@ public:
             nvrhi::BindingLayoutItem::Sampler(0),
             nvrhi::BindingLayoutItem::Texture_UAV(0)
         };
-        m_BindingLayout = GetDevice()->createBindingLayout(globalBindingLayoutDesc);
+        GetDevice()->createBindingLayout(globalBindingLayoutDesc, &m_BindingLayout);
 
         m_DescriptorTable = MAKE_RC_OBJ_PTR(engine::DescriptorTableManager, GetDevice(), m_BindlessLayout);
         
         m_TextureCache = MAKE_RC_OBJ_PTR(engine::TextureCache, GetDevice(), m_RootFS, m_DescriptorTable);
 
-        m_CommandList = GetDevice()->createCommandList();
+        GetDevice()->createCommandList(nvrhi::CommandListParameters(), &m_CommandList);
         
         CreateParticleMesh();
         m_Particles.resize(c_MaxParticles);
@@ -237,8 +237,8 @@ public:
         m_Camera.SetRotation(radians(225.f), radians(20.f));
         m_Camera.SetMoveSpeed(3.f);
 
-        m_ConstantBuffer = GetDevice()->createBuffer(nvrhi::utils::CreateVolatileConstantBufferDesc(
-            sizeof(GlobalConstants), "LightingConstants", engine::c_MaxRenderPassConstantBufferVersions));
+        GetDevice()->createBuffer(nvrhi::utils::CreateVolatileConstantBufferDesc(
+            sizeof(GlobalConstants), "LightingConstants", engine::c_MaxRenderPassConstantBufferVersions), &m_ConstantBuffer);
         
         m_CommandList->open();
 
@@ -275,12 +275,12 @@ public:
         bufferDesc.initialState = nvrhi::ResourceStates::ShaderResource | nvrhi::ResourceStates::AccelStructBuildInput;
         bufferDesc.keepInitialState = true;
         bufferDesc.isAccelStructBuildInput = true;
-        m_ParticleBuffers->indexBuffer = GetDevice()->createBuffer(bufferDesc);
+        GetDevice()->createBuffer(bufferDesc, &m_ParticleBuffers->indexBuffer);
 
         // Vertex buffer
         bufferDesc.byteSize = texcoordRange.byteOffset + texcoordRange.byteSize;
         bufferDesc.debugName = "ParticleVertices";
-        m_ParticleBuffers->vertexBuffer = GetDevice()->createBuffer(bufferDesc);
+        GetDevice()->createBuffer(bufferDesc, &m_ParticleBuffers->vertexBuffer);
 
         // Index and vertex buffer bindless descriptors
         m_ParticleBuffers->indexBufferDescriptor = MAKE_RC_OBJ_PTR(engine::DescriptorHandle, 
@@ -318,7 +318,7 @@ public:
         bufferDesc.canHaveRawViews = false;
         bufferDesc.structStride = sizeof(ParticleInfo);
         bufferDesc.debugName = "ParticleInfoBuffer";
-        m_ParticleInfoBuffer = GetDevice()->createBuffer(bufferDesc);
+        GetDevice()->createBuffer(bufferDesc, &m_ParticleInfoBuffer);
     }
 
     // Updates particle geometry -- to be called before rendering every frame
@@ -433,7 +433,8 @@ public:
         aabbBufferDesc.initialState = nvrhi::ResourceStates::CopyDest;
         aabbBufferDesc.keepInitialState = true;
         aabbBufferDesc.isAccelStructBuildInput = true;
-        nvrhi::BufferHandle aabbBuffer = GetDevice()->createBuffer(aabbBufferDesc);
+        nvrhi::BufferHandle aabbBuffer;
+        GetDevice()->createBuffer(aabbBufferDesc, &aabbBuffer);
 
         // Write the AABB into the buffer
         nvrhi::rt::GeometryAABB aabb = { -1.f, -1.f, -1.f, 1.f, 1.f, 1.f };
@@ -448,7 +449,7 @@ public:
                 .setBuffer(aabbBuffer)
                 .setCount(1)));
 
-        m_ParticleIntersectionBLAS = GetDevice()->createAccelStruct(blasDesc);
+        GetDevice()->createAccelStruct(blasDesc, &m_ParticleIntersectionBLAS);
 
         // Build the BLAS
         nvrhi::utils::BuildBottomLevelAccelStruct(commandList, m_ParticleIntersectionBLAS, blasDesc);
@@ -563,7 +564,7 @@ public:
             .addBindingLayout(m_BindingLayout)
             .addBindingLayout(m_BindlessLayout);
 
-        m_ComputePipeline = GetDevice()->createComputePipeline(pipelineDesc);
+        GetDevice()->createComputePipeline(pipelineDesc, &m_ComputePipeline);
 
         if (!m_ComputePipeline)
             return false;
@@ -606,7 +607,8 @@ public:
             nvrhi::rt::AccelStructDesc blasDesc;
             GetMeshBlasDesc(*mesh, blasDesc);
 
-            nvrhi::rt::AccelStructHandle as = GetDevice()->createAccelStruct(blasDesc);
+            nvrhi::rt::AccelStructHandle as;
+            GetDevice()->createAccelStruct(blasDesc, &as);
 
             // Build the BLAS if it's not the particle mesh - that one's dynamic
             if (mesh != m_ParticleMesh)
@@ -621,7 +623,7 @@ public:
         // and many instances of the intersection BLAS, one instnace per particle.
         const uint32_t numSceneInstances = uint32_t(m_Scene->GetSceneGraph()->GetMeshInstances().size());
         tlasDesc.topLevelMaxInstances = numSceneInstances + c_MaxParticles;
-        m_TopLevelAS = GetDevice()->createAccelStruct(tlasDesc);
+        GetDevice()->createAccelStruct(tlasDesc, &m_TopLevelAS);
     }
 
     void BuildTLAS(nvrhi::ICommandList* commandList, uint32_t frameIndex)
@@ -704,7 +706,7 @@ public:
             desc.format = nvrhi::Format::RGBA16_FLOAT;
             desc.initialState = nvrhi::ResourceStates::UnorderedAccess;
             desc.debugName = "ColorBuffer";
-            m_ColorBuffer = GetDevice()->createTexture(desc);
+            GetDevice()->createTexture(desc, &m_ColorBuffer);
 
             nvrhi::BindingSetDesc bindingSetDesc;
             bindingSetDesc.bindings = {
@@ -718,7 +720,7 @@ public:
                 nvrhi::BindingSetItem::Texture_UAV(0, m_ColorBuffer)
             };
 
-            m_BindingSet = GetDevice()->createBindingSet(bindingSetDesc, m_BindingLayout);
+            GetDevice()->createBindingSet(bindingSetDesc, m_BindingLayout, &m_BindingSet);
         }
 
         auto particleTexture = (m_ui->particleTexture == ParticleTexture::Smoke) ? m_SmokeTexture : m_LogoTexture;

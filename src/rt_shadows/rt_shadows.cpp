@@ -74,7 +74,7 @@ public:
         desc.format = nvrhi::Format::D24S8;
         desc.initialState = nvrhi::ResourceStates::DepthWrite;
         desc.debugName = "DepthBuffer";
-        m_Depth = device->createTexture(desc);
+        device->createTexture(desc, &m_Depth);
 
         desc.clearValue = nvrhi::Color(0.f);
         desc.isTypeless = false;
@@ -82,24 +82,24 @@ public:
         desc.initialState = nvrhi::ResourceStates::RenderTarget;
         desc.isUAV = true;
         desc.debugName = "HdrColor";
-        m_HdrColor = device->createTexture(desc);
+        device->createTexture(desc, &m_HdrColor);
 
         desc.format = nvrhi::Format::SRGBA8_UNORM;
         desc.isUAV = false;
         desc.debugName = "GBufferDiffuse";
-        m_GBufferDiffuse = device->createTexture(desc);
+        device->createTexture(desc, &m_GBufferDiffuse);
 
         desc.format = nvrhi::Format::SRGBA8_UNORM;
         desc.debugName = "GBufferSpecular";
-        m_GBufferSpecular = device->createTexture(desc);
+        device->createTexture(desc, &m_GBufferSpecular);
 
         desc.format = nvrhi::Format::RGBA16_SNORM;
         desc.debugName = "GBufferNormals";
-        m_GBufferNormals = device->createTexture(desc);
+        device->createTexture(desc, &m_GBufferNormals);
 
         desc.format = nvrhi::Format::RGBA16_FLOAT;
         desc.debugName = "GBufferEmissive";
-        m_GBufferEmissive = device->createTexture(desc);
+        device->createTexture(desc, &m_GBufferEmissive);
 
         m_GBufferFramebuffer = MAKE_RC_OBJ_PTR(engine::FramebufferFactory, device);
         m_GBufferFramebuffer->RenderTargets = { m_GBufferDiffuse, m_GBufferSpecular, m_GBufferNormals, m_GBufferEmissive };
@@ -198,12 +198,12 @@ public:
         m_Camera.LookAt(float3(0.f, 1.8f, 0.f), float3(1.f, 1.8f, 0.f));
         m_Camera.SetMoveSpeed(3.f);
 
-        m_ConstantBuffer = GetDevice()->createBuffer(nvrhi::utils::CreateVolatileConstantBufferDesc(sizeof(LightingConstants), "LightingConstants", engine::c_MaxRenderPassConstantBufferVersions));
+        GetDevice()->createBuffer(nvrhi::utils::CreateVolatileConstantBufferDesc(sizeof(LightingConstants), "LightingConstants", engine::c_MaxRenderPassConstantBufferVersions), &m_ConstantBuffer);
 
         if (!CreateRayTracingPipeline(*m_ShaderFactory))
             return false;
 
-        m_CommandList = GetDevice()->createCommandList();
+        GetDevice()->createCommandList(nvrhi::CommandListParameters(), &m_CommandList);
 
         m_CommandList->open();
 
@@ -275,13 +275,17 @@ public:
             nvrhi::BindingLayoutItem::Texture_UAV(0)
         };
 
-        m_BindingLayout = GetDevice()->createBindingLayout(globalBindingLayoutDesc);
+        GetDevice()->createBindingLayout(globalBindingLayoutDesc, &m_BindingLayout);
 
         nvrhi::rt::PipelineDesc pipelineDesc;
         pipelineDesc.globalBindingLayouts = { m_BindingLayout };
+        nvrhi::ShaderHandle rayGenShader;
+        m_ShaderLibrary->getShader("RayGen", nvrhi::ShaderType::RayGeneration, &rayGenShader);
+        nvrhi::ShaderHandle missShader;
+        m_ShaderLibrary->getShader("Miss", nvrhi::ShaderType::Miss, &missShader);
         pipelineDesc.shaders = {
-            { "", m_ShaderLibrary->getShader("RayGen", nvrhi::ShaderType::RayGeneration), nullptr },
-            { "", m_ShaderLibrary->getShader("Miss", nvrhi::ShaderType::Miss), nullptr }
+            { "", rayGenShader, nullptr },
+            { "", missShader, nullptr }
         };
 
         pipelineDesc.hitGroups = { {
@@ -295,9 +299,9 @@ public:
 
         pipelineDesc.maxPayloadSize = sizeof(dm::float4);
 
-        m_Pipeline = GetDevice()->createRayTracingPipeline(pipelineDesc);
+        GetDevice()->createRayTracingPipeline(pipelineDesc, &m_Pipeline);
 
-        m_ShaderTable = m_Pipeline->createShaderTable();
+        m_Pipeline->createShaderTable(nvrhi::rt::ShaderTableDesc(), &m_ShaderTable);
         m_ShaderTable->setRayGenerationShader("RayGen");
         m_ShaderTable->addHitGroup("HitGroup");
         m_ShaderTable->addMissShader("Miss");
@@ -330,7 +334,8 @@ public:
                 blasDesc.bottomLevelGeometries.push_back(geometryDesc);
             }
 
-            nvrhi::rt::AccelStructHandle as = GetDevice()->createAccelStruct(blasDesc);
+            nvrhi::rt::AccelStructHandle as;
+            GetDevice()->createAccelStruct(blasDesc, &as);
             nvrhi::utils::BuildBottomLevelAccelStruct(commandList, as, blasDesc);
 
             m_MeshAccelStructs[mesh] = as;
@@ -357,7 +362,7 @@ public:
         }
         tlasDesc.topLevelMaxInstances = instances.size();
 
-        m_TopLevelAS = GetDevice()->createAccelStruct(tlasDesc);
+        GetDevice()->createAccelStruct(tlasDesc, &m_TopLevelAS);
         commandList->buildTopLevelAccelStruct(m_TopLevelAS, instances.data(), instances.size());
         
     }
@@ -390,7 +395,7 @@ public:
                 nvrhi::BindingSetItem::Texture_UAV(0, m_RenderTargets->m_HdrColor)
             };
 
-            m_BindingSet = GetDevice()->createBindingSet(bindingSetDesc, m_BindingLayout);
+            GetDevice()->createBindingSet(bindingSetDesc, m_BindingLayout, &m_BindingSet);
         }
 
         nvrhi::Viewport windowViewport(float(fbinfo.width), float(fbinfo.height));

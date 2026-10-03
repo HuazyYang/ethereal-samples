@@ -71,9 +71,12 @@ bool RunTest(nvrhi::IDevice* device)
         .setInitialState(nvrhi::ResourceStates::CopyDest)
         .setKeepInitialState(true);
 
-    auto inputBuffer = device->createBuffer(inputBufferDesc);
-    auto outputBuffer = device->createBuffer(outputBufferDesc);
-    auto readbackBuffer = device->createBuffer(readbackBufferDesc);
+    nvrhi::BufferHandle inputBuffer;
+    device->createBuffer(inputBufferDesc, &inputBuffer);
+    nvrhi::BufferHandle outputBuffer;
+    device->createBuffer(outputBufferDesc, &outputBuffer);
+    nvrhi::BufferHandle readbackBuffer;
+    device->createBuffer(readbackBufferDesc, &readbackBuffer);
 
     // Create the binding layout and binding set...
 
@@ -92,11 +95,13 @@ bool RunTest(nvrhi::IDevice* device)
         .setComputeShader(computeShader)
         .addBindingLayout(bindingLayout);
 
-    auto computePipeline = device->createComputePipeline(computePipelineDesc);
+    nvrhi::ComputePipelineHandle computePipeline;
+    device->createComputePipeline(computePipelineDesc, &computePipeline);
     
     // Create a command list and begin recording
 
-    nvrhi::CommandListHandle commandList = device->createCommandList();
+    nvrhi::CommandListHandle commandList;
+    device->createCommandList(nvrhi::CommandListParameters(), &commandList);
     commandList->open();
 
     // Fill the input buffer with some numbers and compute the expected result of shader operation

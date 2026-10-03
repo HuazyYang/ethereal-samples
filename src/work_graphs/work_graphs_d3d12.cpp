@@ -96,7 +96,7 @@ struct RenderTargets
         desc.format = nvrhi::Format::D32;
         desc.initialState = nvrhi::ResourceStates::ShaderResource;
         desc.debugName = "DepthBuffer";
-        m_Depth = device->createTexture(desc);
+        device->createTexture(desc, &m_Depth);
 
         // G buffer
         desc.format = nvrhi::Format::RGBA16_UINT;
@@ -105,7 +105,7 @@ struct RenderTargets
         desc.isTypeless = false;
         desc.initialState = nvrhi::ResourceStates::ShaderResource;
         desc.debugName = "GBuffer";
-        m_GBuffer = device->createTexture(desc);
+        device->createTexture(desc, &m_GBuffer);
 
         // LDR buffer
         desc.format = nvrhi::Format::RGBA8_UNORM;
@@ -113,7 +113,7 @@ struct RenderTargets
         desc.isUAV = true;
         desc.initialState = nvrhi::ResourceStates::UnorderedAccess;
         desc.debugName = "LDRBuffer";
-        m_LDRBuffer = device->createTexture(desc);
+        device->createTexture(desc, &m_LDRBuffer);
 
         m_GBufferDepth = MAKE_RC_OBJ_PTR(engine::FramebufferFactory, device);
         m_GBufferDepth->RenderTargets = { m_GBuffer };
@@ -262,7 +262,7 @@ public:
 
     bool Init()
     {
-        ID3D12Device *deviceD3D12 = GetDevice()->getNativeObject(nvrhi::ObjectTypes::D3D12_Device);
+        ID3D12Device *deviceD3D12 = static_cast<ID3D12Device*>(GetDevice()->getNativeObject(nvrhi::ObjectTypes::D3D12_Device));
 
         // Check for device support for work graphs.
         D3D12_FEATURE_DATA_D3D12_OPTIONS21 options = {};
@@ -279,26 +279,26 @@ public:
             return false;
         }
 
-        m_CommandList = GetDevice()->createCommandList();
+        GetDevice()->createCommandList(nvrhi::CommandListParameters(), &m_CommandList);
 
         // Resources used to fill unused shader binding slots (null resources).
-        m_NullSRVBuffer = GetDevice()->createBuffer(nvrhi::BufferDesc()
+        GetDevice()->createBuffer(nvrhi::BufferDesc()
             .setByteSize(512).setStructStride(16).setKeepInitialState(true)
-            .setInitialState(nvrhi::ResourceStates::ShaderResource).setDebugName("NullSRVBuffer"));
-        m_NullUAVBuffer = GetDevice()->createBuffer(nvrhi::BufferDesc()
+            .setInitialState(nvrhi::ResourceStates::ShaderResource).setDebugName("NullSRVBuffer"), &m_NullSRVBuffer);
+        GetDevice()->createBuffer(nvrhi::BufferDesc()
             .setByteSize(512).setStructStride(16).setKeepInitialState(true)
-            .setInitialState(nvrhi::ResourceStates::UnorderedAccess).setCanHaveUAVs(true).setDebugName("NullUAVBuffer"));
-        m_NullSRVTexture = GetDevice()->createTexture(nvrhi::TextureDesc()
+            .setInitialState(nvrhi::ResourceStates::UnorderedAccess).setCanHaveUAVs(true).setDebugName("NullUAVBuffer"), &m_NullUAVBuffer);
+        GetDevice()->createTexture(nvrhi::TextureDesc()
             .setFormat(nvrhi::Format::RGBA8_UNORM).setKeepInitialState(true)
-            .setInitialState(nvrhi::ResourceStates::ShaderResource).setDebugName("NullSRVTexture"));
-        m_NullUAVTexture = GetDevice()->createTexture(nvrhi::TextureDesc()
+            .setInitialState(nvrhi::ResourceStates::ShaderResource).setDebugName("NullSRVTexture"), &m_NullSRVTexture);
+        GetDevice()->createTexture(nvrhi::TextureDesc()
             .setFormat(nvrhi::Format::RGBA8_UNORM).setKeepInitialState(true)
-            .setInitialState(nvrhi::ResourceStates::UnorderedAccess).setIsUAV(true).setDebugName("NullUAVTexture"));
+            .setInitialState(nvrhi::ResourceStates::UnorderedAccess).setIsUAV(true).setDebugName("NullUAVTexture"), &m_NullUAVTexture);
 
         for (uint32_t i=0; i<QueuedFramesCount; i++)
         {
-            m_FrameTimers[i] = GetDevice()->createTimerQuery();
-            m_ShadingTimers[i] = GetDevice()->createTimerQuery();
+            GetDevice()->createTimerQuery(&m_FrameTimers[i]);
+            GetDevice()->createTimerQuery(&m_ShadingTimers[i]);
         }
         
         // Create the scene procedurally.
@@ -344,7 +344,7 @@ public:
 			.addItem(nvrhi::BindingLayoutItem::StructuredBuffer_SRV(4))
 			.addItem(nvrhi::BindingLayoutItem::StructuredBuffer_UAV(0))
             .addItem(nvrhi::BindingLayoutItem::Texture_UAV(1));
-        m_BindingLayout = GetDevice()->createBindingLayout(bindingLayoutDesc);
+        GetDevice()->createBindingLayout(bindingLayoutDesc, &m_BindingLayout);
 
         nvrhi::VertexAttributeDesc attributes[] = {
             nvrhi::VertexAttributeDesc()
@@ -358,7 +358,7 @@ public:
                 .setOffset(sizeof(float3))
                 .setElementStride(sizeof(float3)*2),
             };
-        m_InputLayout = GetDevice()->createInputLayout(attributes, uint32_t(std::size(attributes)), gbuffer_vertexShader);
+        GetDevice()->createInputLayout(attributes, uint32_t(std::size(attributes)), gbuffer_vertexShader, &m_InputLayout);
 
         // Create pipeine states
         {
@@ -368,16 +368,16 @@ public:
             psoGfxDesc.VS = gbuffer_vertexShader;
             psoGfxDesc.PS = gbuffer_pixelShader;
 
-            m_GBufferFillPSO = GetDevice()->createGraphicsPipeline(psoGfxDesc, fbinfo);
+            GetDevice()->createGraphicsPipeline1(psoGfxDesc, fbinfo.getInfo(), &m_GBufferFillPSO);
         }
 
         nvrhi::ComputePipelineDesc psoCSDesc;
         psoCSDesc.bindingLayouts = { m_BindingLayout };
 
-        m_AnimateObjectsPSO = GetDevice()->createComputePipeline(psoCSDesc.setComputeShader(animateObjects_computeShader));
-        m_AnimateLightsPSO = GetDevice()->createComputePipeline(psoCSDesc.setComputeShader(animateLights_computeShader));
-        m_CullLightsPSO = GetDevice()->createComputePipeline(psoCSDesc.setComputeShader(lightCulling_computeShader));
-        m_ShadePSO = GetDevice()->createComputePipeline(psoCSDesc.setComputeShader(deferredShading_computeShader));
+        GetDevice()->createComputePipeline(psoCSDesc.setComputeShader(animateObjects_computeShader), &m_AnimateObjectsPSO);
+        GetDevice()->createComputePipeline(psoCSDesc.setComputeShader(animateLights_computeShader), &m_AnimateLightsPSO);
+        GetDevice()->createComputePipeline(psoCSDesc.setComputeShader(lightCulling_computeShader), &m_CullLightsPSO);
+        GetDevice()->createComputePipeline(psoCSDesc.setComputeShader(deferredShading_computeShader), &m_ShadePSO);
 
         // Create the culled lights buffer.
         {
@@ -391,7 +391,7 @@ public:
             bufferDesc.debugName = "CulledLights";
             bufferDesc.initialState = nvrhi::ResourceStates::ShaderResource;
             bufferDesc.keepInitialState = true;
-            m_CulledLightsBuffer = GetDevice()->createBuffer(bufferDesc);
+            GetDevice()->createBuffer(bufferDesc, &m_CulledLightsBuffer);
         }
 
         // Create the constant buffer.
@@ -404,12 +404,12 @@ public:
             bufferDesc.debugName = "SceneConstants";
             bufferDesc.initialState = nvrhi::ResourceStates::ShaderResource;
             bufferDesc.keepInitialState = true;
-            m_ConstantBuffer = GetDevice()->createBuffer(bufferDesc);
+            GetDevice()->createBuffer(bufferDesc, &m_ConstantBuffer);
         }
 
         // Create the resource binding sets for each pass. The resource registers must match with
         // assignments used in the shader files. Donut internally takes care of resource states and transition barriers.
-        m_BindingSets[(int)ScenePass::AnimateObjects] = GetDevice()->createBindingSet(nvrhi::BindingSetDesc()
+        GetDevice()->createBindingSet(nvrhi::BindingSetDesc()
             .addItem(nvrhi::BindingSetItem::PushConstants(0, sizeof(uint3)))
             .addItem(nvrhi::BindingSetItem::ConstantBuffer(1, m_ConstantBuffer))
             .addItem(nvrhi::BindingSetItem::StructuredBuffer_SRV(0, m_Scene.GetWorldObjectsBuffer()))
@@ -419,9 +419,9 @@ public:
             .addItem(nvrhi::BindingSetItem::StructuredBuffer_SRV(4, m_NullSRVBuffer))
             .addItem(nvrhi::BindingSetItem::StructuredBuffer_UAV(0, m_Scene.GetAnimStateBuffer()))
             .addItem(nvrhi::BindingSetItem::Texture_UAV(1, m_NullUAVTexture)),
-            m_BindingLayout);
+            m_BindingLayout, &m_BindingSets[(int)ScenePass::AnimateObjects]);
 
-        m_BindingSets[(int)ScenePass::AnimateLights] = GetDevice()->createBindingSet(nvrhi::BindingSetDesc()
+        GetDevice()->createBindingSet(nvrhi::BindingSetDesc()
             .addItem(nvrhi::BindingSetItem::PushConstants(0, sizeof(uint3)))
             .addItem(nvrhi::BindingSetItem::ConstantBuffer(1, m_ConstantBuffer))
             .addItem(nvrhi::BindingSetItem::StructuredBuffer_SRV(0, m_NullSRVBuffer))
@@ -431,9 +431,9 @@ public:
             .addItem(nvrhi::BindingSetItem::StructuredBuffer_SRV(4, m_NullSRVBuffer))
             .addItem(nvrhi::BindingSetItem::StructuredBuffer_UAV(0, m_Scene.GetLightsBuffer()))
             .addItem(nvrhi::BindingSetItem::Texture_UAV(1, m_NullUAVTexture)),
-            m_BindingLayout);
+            m_BindingLayout, &m_BindingSets[(int)ScenePass::AnimateLights]);
 
-        m_BindingSets[(int)ScenePass::GBufferFill] = GetDevice()->createBindingSet(nvrhi::BindingSetDesc()
+        GetDevice()->createBindingSet(nvrhi::BindingSetDesc()
             .addItem(nvrhi::BindingSetItem::PushConstants(0, sizeof(uint3)))
             .addItem(nvrhi::BindingSetItem::ConstantBuffer(1, m_ConstantBuffer))
             .addItem(nvrhi::BindingSetItem::StructuredBuffer_SRV(0, m_Scene.GetWorldObjectsBuffer()))
@@ -443,9 +443,9 @@ public:
             .addItem(nvrhi::BindingSetItem::StructuredBuffer_SRV(4, m_Scene.GetAnimStateBuffer()))
             .addItem(nvrhi::BindingSetItem::StructuredBuffer_UAV(0, m_NullUAVBuffer))
             .addItem(nvrhi::BindingSetItem::Texture_UAV(1, m_NullUAVTexture)),
-            m_BindingLayout);
+            m_BindingLayout, &m_BindingSets[(int)ScenePass::GBufferFill]);
 
-        m_BindingSets[(int)ScenePass::LightCulling] = GetDevice()->createBindingSet(nvrhi::BindingSetDesc()
+        GetDevice()->createBindingSet(nvrhi::BindingSetDesc()
             .addItem(nvrhi::BindingSetItem::PushConstants(0, sizeof(uint3)))
             .addItem(nvrhi::BindingSetItem::ConstantBuffer(1, m_ConstantBuffer))
             .addItem(nvrhi::BindingSetItem::StructuredBuffer_SRV(0, m_NullSRVBuffer))
@@ -455,9 +455,9 @@ public:
             .addItem(nvrhi::BindingSetItem::StructuredBuffer_SRV(4, m_Scene.GetLightsBuffer()))
             .addItem(nvrhi::BindingSetItem::StructuredBuffer_UAV(0, m_CulledLightsBuffer))
             .addItem(nvrhi::BindingSetItem::Texture_UAV(1, m_NullUAVTexture)),
-            m_BindingLayout);
+            m_BindingLayout, &m_BindingSets[(int)ScenePass::LightCulling]);
 
-        m_BindingSets[(int)ScenePass::DeferredShading] = GetDevice()->createBindingSet(nvrhi::BindingSetDesc()
+        GetDevice()->createBindingSet(nvrhi::BindingSetDesc()
             .addItem(nvrhi::BindingSetItem::PushConstants(0, sizeof(uint3)))
             .addItem(nvrhi::BindingSetItem::ConstantBuffer(1, m_ConstantBuffer))
             .addItem(nvrhi::BindingSetItem::StructuredBuffer_SRV(0, m_Scene.GetMaterialsBuffer()))
@@ -467,9 +467,9 @@ public:
             .addItem(nvrhi::BindingSetItem::StructuredBuffer_SRV(4, m_Scene.GetLightsBuffer()))
             .addItem(nvrhi::BindingSetItem::StructuredBuffer_UAV(0, m_NullUAVBuffer))
             .addItem(nvrhi::BindingSetItem::Texture_UAV(1, m_RenderTargets->m_LDRBuffer)),
-            m_BindingLayout);
+            m_BindingLayout, &m_BindingSets[(int)ScenePass::DeferredShading]);
 
-         m_BindingSets[(int)ScenePass::WorkGraph] = GetDevice()->createBindingSet(nvrhi::BindingSetDesc()
+         GetDevice()->createBindingSet(nvrhi::BindingSetDesc()
             .addItem(nvrhi::BindingSetItem::PushConstants(0, sizeof(uint3)))
             .addItem(nvrhi::BindingSetItem::ConstantBuffer(1, m_ConstantBuffer))
             .addItem(nvrhi::BindingSetItem::StructuredBuffer_SRV(0, m_Scene.GetMaterialsBuffer()))
@@ -479,7 +479,7 @@ public:
             .addItem(nvrhi::BindingSetItem::StructuredBuffer_SRV(4, m_Scene.GetLightsBuffer()))
             .addItem(nvrhi::BindingSetItem::StructuredBuffer_UAV(0, m_NullUAVBuffer))
             .addItem(nvrhi::BindingSetItem::Texture_UAV(1, m_RenderTargets->m_LDRBuffer)),
-            m_BindingLayout);
+            m_BindingLayout, &m_BindingSets[(int)ScenePass::WorkGraph]);
 
         // Animation state must be reset to good values before being updated every frame.
         m_ForceResetAnimation = true;
@@ -499,8 +499,8 @@ public:
         if (!workGraph_broadcasting_shaderLibrary)
             return false;
 
-        ID3D12Device *device = GetDevice()->getNativeObject(nvrhi::ObjectTypes::D3D12_Device);
-        ID3D12RootSignature *rootSignature = m_ShadePSO->getNativeObject(nvrhi::ObjectTypes::D3D12_RootSignature);
+        ID3D12Device *device = static_cast<ID3D12Device*>(GetDevice()->getNativeObject(nvrhi::ObjectTypes::D3D12_Device));
+        ID3D12RootSignature *rootSignature = static_cast<ID3D12RootSignature*>(m_ShadePSO->getNativeObject(nvrhi::ObjectTypes::D3D12_RootSignature));
         uint2 framebufferSize = uint2(fbinfo.width, fbinfo.height);
 
         ComPtr<ID3D12Device5> deviceD3D12;
@@ -574,7 +574,7 @@ public:
         bufferDesc.debugName = "WorkGraphBackingMem";
         bufferDesc.initialState = nvrhi::ResourceStates::UnorderedAccess;
         bufferDesc.keepInitialState = true;
-        m_WorkGraphBackingMemory = GetDevice()->createBuffer(bufferDesc);
+        GetDevice()->createBuffer(bufferDesc, &m_WorkGraphBackingMemory);
 
         return true;
     }
@@ -765,8 +765,8 @@ public:
         workGraphSetProgram.Type = D3D12_PROGRAM_TYPE_WORK_GRAPH;
         workGraphSetProgram.WorkGraph.ProgramIdentifier = m_workGraphBroadcastingIdentifier;
 
-        ID3D12Resource *workGraphBackingMemoryD3D12 = m_WorkGraphBackingMemory->getNativeObject(nvrhi::ObjectTypes::D3D12_Resource);
-        ID3D12GraphicsCommandList *commandListBaseD3D12 = m_CommandList->getNativeObject(nvrhi::ObjectTypes::D3D12_GraphicsCommandList);
+        ID3D12Resource *workGraphBackingMemoryD3D12 = static_cast<ID3D12Resource*>(m_WorkGraphBackingMemory->getNativeObject(nvrhi::ObjectTypes::D3D12_Resource));
+        ID3D12GraphicsCommandList *commandListBaseD3D12 = static_cast<ID3D12GraphicsCommandList*>(m_CommandList->getNativeObject(nvrhi::ObjectTypes::D3D12_GraphicsCommandList));
         ComPtr<ID3D12GraphicsCommandList10> commandListD3D12;
         commandListBaseD3D12->QueryInterface(IID_PPV_ARGS(&commandListD3D12));
 
@@ -878,7 +878,7 @@ public:
         }
 
         // Copy the final shaded results from the LDR buffer to the back buffer for display.
-        m_CommandList->copyTexture(framebuffer->getDesc().colorAttachments[0].texture, nvrhi::TextureSlice(), m_RenderTargets->m_LDRBuffer, nvrhi::TextureSlice());
+        m_CommandList->copyTexture1(framebuffer->getDesc().colorAttachments[0].texture, nvrhi::TextureSlice(), m_RenderTargets->m_LDRBuffer, nvrhi::TextureSlice());
 
         m_CommandList->endTimerQuery(m_FrameTimers[m_NextTimerToUse]);
 

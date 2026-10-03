@@ -109,12 +109,12 @@ void Scene::CreateAssets(nvrhi::IDevice *device,nvrhi::ICommandList *commandList
 		// Interleave position and normal information in the vertex buffer
 		const uint64_t vertexBufferSize = (mesh.positions.size()+mesh.normals.size()) * sizeof(float3);
 
-		m_vertexBuffers[i] = device->createBuffer(
+		device->createBuffer(
 			nvrhi::BufferDesc().setByteSize(vertexBufferSize).
 			setIsVertexBuffer(true).
 			setInitialState(nvrhi::ResourceStates::VertexBuffer).
 			setKeepInitialState(true).
-			setDebugName("MeshVB"));
+			setDebugName("MeshVB"), &m_vertexBuffers[i]);
 
 		commandList->writeBuffer(m_vertexBuffers[i], &vertices[0], vertexBufferSize);
 
@@ -122,12 +122,12 @@ void Scene::CreateAssets(nvrhi::IDevice *device,nvrhi::ICommandList *commandList
 		// Index buffer, 16-bit indices
 		const uint64_t indexBufferSize = mesh.indices.size() * sizeof(uint16_t);
 
-		m_indexBuffers[i] = device->createBuffer(
+		device->createBuffer(
 			nvrhi::BufferDesc().setByteSize(indexBufferSize).
 			setIsIndexBuffer(true).
 			setInitialState(nvrhi::ResourceStates::IndexBuffer).
 			setKeepInitialState(true).
-			setDebugName("MeshIB"));
+			setDebugName("MeshIB"), &m_indexBuffers[i]);
 
 		commandList->writeBuffer(m_indexBuffers[i], &mesh.indices[0], indexBufferSize);
 	}
@@ -136,13 +136,13 @@ void Scene::CreateAssets(nvrhi::IDevice *device,nvrhi::ICommandList *commandList
 	{
 		const uint64_t materialDataBufferSize = m_materials.size() * sizeof(Material);
 
-		m_materialDataBuffer = device->createBuffer(
+		device->createBuffer(
 			nvrhi::BufferDesc().setByteSize(materialDataBufferSize).
 			setCanHaveTypedViews(true).
 			setStructStride(sizeof(Material)).
 			setInitialState(nvrhi::ResourceStates::ShaderResource).
 			setKeepInitialState(true).
-			setDebugName("MaterialsData"));
+			setDebugName("MaterialsData"), &m_materialDataBuffer);
 
 		commandList->writeBuffer(m_materialDataBuffer, &m_materials[0], materialDataBufferSize);
 	}
@@ -151,13 +151,13 @@ void Scene::CreateAssets(nvrhi::IDevice *device,nvrhi::ICommandList *commandList
 	{
 		const uint64_t instanceDataBufferSize = m_worldObjects.size() * sizeof(Instance);
 
-		m_instanceDataBuffer = device->createBuffer(
+		device->createBuffer(
 			nvrhi::BufferDesc().setByteSize(instanceDataBufferSize).
 			setCanHaveTypedViews(true).
 			setStructStride(sizeof(Instance)).
 			setInitialState(nvrhi::ResourceStates::ShaderResource).
 			setKeepInitialState(true).
-			setDebugName("InstancesData"));
+			setDebugName("InstancesData"), &m_instanceDataBuffer);
 
 		commandList->writeBuffer(m_instanceDataBuffer, &m_worldObjects[0], instanceDataBufferSize);
 	}
@@ -166,14 +166,14 @@ void Scene::CreateAssets(nvrhi::IDevice *device,nvrhi::ICommandList *commandList
 	{
 		const uint64_t lightDataBufferSize = m_lights.size() * sizeof(Light);
 
-		m_lightDataBuffer = device->createBuffer(
+		device->createBuffer(
 			nvrhi::BufferDesc().setByteSize(lightDataBufferSize).
 			setCanHaveUAVs(true).
 			setCanHaveTypedViews(true).
 			setStructStride(sizeof(Light)).
 			setInitialState(nvrhi::ResourceStates::UnorderedAccess).
 			setKeepInitialState(true).
-			setDebugName("LightsData"));
+			setDebugName("LightsData"), &m_lightDataBuffer);
 
 		commandList->writeBuffer(m_lightDataBuffer, &m_lights[0], lightDataBufferSize);
 	}
@@ -182,14 +182,14 @@ void Scene::CreateAssets(nvrhi::IDevice *device,nvrhi::ICommandList *commandList
 	{
 		const uint64_t animStateBufferSize = m_worldObjects.size() * sizeof(AnimState);
 
-		m_animStateBuffer = device->createBuffer(
+		device->createBuffer(
 			nvrhi::BufferDesc().setByteSize(animStateBufferSize).
 			setCanHaveUAVs(true).
 			setCanHaveTypedViews(true).
 			setStructStride(sizeof(AnimState)).
 			setInitialState(nvrhi::ResourceStates::UnorderedAccess).
 			setKeepInitialState(true).
-			setDebugName("AnimState"));
+			setDebugName("AnimState"), &m_animStateBuffer);
 	}
 }
 

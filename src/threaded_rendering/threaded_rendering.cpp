@@ -92,11 +92,11 @@ public:
         m_Camera.LookAt(dm::float3(0.f, 1.8f, 0.f), dm::float3(1.f, 1.8f, 0.f));
         m_Camera.SetMoveSpeed(3.f);
         
-        m_CommandList = GetDevice()->createCommandList();
+        GetDevice()->createCommandList(nvrhi::CommandListParameters(), &m_CommandList);
         for (auto& commandList : m_FaceCommandLists)
         {
-            commandList = GetDevice()->createCommandList(nvrhi::CommandListParameters()
-                .setEnableImmediateExecution(false));
+            GetDevice()->createCommandList(nvrhi::CommandListParameters()
+                .setEnableImmediateExecution(false), &commandList);
         }
 
         m_ForwardShadingPass = MAKE_RC_OBJ_PTR(render::ForwardShadingPass, GetDevice(), m_CommonPasses);
@@ -120,15 +120,15 @@ public:
             .setIsRenderTarget(true)
             .setKeepInitialState(true);
 
-        m_ColorBuffer = GetDevice()->createTexture(textureDesc
+        GetDevice()->createTexture(textureDesc
             .setDebugName("ColorBuffer")
             .setFormat(nvrhi::Format::SRGBA8_UNORM)
-            .setInitialState(nvrhi::ResourceStates::RenderTarget));
+            .setInitialState(nvrhi::ResourceStates::RenderTarget), &m_ColorBuffer);
 
-        m_DepthBuffer = GetDevice()->createTexture(textureDesc
+        GetDevice()->createTexture(textureDesc
             .setDebugName("DepthBuffer")
             .setFormat(nvrhi::Format::D32)
-            .setInitialState(nvrhi::ResourceStates::DepthWrite));
+            .setInitialState(nvrhi::ResourceStates::DepthWrite), &m_DepthBuffer);
 
         m_CubemapView.SetArrayViewports(textureDesc.width, 0);
 

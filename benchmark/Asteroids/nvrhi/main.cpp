@@ -71,7 +71,7 @@ bool QueryDeviceLuid(donut::app::DeviceManager* deviceManager, uint64_t& luid, s
     {
         case nvrhi::GraphicsAPI::D3D11:
         {
-            ID3D11Device* d3d11 = device->getNativeObject(nvrhi::ObjectTypes::D3D11_Device);
+            ID3D11Device* d3d11 = static_cast<ID3D11Device*>(device->getNativeObject(nvrhi::ObjectTypes::D3D11_Device));
             nvrhi::AutoPtr<IDXGIDevice> dxgiDevice;
             nvrhi::AutoPtr<IDXGIAdapter> adapter;
             DXGI_ADAPTER_DESC desc{};
@@ -86,7 +86,7 @@ bool QueryDeviceLuid(donut::app::DeviceManager* deviceManager, uint64_t& luid, s
         }
         case nvrhi::GraphicsAPI::D3D12:
         {
-            ID3D12Device* d3d12 = device->getNativeObject(nvrhi::ObjectTypes::D3D12_Device);
+            ID3D12Device* d3d12 = static_cast<ID3D12Device*>(device->getNativeObject(nvrhi::ObjectTypes::D3D12_Device));
             if (!d3d12)
             {
                 error = "cannot query the D3D12 device";
@@ -97,7 +97,7 @@ bool QueryDeviceLuid(donut::app::DeviceManager* deviceManager, uint64_t& luid, s
         }
         case nvrhi::GraphicsAPI::VULKAN:
         {
-            VkPhysicalDevice physicalDevice = device->getNativeObject(nvrhi::ObjectTypes::VK_PhysicalDevice);
+            VkPhysicalDevice physicalDevice = static_cast<VkPhysicalDevice>(device->getNativeObject(nvrhi::ObjectTypes::VK_PhysicalDevice));
             std::vector<donut::app::AdapterInfo> adapters;
             deviceManager->EnumerateAdapters(adapters);
             for (const auto& adapter : adapters)
