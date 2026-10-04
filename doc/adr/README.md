@@ -81,4 +81,4 @@ Commits (with repository), files, related ADRs and plans.
 
 | ADR | Title | Status | Date |
 | --- | --- | --- | --- |
-| _(none yet)_ | | | |
+| [0001](0001-nv-asteroids-on-the-ethereal-dev-object-model.md) | nv_asteroids builds on the ethereal-dev object model, not a second Donut | Accepted | 2026-10-04 |

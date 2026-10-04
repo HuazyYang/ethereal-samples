@@ -33,7 +33,16 @@ namespace
     {
         // deviation: with the nvrhi validation layer the device is a wrapper without access to the D3D12
         // descriptor heaps; HBAO+ is then disabled.
-        return dynamic_cast<nvrhi::d3d12::IDevice*>(device);
+        //
+        // QueryInterface replaces dynamic_cast (nvrhi ADR 0006), which throws on the ABI-stable
+        // interfaces. The validation wrapper does not answer for d3d12::IDevice, so HBAO+ is still
+        // disabled there; note that getNativeObject(Nvrhi_D3D12_Device) would not do, because the
+        // wrapper forwards it to the real device. The reference is released right away: the caller
+        // only borrows the pointer, and m_Device owns the device for the lifetime of the pass.
+        nvrhi::AutoPtr<nvrhi::d3d12::IDevice> d3d12Device;
+        if (NVRHI_FAILED(device->QueryInterface(NVRHI_IID_PPV_ARGS(&d3d12Device))))
+            return nullptr;
+        return d3d12Device.Get();
     }
 }
 

@@ -455,10 +455,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
         donut::vfs::IFileSystem& fs = *demoPass->GetRootFileSystem();
         const std::filesystem::path& mediaPath = demoPass->GetMediaPath();
+        // Init before the fonts: ImGuiRenderPass creates the ImGui context there, whereas
+        // donut main's ImGui_Renderer created it in its constructor. The load order of the
+        // three fonts is what the demo indexes them by, so it is kept.
+        uiPass->Init(demoPass->GetShaderFactory());
         uiPass->LoadFont(fs, mediaPath / "OpenSansFont/OpenSans-Regular.ttf", 17.f);
         uiPass->LoadFont(fs, mediaPath / "GeForceFont/geforce-light.ttf", 51.f);
         uiPass->LoadFont(fs, mediaPath / "GeForceFont/geforce-bold.ttf", 51.f);
-        uiPass->Init(demoPass->GetShaderFactory());
 
         deviceManager->AddRenderPassToBack(demoPass.Get());
         deviceManager->AddRenderPassToBack(uiPass.Get());

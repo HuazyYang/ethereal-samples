@@ -75,6 +75,24 @@ using namespace donut::math;
 
 namespace
 {
+    // The camera basis of the 2018 demo, which is donut main's: right = cross(dir, up).
+    //
+    // deviation: donut ethereal-dev builds the basis the other way round
+    // (BaseCamera::BaseLookAt / FirstPersonCamera::UpdateCamera use right = cross(up, dir)), which
+    // negates the right vector against the convention the reconstruction was written for. Taking
+    // GetTranslatedWorldToViewMatrix() straight from the camera therefore mirrors the view, and with
+    // it the triangle winding, so the asteroids render inside-out and the deferred lighting reads
+    // mirrored view-space normals. The basis is rebuilt here from the camera's position, direction
+    // and up, which the two conventions agree on; this is the only place the demo takes a view
+    // matrix from a camera, every pass reads it back from engine::IView.
+    dm::affine3 TranslatedWorldToView2018(const donut::app::BaseCamera& camera)
+    {
+        const dm::float3 dir = normalize(camera.GetDir());
+        const dm::float3 right = normalize(cross(dir, camera.GetUp()));
+        const dm::float3 up = normalize(cross(right, dir));
+        return dm::affine3::from_cols(right, up, dir, 0.f);
+    }
+
     int64_t NowNanoseconds()
     {
         return std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -315,7 +333,7 @@ bool FeatureDemo::UpdateViews()
 
     m_View->SetViewport(nvrhi::Viewport(float(renderSize.x), float(renderSize.y)));
     m_View->SetPixelOffset(pixelOffset);
-    m_View->SetMatrices(m_ActiveCamera->GetTranslatedWorldToViewMatrix(), projection);
+    m_View->SetMatrices(TranslatedWorldToView2018(*m_ActiveCamera), projection);
     m_View->UpdateCache();
 
     m_ViewOrigin = -m_ActiveCamera->GetPosition();
