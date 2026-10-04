@@ -1,4 +1,4 @@
-# GVDBSamples
+# gvdb_samples
 
 Port of [NVIDIA GVDB Voxels 1.1.1](https://github.com/NVIDIA/gvdb-voxels) (reference checkout:
 `D:\ps\repo\gvdb-voxels\source`) to the Donut / nvrhi stack of this repository. The GL, Jetson and
@@ -19,6 +19,7 @@ samples/
   sample-utils/            renderers (CUDA raycaster, OptiX), the app framework, OBJ meshes
   <sample>/                one directory per sample (kebab-case)
   assets/                  the shared assets of the reference (lucy.obj, explosion.vbx, ...)
+sph_fluid_pool/            port of the SPH fluid simulator fluids5.0 (see "SPH fluid pool" below)
 ```
 
 ## Interface design
@@ -147,3 +148,39 @@ whose program group is chosen by the instance's intersection mode, so the instan
 
 Not ported: gInteractiveGL (OpenGL), gJetsonTX (Jetson), gNanoVDB (NanoVDB), gImportVDB (needs the
 OpenVDB library; `bunny.vdb` cannot be read without it).
+
+## SPH fluid pool
+
+`sph_fluid_pool/` is a port of the SPH simulator fluids5.0 (Rama Hoetzlein, reference checkout
+`D:\ps\repo\fluid-dev\fluids3\fluids5.0`), migrated with the same strategy as the GVDB samples. It
+does not use GVDB; it uses gp, the sample framework (`GVDBApp`) and the scene graph. Target and
+executable: `sph_fluid_pool`.
+
+| Reference | Port |
+|---|---|
+| class `Particles` (buffers, grid, parameters) | `sph::ISPHParticles` (data), `SPHFluid.h` / `SPHParticles.cpp` |
+| `Particles::Run` and its stages | `sph::ISPHSolver` (operations), `SPHSolver.cpp` |
+| `fluid.h`, device half of `datax.h` | `SPHFluidParams.h`, shared by host and kernels |
+| `particles.cu` | `kernels/SPHFluidKernels.cu` (same kernels and physics) |
+| CUDA driver API calls | gp (`IModule` / `IKernel`, constant uploads, buffer copies) |
+| CUDA / OpenGL interop VBOs | nvrhi vertex buffers imported into gp (`SPHParticlesDesc::interop`) |
+| `Particles::Draw`, point shader of nv_gui | `sph::SPHPointRenderer`, `shaders/Points.hlsl` |
+| the application's single fluid | `sph::SPHFluidInstance`, a scene-graph leaf (`SPHFluidScene.h`) |
+| `Camera3D`, nv_gui text, keys | camera leaf + orbit controller, ImGui Inspector, same keys |
+
+The default scene is the reference's wave pool (example 2, "large beach front": a 500 x 200 x 500
+domain with a sloped floor and a wave-making wall) with 4,000,000 particles. Options:
+`--particles N`, `--example 0..3`, `--paused`, `--check N` (reads the particles back after step N
+and logs a sanity report), plus the framework's `--screenshot <png> [--frames N]`, `--debug` and
+`-d3d11` / `-d3d12` / `-vk`. Keys: Space pauses, R resets; right drag (or Alt + left drag) orbits,
+middle drag pans, the wheel zooms.
+
+Notes:
+- On D3D12 and Vulkan the position, colour and velocity buffers are shared between the simulation
+  and the rasterizer without a copy. D3D11 cannot create shareable vertex buffers through nvrhi,
+  so there the three buffers are copied through the host every frame (`areRenderBuffersShared()`).
+- The camera uses the reference's nominal setting literally: an 80 degree horizontal field of view
+  at the window's aspect ratio. The reference executable shows a narrower view (45.5 degrees
+  horizontally, 34.9 vertically, stretched) because its projection halves the angle and keeps a
+  4:3 aspect, so the pool appears smaller here than there.
+- The fill uses a deterministic `std::mt19937` instead of `rand()`, so runs are repeatable.

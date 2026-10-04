@@ -7,7 +7,7 @@ This repository is a sub-project of the `ethereal` aggregate and is configured b
 | Path | Content |
 |---|---|
 | `src/DDGISample`, `src/VXGISample` | Dynamic diffuse GI (RTXGI DDGI) and voxel GI (VXGI) samples |
-| `src/GVDBSamples` | GVDB sparse-voxel library (COM-style interfaces, Donut scene graph) and the ported GVDB samples, CUDA + optional OptiX 9 (`-DETHEREAL_BUILD_GVDB=ON`, `-DETHEREAL_WITH_OPTIX=ON`; see `src/GVDBSamples/README.md`) |
+| `src/gvdb_samples` | GVDB sparse-voxel library (COM-style interfaces, Donut scene graph), the ported GVDB samples and the SPH fluid port `sph_fluid_pool`, CUDA + optional OptiX 9 (`-DETHEREAL_BUILD_GVDB=ON`, `-DETHEREAL_WITH_OPTIX=ON`; see `src/gvdb_samples/README.md`) |
 | `src/<example>` | The Donut examples from `Donut-Samples/examples` (`basic_triangle`, `rt_shadows`, `meshlets`, ...) |
 | `assets/` | Scenes, configs and textures of the DDGI / VXGI samples |
 | `benchmark/Asteroids` | nvrhi vs. native D3D11/D3D12 CPU-overhead benchmark, see its README |
@@ -38,10 +38,10 @@ message box and sent to the debugger output).
   `ethereal_use_agility_sdk()` in `src/CMakeLists.txt`: nvrhi marks acceleration-structure buffers with a resource
   flag that the Windows 10 system runtime rejects. The default is a stable release (`ETHEREAL_AGILITY_SDK_VERSION`,
   1.619.6); a `-preview` release only loads with Windows Developer Mode on.
-- GVDBSamples needs the CUDA toolkit (PTX for `sm_75`); the OptiX renderer and the samples that use it
+- `gvdb_samples` needs the CUDA toolkit (PTX for `sm_75`); the OptiX renderer and the samples that use it
   (`point-cloud`, `fluid-surface`, `interactive-optix`) need the OptiX 9 SDK (`OptiX_INSTALL_DIR` or the default
-  install location; `-DETHEREAL_WITH_OPTIX=OFF` drops them). PTX modules land in `buildin\ptx`, assets are
-  read in place from `src/GVDBSamples/samples/assets`.
+  install location; `-DETHEREAL_WITH_OPTIX=OFF` drops them). PTX modules land in `build\bin\ptx`, assets are
+  read in place from `src/gvdb_samples/samples/assets`.
 
 Executables and shaders land in `build\bin`. Shaders are compiled by ShaderTool through
 `ethereal_compile_shaders()` (`cmake/EtherealShaders.cmake`), which replaces Donut's removed

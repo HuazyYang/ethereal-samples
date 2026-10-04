@@ -112,3 +112,4 @@ endfunction()
 
 add_subdirectory(gvdb)
 add_subdirectory(samples)
+add_subdirectory(sph_fluid_pool)

@@ -1793,26 +1793,21 @@ nvrhi::FRESULT Device::createInteropD3D12Buffer(ID3D12Resource *d3d12Buffer, uin
     d3d12Buffer->GetDevice(IID_PPV_ARGS(&d3d12Device));
     auto allocInfo = d3d12Device->GetResourceAllocationInfo(0, 1, &d3d12BufDesc);
 
-    if ((mappedOffset % allocInfo.Alignment) != 0 ||
-        mappedOffset >= allocInfo.SizeInBytes ||
-        (mappedOffset + mappedSize) >= allocInfo.SizeInBytes)
+    // The mapped range lies inside the buffer (Width); the imported memory is
+    // the whole allocation, which is rounded up to the heap alignment.
+    if (mappedSize == 0 && mappedOffset < d3d12BufDesc.Width) mappedSize = d3d12BufDesc.Width - mappedOffset;
+    if (mappedSize == 0 || mappedOffset >= d3d12BufDesc.Width || (mappedOffset + mappedSize) > d3d12BufDesc.Width)
         return nvrhi::FE_INVALID_ARGS;
 
+    // A D3D12 resource is shared through ID3D12Device::CreateSharedHandle (it
+    // has no IDXGIResource1; the resource must live on a shared heap).
     HRESULT hr;
-    nvrhi::AutoPtr<IDXGIResource1> dxgiResource;
-    if (FAILED(hr = d3d12Buffer->QueryInterface(IID_PPV_ARGS(&dxgiResource)))) {
-        VERROR(m_context, "[GPDevice] ID3D11Buffer query IDXGIResource1 error: %#08X", hr);
-        return nvrhi::FE_GENERIC_ERROR;
-    }
-
     HANDLE sharedHandle;
     if (FAILED(hr = d3d12Device->CreateSharedHandle(d3d12Buffer, NULL, GENERIC_ALL, 0,
                                                     &sharedHandle))) {
-        VERROR(m_context, "[GPDevice] ID3D11Buffer CreateSharedHandle error: %#08X", hr);
+        VERROR(m_context, "[GPDevice] ID3D12Device::CreateSharedHandle (buffer) error: %#08X", hr);
         return nvrhi::FE_GENERIC_ERROR;
     }
-
-    if (mappedSize == 0) mappedSize = allocInfo.SizeInBytes - mappedOffset;
 
     GraphicsInteropBufferDesc interopDesc = {};
     interopDesc.graphicsAPI = GraphicsInteropAPI::D3D12;
