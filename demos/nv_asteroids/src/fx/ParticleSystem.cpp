@@ -1,6 +1,8 @@
 #include <cstddef>
 
 #include "fx/ParticleSystem.h"
+
+#include "app/RenderHandedness.h"
 #include "app/GpuProfiler.h"
 #include "fx/FxCommon.h"
 #include "scene/Lights.h"
@@ -261,7 +263,8 @@ namespace fx
             ParticleConstants constants{};
             constants.matWorldToClip = view->GetViewProjectionMatrix(false);
             const float4x4 projection = view->GetProjectionMatrix(false);
-            constants.screenScale = float2(projection[0][0], projection[1][1]);
+            // A sprite size: magnitudes, or the sprites would be mirrored.
+            constants.screenScale = demo::ProjectionScale(projection);
             constants.maxDistance = maxDistance;
             constants.particlesPerBatch = batchSize;
             FillLightConstants2018(light, constants.light);

@@ -59,12 +59,17 @@ configure can only contain one of them.
    names: they are private to the target and renaming them would churn the reconstructed sources for
    nothing.
 
-7. **Honour Donut's camera convention and swap the rendering handedness in the port.** Donut's
-   camera builds the left-handed basis (`right = cross(up, dir)`); donut `main` built the mirrored
-   one, and the 2018 view space follows it. The camera is used unchanged, and `UpdateViews` converts
-   its view matrix into the 2018 view space with a single X mirror where it enters `engine::IView`.
-   The net world-to-clip transform is then the 2018 one, so winding, rasterizer state and the
-   canonical projection stay as they were.
+7. **Render left-handed; reconcile the content's handedness in the projection.** Donut's camera
+   builds the left-handed basis (`right = cross(up, dir)`); donut `main` built the mirrored one, and
+   the 2018 content was authored through it. The render pipeline is left-handed: every
+   `engine::IView` carries Donut's camera matrix unchanged, so all view-space work happens in
+   Donut's view space. Since Donut's camera is a proper rotation, one reflection has to sit between
+   world and clip to reproduce the original; it is placed in the projection
+   (`demo::MirrorProjectionX`, `src/app/RenderHandedness.h`), so world-to-clip, the winding, the 2018
+   rasterizer states and the reconstructed shaders stay as they were. Code that reads the
+   projection's focal terms as sizes takes their magnitudes (`demo::ProjectionScale`); HBAO+, which
+   assumes positive focal terms, gets the same world-to-clip transform with the reflection on its
+   world-to-view matrix instead.
 
 ## Consequences
 
@@ -113,6 +118,25 @@ tree would no longer build.
 **Convert the demo's own classes to nvrhi objects as well.** Rejected: it would add interface tables
 to about 30 classes that no donut interface ever sees, and `SceneNode`'s
 `std::enable_shared_from_this` graph would have to be rebuilt on `WeakPtr` for no benefit.
+
+For decision 7, the reflection between the 2018 content and Donut's camera could sit in three other
+places:
+
+**On the view matrix** (the camera's matrix times an X mirror where it enters `IView`). Exact, and no
+consumer needs adjusting, but every pass then works in the 2018 mirrored view space rather than
+Donut's, and `IsMirrored()` reports the main view as mirrored. Superseded by the projection, which
+keeps view space left-handed.
+
+**In the content** (mirror every world-space input once at load). The only placement with no
+reflection anywhere in the renderer, but it reaches the object transforms, camera presets, replay
+paths, lights, the star catalogue and the PhysX colliders; it needs the sky and probe cubemaps
+face-mirrored, and it flips the world-space cross products in three of the reconstructed shaders
+(the asteroid and scene geometry normals, the planet bitangent), which would then have to be edited.
+Rejected for its size and its risk to the shaders' 2018 equivalence.
+
+**Nowhere** (render the un-mirrored world with front faces flipped, and compare against flipped 2018
+captures). The smallest change, but the demo would no longer show what the original showed.
+Rejected.
 
 ## References
 

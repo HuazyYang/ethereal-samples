@@ -1,4 +1,6 @@
 ﻿#include "meshlets/MeshletDrawStrategy.h"
+
+#include "app/RenderHandedness.h"
 #include "meshlets/MeshletRenderResources.h"
 #include "app/GpuProfiler.h"
 #include "meshlets/MeshletShaderTypes.h"
@@ -198,7 +200,13 @@ void MeshletDrawStrategy::Render(nvrhi::ICommandList* commandList, MeshletPassSt
     frame.matWorldToClip = view.GetViewProjectionMatrix(true);
     frame.matWorldToView = affineToHomogeneous(view.GetViewMatrix());
     frame.matViewToClip = view.GetProjectionMatrix(true);
+    // The LOD metric reads the focal terms as screen-size scales: magnitudes (app/RenderHandedness.h).
     frame.matProjectionForLod = view.GetProjectionMatrix(false);
+    {
+        const float2 scale = demo::ProjectionScale(frame.matProjectionForLod);
+        frame.matProjectionForLod[0][0] = scale.x;
+        frame.matProjectionForLod[1][1] = scale.y;
+    }
     frame.cameraPos = float4(view.GetViewOrigin(), 1.f);
     frame.blueNoise = c_BlueNoise;
     frame.preViewTranslation = float4(preViewTranslation, 0.f);

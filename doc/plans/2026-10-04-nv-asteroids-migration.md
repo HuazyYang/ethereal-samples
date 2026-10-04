@@ -85,7 +85,7 @@ shares a submodule's git directory between worktrees and a plain `submodule upda
 | | ethereal | `008f850` | `ETHEREAL_BUILD_NV_ASTEROIDS`, the NVAPI wiring, and the Donut submodule moved to the `ethereal-dev` tip. |
 | 3. Port | ethereal-samples | `2384318` | 79 files. Deviation from the plan: the port landed as one commit rather than one per module. The modules are mutually dependent, so a per-module commit would not have compiled. |
 | 5a. Framework fix | donut | `9873536` | `ChunkFile::deserialize` stored the caller's blob without taking a reference while `~ChunkFile` released it. Both callers pass a blob they do not hand over, so every chunk asset was a use-after-free. Found because the asteroid collision meshes reached PhysX cooking as freed memory. |
-| 5b. Rendering handedness | ethereal-samples | `d7ff317`, this commit | The 2018 view space is mirrored against Donut's left-handed camera basis; the demo converts once, where the camera's matrix enters `engine::IView`. See *Rendering handedness* below. `d7ff317` first did this by rebuilding the camera basis by hand, framed as a Donut divergence; this commit keeps Donut's camera matrix and applies the conversion explicitly. |
+| 5b. Rendering handedness | ethereal-samples | `d7ff317`, `4c487a8`, this commit | The render pipeline is left-handed, with Donut's camera unchanged; the 2018 content's handedness is reconciled in the projection. See *Rendering handedness* below. `d7ff317` first rebuilt the camera basis by hand, framed as a Donut divergence; `4c487a8` kept Donut's camera but mirrored the view; this commit moves the reflection into the projection. |
 | 6. Docs | ethereal-samples | this commit | Demo `README.md`, ADR 0001, this record. |
 
 ### Deviations from the plan
@@ -113,19 +113,40 @@ that `ethereal-dev` corrected. The 2018 demo's content, shaders and lighting con
 and verified in that older, mirrored view space, so moving to Donut's camera is a handedness swap
 and part of the port, not a framework difference to work around.
 
-The camera keeps Donut's convention. `FeatureDemo::UpdateViews` converts the camera's
-translated-world-to-view matrix into the 2018 view space with one X mirror
-(`c_ViewSpace2018 = scaling(-1, 1, 1)`), at the single place a camera matrix enters `engine::IView`;
-every pass reads its view back from `IView`. The camera's mirror and the conversion cancel, so the
-net world-to-clip transform, and with it the triangle winding, is the 2018 one: no rasterizer state
-changes, and the projection stays the canonical D3D projection that HBAO+ and the TAA jitter
-expect. The demo reads only position, direction and up from its cameras, which the two conventions
-agree on, so nothing else depends on the basis.
+The render pipeline is left-handed throughout (`src/app/RenderHandedness.h`):
 
-Taking the camera matrix without the conversion is what the first port did: the asteroids rendered
-inside-out (10.9 dB against recon at frame 60) and inverted backface culling cost about 2 ms of frame
-time. With it, view 0 (AA off, frame 6000) is 43.89 dB against the 2018 original, the same as recon,
-and 99.4 dB against recon.
+- **View space is Donut's.** Every `engine::IView` carries the camera's matrix unchanged, so all
+  view-space work — the G-buffer pass, deferred lighting, fog, the shadow-cascade fit — runs in the
+  left-handed view space, and `IView::IsMirrored()` is false for the main view.
+- **The content's handedness is reconciled once, in the projection.** Because the 2018 content was
+  authored through the mirrored camera and Donut's camera is a proper rotation, one reflection has to
+  sit between world and clip to reproduce the original. `demo::MirrorProjectionX` negates view-space
+  X before the D3D projection, at the one place the main view's projection is built
+  (`FeatureDemo::UpdateViews`). World-to-clip is therefore the 2018 transform, so the triangle
+  winding, the 2018 rasterizer states and the reconstructed shaders are unchanged; the TAA jitter is a
+  clip-space offset applied after the projection and is unaffected.
+- **Readers of the projection's focal terms take magnitudes.** `P[0][0]` is negative. The lens-flare
+  and star-field aspect ratios, the particle sprite size and the meshlet LOD metric read the diagonal
+  as sizes, and take `demo::ProjectionScale` (otherwise the sprites would be mirrored and the aspect
+  ratios negative). The planet pass already took `fabsf`.
+- **HBAO+ gets the reflection on its world-to-view instead.** The SDK accepts a projection with a
+  negative focal term without reporting an error, but reconstructs view-space positions as if it were
+  positive, which disagrees with the normals it rotates into view space: the AO came out wrong
+  (27.1 dB against recon at view 0 instead of 96). `HbaoPlusPass` hands it the same world-to-clip
+  transform with the reflection moved from the projection onto its world-to-view matrix; occlusion is
+  invariant under a reflection of view space.
+
+The demo reads only position, direction and up from its cameras, which both conventions agree on,
+and none of Donut's `IsMirrored`-aware geometry passes are used (the 2018 passes set fixed cull and
+front-face states), so nothing else depends on where the reflection sits.
+
+History: the first port took the camera matrix with no reflection at all, and the asteroids rendered
+inside-out (10.9 dB against recon at frame 60, and about 2 ms of frame time lost to inverted
+backface culling). `d7ff317` and `4c487a8` then put the reflection on the view matrix, which kept the
+2018 view space downstream; this commit moves it into the projection so that the pipeline is
+left-handed. With SSAO disabled the left-handed pipeline matches recon at 96.6 dB on view 0; with
+the HBAO+ conversion, view 0 (AA off, frame 6000) is 43.89 dB against the 2018 original, the same
+as recon, and 96.1 dB against recon.
 
 ## Verification results
 
@@ -145,42 +166,50 @@ achievable ceiling is the original's own PSNR between its two captures, and it i
 
 ### Image — AA off (`-aa 0`), frame 6000
 
+Left-handed pipeline (this commit). Scoring as recon's `aa0table.py`: the better of the original's two
+captures.
+
 | view | original vs itself | recon vs original | ported vs original | ported vs recon |
 |---|---|---|---|---|
-| 0 | 46.3 dB | 43.9 dB | 43.9 dB | 91.3 dB |
-| 1 | 39.8 dB | 41.8 dB | 41.7 dB | 58.6 dB |
-| 2 | 45.3 dB | 45.5 dB | 45.5 dB | 90.8 dB |
-| 3 | 46.6 dB | 38.2 dB | 36.1 dB | 40.1 dB |
-| 4 | 38.7 dB | 39.4 dB | 39.4 dB | 72.5 dB |
-| 5 | 32.9 dB | 34.9 dB | 34.9 dB | 40.4 dB |
-| **mean** | **41.6 dB** | **40.6 dB** | **40.3 dB** | **65.6 dB** |
+| 0 | 46.3 dB | 43.9 dB | 43.9 dB | 99.4 dB |
+| 1 | 39.8 dB | 41.8 dB | 41.8 dB | 84.9 dB |
+| 2 | 45.3 dB | 45.5 dB | 45.6 dB | 92.1 dB |
+| 3 | 46.6 dB | 38.2 dB | 38.2 dB | 69.6 dB |
+| 4 | 38.7 dB | 39.4 dB | 39.4 dB | 88.4 dB |
+| 5 | 32.9 dB | 34.9 dB | 35.0 dB | 40.5 dB |
+| **mean** | **41.6 dB** | **40.6 dB** | **40.6 dB** | **79.1 dB** |
 
 ### Image — default mode (2018 TAA), frames 6000..6007, best of the 8 jitter phases
 
+Scoring as recon's `taatable.py`: for each of the original's two captures the best-matching jitter
+phase, averaged.
+
 | view | original vs itself | recon vs original | ported vs original | ported vs recon |
 |---|---|---|---|---|
-| 0 | 41.4 dB | 41.0 dB | 41.0 dB | 71.4 dB |
-| 1 | 38.0 dB | 40.2 dB | 40.1 dB | 56.4 dB |
-| 2 | 40.8 dB | 42.7 dB | 42.8 dB | 61.6 dB |
-| 3 | 37.3 dB | 35.6 dB | 33.8 dB | 38.2 dB |
-| 4 | 36.0 dB | 36.9 dB | 36.8 dB | 60.8 dB |
-| 5 | 30.6 dB | 32.6 dB | 32.6 dB | 37.5 dB |
-| **mean** | **37.3 dB** | **38.2 dB** | **37.8 dB** | **54.3 dB** |
+| 0 | 41.4 dB | 41.0 dB | 41.0 dB | 77.3 dB |
+| 1 | 38.0 dB | 40.2 dB | 40.2 dB | 80.6 dB |
+| 2 | 40.8 dB | 42.7 dB | 42.7 dB | 68.8 dB |
+| 3 | 37.3 dB | 35.6 dB | 35.6 dB | 73.1 dB |
+| 4 | 36.0 dB | 36.9 dB | 36.9 dB | 73.9 dB |
+| 5 | 30.6 dB | 32.6 dB | 32.4 dB | 37.1 dB |
+| **mean** | **37.3 dB** | **38.2 dB** | **38.1 dB** | **68.4 dB** |
 
 Reading these:
 
-- **The port is image-neutral.** On five of the six views in each mode the ported build scores the
-  same as recon against the original to within 0.1 dB, and ported-vs-recon sits far above the demo's
-  own run-to-run noise (two recon runs of the same view differ by 94.8 dB).
+- **The port is image-neutral.** On all six views in both modes the ported build scores the same as
+  recon against the original to within 0.2 dB, and ported-vs-recon sits far above the original's own
+  capture-to-capture variation (two recon runs of the same view differ by 94.8 dB).
 - **Where a view is below 40 dB, so is the original against itself.** Views 3 and 5 score below
-  40 dB in every column, including the original's own capture-to-capture PSNR in default mode
-  (37.3 and 30.6 dB): that is the noise floor of the original, not a defect of the reconstruction.
-  A blanket "40 dB against the 2018 reference" is therefore not reachable for those two views by any
-  build, the original included.
-- **View 3 is the one real gap**: 36.1 dB vs recon's 38.2 dB (AA off) and 33.8 vs 35.6 dB (default).
-  recon's README already records view 3 as its weakest, with distributed single-texel shadow-edge
-  shimmer; ported-vs-recon is lowest there too (40.1 / 38.2 dB), which is what shadow-edge noise
-  looks like when the two builds sample the cascade grid a fraction of a frame apart.
+  40 dB against the original in default mode for every build, and the original's own
+  capture-to-capture PSNR there is 37.3 and 30.6 dB: that is the original's noise floor, not a defect
+  of the reconstruction. A blanket "40 dB against the 2018 reference" is not reachable for those two
+  views by any build, the original included. View 4 is 39.4 dB AA off against a 38.7 dB ceiling.
+- **View 5 is the lowest ported-vs-recon** (40.5 / 37.1 dB): its content is dominated by particles and
+  noise, whose state depends on the wall-clock time at which frame 6000 is reached.
+- An earlier capture set, taken with the reflection on the view matrix (`4c487a8`), scored view 3
+  1.8-2.1 dB below recon. The left-handed pipeline gives the same world-to-clip transform, so the
+  gap is not attributable to the matrix change itself; it did not reproduce in this set, and the
+  likelier cause is the timing sensitivity of frame-indexed captures of a wall-clock-animated scene.
 
 ### Performance — `-nodialog -benchmark` (replay.0.json, 8504 frames, unthrottled)
 
@@ -199,6 +228,13 @@ The ported build is 0.2 % faster, which is inside the run-to-run spread of eithe
 build and 11.89 ms for the original 2018 executable on the same GPU.
 
 Discarded as throttled: recon 17.99 ms, ported 12.69 ms (both the second run of a back-to-back pair).
+
+The series above was taken with the reflection on the view matrix (`4c487a8`). The left-handed
+pipeline was not re-timed under controlled conditions: other workloads were running on the machine,
+and the runs taken then are not comparable (ported 13.38 ms, recon 12.19 ms, ported 42.30 ms, in that
+order, minutes apart). It adds no GPU work (the shaders are byte-identical and world-to-clip is
+unchanged), and its CPU cost per frame is a projection-row negation, two magnitude reads and two 4x4
+multiplies for HBAO+, so the series above stands for it; a re-run on an idle machine would confirm.
 
 Per-pass GPU times at view 0 (`-gpuProfile`, GPU timer queries, mean over 1000 frames):
 
@@ -231,13 +267,17 @@ that defect was found, and the replay figures above are the result that stands.)
 3. **The `ChunkFile::deserialize` fix is a commit on donut's `nv_asteroids` branch**, not on
    `ethereal-dev`. It should be cherry-picked into `ethereal-dev`: without it every chunk asset is a
    use-after-free for any caller.
-4. **View 3 is 1.8-2.1 dB below recon.** Both builds are inside the original's own noise floor for
-   that view in default mode, but the gap is consistent across both modes and is worth a look at the
-   cascade texel grid if the demo is used as a precision reference.
+4. **Frame-indexed captures are timing-sensitive.** The scene animates with wall-clock time, so a
+   screenshot at frame 6000 is only comparable between runs that reach it at the same moment. The
+   comparison would be sturdier with a fixed-step capture mode (as `-benchmark` replays use), which
+   would also make ported-vs-recon on views 3 and 5 deterministic.
 5. **`NvVolumetricLighting` was carried over but not rebuilt** in this tree: it is independent of the
    demo (the D3D12 demo never calls it) and needs `fxc.exe`, so its targets were not part of the
    verification runs.
 6. **Not yet run:** a Debug configuration build, which the plan lists under *Verification*.
+   `-debug` was re-run on the left-handed pipeline and is clean as well. HBAO+ is disabled under the
+   validation layer by design, so its handedness conversion is covered by the image tables, not by
+   this run.
    `-debug` (D3D12 debug layer plus nvrhi validation) was run and is clean: no debug-layer and no
    validation errors, the only message being the documented `HBAO+ is not available with the nvrhi
    validation layer`, which confirms that the `QueryInterface` replacing the pass's `dynamic_cast`

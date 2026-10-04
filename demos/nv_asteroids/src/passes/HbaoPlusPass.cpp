@@ -182,10 +182,23 @@ void HbaoPlusPass::Render(nvrhi::ICommandList* commandList, const HbaoParameters
         const engine::IView* view = compositeView.GetChildView(engine::ViewType::PLANAR, viewIndex);
 
         // World-to-view (translated world) as a row-major 4x4.
-        const float4x4 worldToView = affineToHomogeneous(view->GetViewMatrix());
+        float4x4 worldToView = affineToHomogeneous(view->GetViewMatrix());
+        float4x4 projection = view->GetProjectionMatrix(false);
+
+        // The pipeline is left-handed and carries the 2018 content's handedness in the projection
+        // (P[0][0] < 0, see app/RenderHandedness.h). HBAO+ accepts such a projection without an error
+        // but reconstructs view-space positions as if its focal terms were positive, which no longer
+        // agrees with the normals it rotates by worldToView. Hand it the same world-to-clip transform
+        // with the reflection moved from the projection onto worldToView: the occlusion is invariant
+        // under a reflection of view space, so the result is the 2018 one.
+        if (projection[0][0] < 0.f)
+        {
+            const float4x4 mirrorX = affineToHomogeneous(scaling(float3(-1.f, 1.f, 1.f)));
+            worldToView = worldToView * mirrorX;
+            projection = mirrorX * projection;
+        }
 
         // HBAO+ wants the projection normalized so that m[2][3] = 1.
-        float4x4 projection = view->GetProjectionMatrix(false);
         projection *= 1.f / projection[2][3];
         projection[2][3] = 1.f;
 

@@ -15,6 +15,7 @@
 #include "passes/TemporalAAPass2018.h"
 #include "app/DemoLightProbe.h"
 #include "app/FeatureDemo.h"
+#include "app/RenderHandedness.h"
 #include "app/RenderTargets.h"
 #include "app/ThirdPersonCamera.h"
 #include "app/UIData.h"
@@ -75,20 +76,6 @@ using namespace donut::math;
 
 namespace
 {
-    // Rendering handedness of the 2018 demo.
-    //
-    // deviation: Donut's camera builds the left-handed (D3D) basis, right = cross(up, dir), so that
-    // cross(right, up) = dir with +Z forward. The 2018 demo was written against an older donut whose
-    // camera built right = cross(dir, up) -- the same basis with the right vector negated -- and its
-    // content, shaders and lighting constants were authored and verified against that view space.
-    // The camera stays in Donut's convention; the 2018 view space is reached by mirroring X once, at
-    // the boundary where the camera's matrix enters engine::IView. Every pass reads the view back
-    // from IView, so this is the only place the conversion is applied, and the projection stays the
-    // canonical D3D one that HBAO+ and the TAA jitter expect. Because the camera's mirror and this
-    // one cancel, the net world-to-clip transform -- and with it the triangle winding -- is the
-    // 2018 one, so no rasterizer state changes.
-    const dm::affine3 c_ViewSpace2018 = dm::scaling(dm::float3(-1.f, 1.f, 1.f));
-
     int64_t NowNanoseconds()
     {
         return std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -324,12 +311,14 @@ bool FeatureDemo::UpdateViews()
     }
 
     // 0x1401EDDD0: D3D-style perspective, near 1, far g_SceneFarDistance, aspect of the window.
-    const float4x4 projection = perspProjD3DStyle(radians(m_UI->verticalFov),
-        float(windowWidth) / float(std::max(windowHeight, 1)), 1.f, demo::g_SceneFarDistance);
+    // The view is Donut's left-handed camera matrix as is; the 2018 content's handedness is
+    // reconciled in the projection (see app/RenderHandedness.h).
+    const float4x4 projection = demo::MirrorProjectionX(perspProjD3DStyle(radians(m_UI->verticalFov),
+        float(windowWidth) / float(std::max(windowHeight, 1)), 1.f, demo::g_SceneFarDistance));
 
     m_View->SetViewport(nvrhi::Viewport(float(renderSize.x), float(renderSize.y)));
     m_View->SetPixelOffset(pixelOffset);
-    m_View->SetMatrices(m_ActiveCamera->GetTranslatedWorldToViewMatrix() * c_ViewSpace2018, projection);
+    m_View->SetMatrices(m_ActiveCamera->GetTranslatedWorldToViewMatrix(), projection);
     m_View->UpdateCache();
 
     m_ViewOrigin = -m_ActiveCamera->GetPosition();

@@ -1,4 +1,6 @@
 #include "fx/LensFlarePass.h"
+
+#include "app/RenderHandedness.h"
 #include "app/GpuProfiler.h"
 #include "fx/FxCommon.h"
 
@@ -113,7 +115,7 @@ namespace fx
             constants.cameraPos = float4(-cameraPosition, 1.f);
 
             const float4x4 projection = view->GetProjectionMatrix(false);
-            constants.screenScale = float2(projection.m_data[0], projection.m_data[5]);
+            constants.screenScale = demo::ProjectionScale(projection);   // an aspect ratio: magnitudes
 
             FillLightConstants2018(sun, constants.light);
             FillShadowConstants2018(sun.shadowMap.Get(), constants.light, constants.shadows, LENSFLARE_MAX_SHADOWS, true);

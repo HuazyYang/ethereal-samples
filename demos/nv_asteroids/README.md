@@ -95,11 +95,13 @@ base path points.
 - **Mesh shaders**: the 2018 NVAPI path is reconstructed and is the default when the 2018 NVAPI
   check passes; `-meshShaders d3d12` uses D3D12 SM 6.5 amplification/mesh shaders on nvrhi meshlet
   pipelines instead.
-- **Rendering handedness**: Donut's camera builds the left-handed basis (`right = cross(up, dir)`);
-  the 2018 demo was written against an older donut whose camera built the mirrored one, and its
-  content and shaders live in that view space. The camera keeps Donut's convention and
-  `FeatureDemo::UpdateViews` mirrors X once where the camera's matrix enters `engine::IView`, so the
-  net world-to-clip transform, winding and projection are the 2018 ones.
+- **Rendering handedness**: the render pipeline is left-handed. Donut's camera builds the
+  left-handed basis (`right = cross(up, dir)`) and every `engine::IView` carries its matrix
+  unchanged; the 2018 demo was authored through an older donut camera that built the mirrored one,
+  so the content's handedness is reconciled once, in the projection (`src/app/RenderHandedness.h`).
+  World-to-clip, winding and the 2018 rasterizer states are therefore unchanged. Code reading the
+  projection's focal terms as sizes takes their magnitudes; HBAO+ gets the reflection on its
+  world-to-view matrix instead.
 - **Fonts**: `app::ImGuiRenderPass` has no font registry (donut main's `ImGui_Renderer` did), so
   `UIRenderer` registers the three demo fonts against the ImGui atlas itself.
 - Shaders are compiled from the reconstructed HLSL with current DXC. Non-mesh stages stay at SM 6.0,

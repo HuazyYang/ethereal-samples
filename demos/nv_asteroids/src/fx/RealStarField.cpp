@@ -1,4 +1,6 @@
 #include "fx/RealStarField.h"
+
+#include "app/RenderHandedness.h"
 #include "app/GpuProfiler.h"
 #include "fx/FxCommon.h"
 
@@ -211,7 +213,8 @@ namespace fx
             constants.ST = celestial.x;
             constants.SinLAT = celestial.y;
             constants.CosLAT = celestial.z;
-            constants.Aspect = projection[1].y / projection[0].x;
+            const float2 scale = demo::ProjectionScale(projection);     // an aspect ratio: magnitudes
+            constants.Aspect = scale.y / scale.x;
             constants.Brightness = brightness;
             commandList->writeBuffer(m_CelestialConstants, &constants, sizeof(constants));
 
