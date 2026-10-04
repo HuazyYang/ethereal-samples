@@ -57,4 +57,4 @@ Keep local user paths, machine names and credentials out of plans. Use repositor
 
 | Plan | Status | ADRs |
 | --- | --- | --- |
-| _(none yet)_ | | |
+| [2026-10-04-nv-asteroids-migration.md](2026-10-04-nv-asteroids-migration.md) | Approved | _(pending)_ |

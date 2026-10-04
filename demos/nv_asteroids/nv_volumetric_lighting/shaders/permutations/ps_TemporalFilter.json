@@ -1,0 +1,9 @@
+{
+  "name": "ps_TemporalFilter",
+  "source": "TemporalFilter_PS.hlsl",
+  "entry": "main",
+  "profile": "ps_5_0",
+  "table_size": 1,
+  "description": "Temporal filter (ApplyLighting_TemporalFilter)",
+  "axes": []
+}

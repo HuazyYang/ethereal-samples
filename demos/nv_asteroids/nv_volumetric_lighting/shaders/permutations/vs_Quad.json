@@ -1,0 +1,9 @@
+{
+  "name": "vs_Quad",
+  "source": "Quad_VS.hlsl",
+  "entry": "main",
+  "profile": "vs_5_0",
+  "table_size": 1,
+  "description": "Fullscreen triangle VS (ContextImp_D3D11::DrawFullscreen)",
+  "axes": []
+}

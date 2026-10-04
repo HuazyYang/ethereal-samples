@@ -1,0 +1,38 @@
+{
+  "name": "cs_ComputeLightLUT",
+  "source": "ComputeLightLUT_CS.hlsl",
+  "entry": "main",
+  "profile": "cs_5_0",
+  "table_size": 16,
+  "description": "Light LUT compute (ContextImp_D3D11::RenderVolume_DoVolume_Spotlight 0x18000A8D0 / _Omni 0x18000B700). bit0 LIGHTMODE: field 0 -> LIGHTMODE_OMNI (point LUT only: omni lights and spotlights with FalloffMode NONE), field 1 -> LIGHTMODE_SPOTLIGHT (point + S1/S2 LUTs, FalloffMode FIXED); bits1-2 = eAttenuationMode; bit3 COMPUTEPASS (0: Dispatch(8,64,1) per-sample inscatter + 32-wide prefix sum, 1: Dispatch(1,128,1|3) carry row sums)",
+  "axes": [
+    {
+      "macro": "LIGHTMODE",
+      "shift": 0,
+      "bits": 1,
+      "values": [
+        2,
+        1
+      ]
+    },
+    {
+      "macro": "ATTENUATIONMODE",
+      "shift": 1,
+      "bits": 2,
+      "values": [
+        0,
+        1,
+        2
+      ]
+    },
+    {
+      "macro": "COMPUTEPASS",
+      "shift": 3,
+      "bits": 1,
+      "values": [
+        0,
+        1
+      ]
+    }
+  ]
+}

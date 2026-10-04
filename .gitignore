@@ -8,3 +8,6 @@
 /benchmark/Asteroids/.venv/
 __pycache__/
 *.pyc
+
+# nv_asteroids: media.db extracted in place (regenerate with demos/nv_asteroids/tools/extract_media.py)
+/demos/nv_asteroids/assets/

@@ -1,0 +1,19 @@
+{
+  "name": "ps_DownsampleDepth",
+  "source": "DownsampleDepth_PS.hlsl",
+  "entry": "main",
+  "profile": "ps_5_0",
+  "table_size": 2,
+  "description": "Depth copy/downsample (BeginAccumulation_CopyDepth): bit0 = scene depth is MSAA (framebuffer.uSamples > 1)",
+  "axes": [
+    {
+      "macro": "SAMPLEMODE",
+      "shift": 0,
+      "bits": 1,
+      "values": [
+        0,
+        1
+      ]
+    }
+  ]
+}

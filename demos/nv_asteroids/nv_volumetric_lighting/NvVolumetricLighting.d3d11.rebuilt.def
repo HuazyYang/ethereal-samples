@@ -1,0 +1,11 @@
+LIBRARY NvVolumetricLighting.d3d11.dll
+EXPORTS
+    ?ApplyLighting@VolumetricLighting@Nv@@YA?AW4Status@12@PEAXPEAUApplyLightingArgs@12@@Z
+    ?BeginAccumulation@VolumetricLighting@Nv@@YA?AW4Status@12@PEAXPEAUBeginAccumulationArgs@12@@Z
+    ?CloseLibrary@VolumetricLighting@Nv@@YA?AW4Status@12@XZ
+    ?CreateContext@VolumetricLighting@Nv@@YA?AW4Status@12@AEAPEAXPEBUPlatformDesc@12@PEBUContextDesc@12@@Z
+    ?EndAccumulation@VolumetricLighting@Nv@@YA?AW4Status@12@PEAXPEAUEndAccumulationArgs@12@@Z
+    ?NvGetAssertHandler@nvidia@@YAAEAVNvAssertHandler@1@XZ
+    ?OpenLibrary@VolumetricLighting@Nv@@YA?AW4Status@12@PEAVNvAllocatorCallback@nvidia@@PEAVNvAssertHandler@5@AEBUVersionDesc@12@@Z
+    ?ReleaseContext@VolumetricLighting@Nv@@YA?AW4Status@12@AEAPEAX@Z
+    ?RenderVolume@VolumetricLighting@Nv@@YA?AW4Status@12@PEAXPEAURenderVolumeArgs@12@@Z

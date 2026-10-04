@@ -1,0 +1,19 @@
+{
+  "name": "ps_Resolve",
+  "source": "Resolve_PS.hlsl",
+  "entry": "main",
+  "profile": "ps_5_0",
+  "table_size": 2,
+  "description": "Accumulation resolve (ApplyLighting_Resolve): bit0 = internal MSAA",
+  "axes": [
+    {
+      "macro": "SAMPLEMODE",
+      "shift": 0,
+      "bits": 1,
+      "values": [
+        0,
+        1
+      ]
+    }
+  ]
+}

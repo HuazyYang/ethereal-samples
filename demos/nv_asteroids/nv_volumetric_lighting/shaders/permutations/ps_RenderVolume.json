@@ -1,0 +1,59 @@
+{
+  "name": "ps_RenderVolume",
+  "source": "RenderVolume_PS.hlsl",
+  "entry": "main",
+  "profile": "ps_5_0",
+  "table_size": 512,
+  "description": "Volume PS (RenderVolume_DoVolume_*): bit0 = SAMPLEMODE (internal MSAA; only affects PASSMODE_FINAL: Texture2DMS scene depth), bits1-2 = LIGHTMODE (0 directional, 1 spotlight, 2 omni), bits3-4 = PASSMODE (0 geometry, 1 sky (ray length g_fZFar), 2 final (ray ends at scene depth)), bits5-6 = ATTENUATIONMODE (0 none, 1 polynomial, 2 inverse polynomial; only used by spotlight FALLOFFMODE_CUSTOM, else baked into the light LUTs), bits7-8 = FALLOFFMODE (Spotlight.eFalloffMode: 0 none -> LUT_P, 1 fixed -> LUT_P/S1/S2, 2 custom -> 9-sample Simpson integration with pow falloff). All 162 combinations are compiled; only 28 distinct blobs result.",
+  "axes": [
+    {
+      "macro": "SAMPLEMODE",
+      "shift": 0,
+      "bits": 1,
+      "values": [
+        0,
+        1
+      ]
+    },
+    {
+      "macro": "LIGHTMODE",
+      "shift": 1,
+      "bits": 2,
+      "values": [
+        0,
+        1,
+        2
+      ]
+    },
+    {
+      "macro": "PASSMODE",
+      "shift": 3,
+      "bits": 2,
+      "values": [
+        0,
+        1,
+        2
+      ]
+    },
+    {
+      "macro": "ATTENUATIONMODE",
+      "shift": 5,
+      "bits": 2,
+      "values": [
+        0,
+        1,
+        2
+      ]
+    },
+    {
+      "macro": "FALLOFFMODE",
+      "shift": 7,
+      "bits": 2,
+      "values": [
+        0,
+        1,
+        2
+      ]
+    }
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "name": "ps_Apply",
+  "source": "Apply_PS.hlsl",
+  "entry": "main",
+  "profile": "ps_5_0",
+  "table_size": 32,
+  "description": "Composite pass (ContextImp_D3D11::ApplyLighting_Composite): bit0 = output (scene depth) MSAA, bits1-2 = PostprocessDesc::eUpsampleQuality, bits3-4 = fog mode (0 none, 1 bDoFog && bIgnoreSkyFog, 2 bDoFog)",
+  "axes": [
+    {
+      "macro": "SAMPLEMODE",
+      "shift": 0,
+      "bits": 1,
+      "values": [
+        0,
+        1
+      ]
+    },
+    {
+      "macro": "UPSAMPLEMODE",
+      "shift": 1,
+      "bits": 2,
+      "values": [
+        0,
+        1,
+        2
+      ]
+    },
+    {
+      "macro": "FOGMODE",
+      "shift": 3,
+      "bits": 2,
+      "values": [
+        0,
+        1,
+        2
+      ]
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "name": "ps_ComputePhaseLookup",
+  "source": "ComputePhaseLookup_PS.hlsl",
+  "entry": "main",
+  "profile": "ps_5_0",
+  "table_size": 1,
+  "description": "Phase function LUT (BeginAccumulation_UpdateMediumLUT)",
+  "axes": []
+}

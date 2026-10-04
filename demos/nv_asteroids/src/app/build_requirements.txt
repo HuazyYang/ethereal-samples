@@ -1,0 +1,32 @@
+Build requirements of src/app, src/ui and src/passes/HbaoPlusPass (no CMakeLists changes were made)
+====================================================================================================
+
+Nothing has to be added; everything below is already provided by asteroids/CMakeLists.txt:
+- asteroids_core links donut_app / donut_render / donut_engine / donut_core, jsoncpp_static and GFSDK_SSAO_D3D12
+  (ImGui and GLFW come with donut_app).
+- Compile definitions ASTEROIDS_SHADER_DIR and ASTEROIDS_DONUT_SHADER_DIR: the FeatureDemo constructor
+  mounts them as /shaders/asteroids (+ /shaders/demo = <dir>/demo, /shaders/framework = <dir>/framework) and
+  /shaders/donut, and falls back to <exe dir>/shaders/{asteroids,donut}/dxil when the configured directories do
+  not exist.
+- NOMINMAX, WIN32_LEAN_AND_MEAN, _CRT_SECURE_NO_WARNINGS.
+- The include path asteroids/shaders/demo/include (light_cb.h and the other 2018 constant-buffer headers used by
+  the passes). fx/RealStarField.h is now self-contained, so FeatureDemo.cpp no longer includes <space_cb.h>.
+- HbaoPlusPass.cpp includes <nvrhi/d3d12.h>, <directx/d3d12.h> (DirectX-Headers, via nvrhi) and <GFSDK_SSAO.h>
+  (build/_asteroids_deps/hbaoplus/include, exported by the GFSDK_SSAO_D3D12 target). GFSDK_SSAO_D3D12.win64.dll
+  must sit next to the executable (it is copied to build/bin).
+- src/app/main.cpp is excluded from asteroids_core and compiled into the Asteroids executable together with
+  src/app/*.rc; the executable defines ASTEROIDS_MAIN_EXE=1, which main.cpp requires (the whole file is
+  inside #ifdef ASTEROIDS_MAIN_EXE, so it would compile to nothing inside a library).
+
+Resources:
+- src/app/Asteroids.rc includes resource.h and res/asteroids.ico, res/banner.bmp relative to the .rc
+  directory; rc.exe resolves them without extra include paths.
+
+System libraries used directly by main.cpp / UIRenderer.cpp (linked by default for MSVC WIN32 targets):
+- user32 (DialogBoxParamW, MessageBoxA, PostQuitMessage, LoadIconW, SendMessageW), shell32
+  (CommandLineToArgvW), kernel32. If a toolchain does not add them:
+  target_link_libraries(Asteroids PRIVATE user32 shell32)
+
+Verified in recon/build (VS 2022, x64, Release, after a CMake reconfigure):
+- target Asteroids (with asteroids_core and asteroids_shaders): builds with no errors and no warnings from src/app,
+  src/ui or src/passes/HbaoPlusPass (only donut's C4819 code-page warnings).

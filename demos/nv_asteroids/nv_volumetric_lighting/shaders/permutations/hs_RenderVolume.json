@@ -1,0 +1,49 @@
+{
+  "name": "hs_RenderVolume",
+  "source": "RenderVolume_HS.hlsl",
+  "entry": "main",
+  "profile": "hs_5_0",
+  "table_size": 64,
+  "description": "Volume HS: bit0 = shadow map array, bits1-2 = cascade count-1, bit3 = paraboloid (omni), bits4-5 = VolumeDesc::eTessQuality",
+  "axes": [
+    {
+      "macro": "SHADOWMAPTYPE",
+      "shift": 0,
+      "bits": 1,
+      "values": [
+        0,
+        1
+      ]
+    },
+    {
+      "macro": "CASCADECOUNT",
+      "shift": 1,
+      "bits": 2,
+      "values": [
+        0,
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "macro": "VOLUMETYPE",
+      "shift": 3,
+      "bits": 1,
+      "values": [
+        0,
+        1
+      ]
+    },
+    {
+      "macro": "MAXTESSFACTOR",
+      "shift": 4,
+      "bits": 2,
+      "values": [
+        0,
+        1,
+        2
+      ]
+    }
+  ]
+}

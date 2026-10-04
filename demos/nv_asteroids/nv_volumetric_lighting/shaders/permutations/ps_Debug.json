@@ -1,0 +1,9 @@
+{
+  "name": "ps_Debug",
+  "source": "Debug_PS.hlsl",
+  "entry": "main",
+  "profile": "ps_5_0",
+  "table_size": 1,
+  "description": "Wireframe debug pass (DebugFlags::WIREFRAME)",
+  "axes": []
+}

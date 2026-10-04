@@ -1,0 +1,22 @@
+{
+  "name": "vs_RenderVolume",
+  "source": "RenderVolume_VS.hlsl",
+  "entry": "main",
+  "profile": "vs_5_0",
+  "table_size": 8,
+  "description": "Volume VS: bits0-2 = mesh mode (0 frustum grid, 1 frustum base, 2 frustum cap, 3 omni volume, 4 geometry (unused by the C++))",
+  "axes": [
+    {
+      "macro": "MESHMODE",
+      "shift": 0,
+      "bits": 3,
+      "values": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ]
+    }
+  ]
+}

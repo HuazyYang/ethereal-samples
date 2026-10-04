@@ -1,0 +1,2843 @@
+{
+ "compiler": "fxc 10.1 (Windows SDK 10.0.19041.0)",
+ "flags": [
+  "/nologo",
+  "/WX"
+ ],
+ "families": [
+  {
+   "name": "cs_ComputeLightLUT",
+   "source": "ComputeLightLUT_CS.hlsl",
+   "entry": "main",
+   "profile": "cs_5_0",
+   "table_size": 16,
+   "description": "Light LUT compute (ContextImp_D3D11::RenderVolume_DoVolume_Spotlight 0x18000A8D0 / _Omni 0x18000B700). bit0 LIGHTMODE: field 0 -> LIGHTMODE_OMNI (point LUT only: omni lights and spotlights with FalloffMode NONE), field 1 -> LIGHTMODE_SPOTLIGHT (point + S1/S2 LUTs, FalloffMode FIXED); bits1-2 = eAttenuationMode; bit3 COMPUTEPASS (0: Dispatch(8,64,1) per-sample inscatter + 32-wide prefix sum, 1: Dispatch(1,128,1|3) carry row sums)",
+   "axes": [
+    {
+     "macro": "LIGHTMODE",
+     "shift": 0,
+     "bits": 1,
+     "values": [
+      2,
+      1
+     ]
+    },
+    {
+     "macro": "ATTENUATIONMODE",
+     "shift": 1,
+     "bits": 2,
+     "values": [
+      0,
+      1,
+      2
+     ]
+    },
+    {
+     "macro": "COMPUTEPASS",
+     "shift": 3,
+     "bits": 1,
+     "values": [
+      0,
+      1
+     ]
+    }
+   ],
+   "permutations": [
+    {
+     "index": 0,
+     "defines": {
+      "LIGHTMODE": 2,
+      "ATTENUATIONMODE": 0,
+      "COMPUTEPASS": 0
+     }
+    },
+    {
+     "index": 1,
+     "defines": {
+      "LIGHTMODE": 1,
+      "ATTENUATIONMODE": 0,
+      "COMPUTEPASS": 0
+     }
+    },
+    {
+     "index": 2,
+     "defines": {
+      "LIGHTMODE": 2,
+      "ATTENUATIONMODE": 1,
+      "COMPUTEPASS": 0
+     }
+    },
+    {
+     "index": 3,
+     "defines": {
+      "LIGHTMODE": 1,
+      "ATTENUATIONMODE": 1,
+      "COMPUTEPASS": 0
+     }
+    },
+    {
+     "index": 4,
+     "defines": {
+      "LIGHTMODE": 2,
+      "ATTENUATIONMODE": 2,
+      "COMPUTEPASS": 0
+     }
+    },
+    {
+     "index": 5,
+     "defines": {
+      "LIGHTMODE": 1,
+      "ATTENUATIONMODE": 2,
+      "COMPUTEPASS": 0
+     }
+    },
+    {
+     "index": 8,
+     "defines": {
+      "LIGHTMODE": 2,
+      "ATTENUATIONMODE": 0,
+      "COMPUTEPASS": 1
+     }
+    },
+    {
+     "index": 9,
+     "defines": {
+      "LIGHTMODE": 1,
+      "ATTENUATIONMODE": 0,
+      "COMPUTEPASS": 1
+     }
+    },
+    {
+     "index": 10,
+     "defines": {
+      "LIGHTMODE": 2,
+      "ATTENUATIONMODE": 1,
+      "COMPUTEPASS": 1
+     }
+    },
+    {
+     "index": 11,
+     "defines": {
+      "LIGHTMODE": 1,
+      "ATTENUATIONMODE": 1,
+      "COMPUTEPASS": 1
+     }
+    },
+    {
+     "index": 12,
+     "defines": {
+      "LIGHTMODE": 2,
+      "ATTENUATIONMODE": 2,
+      "COMPUTEPASS": 1
+     }
+    },
+    {
+     "index": 13,
+     "defines": {
+      "LIGHTMODE": 1,
+      "ATTENUATIONMODE": 2,
+      "COMPUTEPASS": 1
+     }
+    }
+   ]
+  },
+  {
+   "name": "ds_RenderVolume",
+   "source": "RenderVolume_DS.hlsl",
+   "entry": "main",
+   "profile": "ds_5_0",
+   "table_size": 16,
+   "description": "Volume DS: bit0 = shadow map array, bits1-2 = cascade count-1, bit3 = paraboloid (omni)",
+   "axes": [
+    {
+     "macro": "SHADOWMAPTYPE",
+     "shift": 0,
+     "bits": 1,
+     "values": [
+      0,
+      1
+     ]
+    },
+    {
+     "macro": "CASCADECOUNT",
+     "shift": 1,
+     "bits": 2,
+     "values": [
+      0,
+      1,
+      2,
+      3
+     ]
+    },
+    {
+     "macro": "VOLUMETYPE",
+     "shift": 3,
+     "bits": 1,
+     "values": [
+      0,
+      1
+     ]
+    }
+   ],
+   "permutations": [
+    {
+     "index": 0,
+     "defines": {
+      "SHADOWMAPTYPE": 0,
+      "CASCADECOUNT": 0,
+      "VOLUMETYPE": 0
+     }
+    },
+    {
+     "index": 1,
+     "defines": {
+      "SHADOWMAPTYPE": 1,
+      "CASCADECOUNT": 0,
+      "VOLUMETYPE": 0
+     }
+    },
+    {
+     "index": 2,
+     "defines": {
+      "SHADOWMAPTYPE": 0,
+      "CASCADECOUNT": 1,
+      "VOLUMETYPE": 0
+     }
+    },
+    {
+     "index": 3,
+     "defines": {
+      "SHADOWMAPTYPE": 1,
+      "CASCADECOUNT": 1,
+      "VOLUMETYPE": 0
+     }
+    },
+    {
+     "index": 4,
+     "defines": {
+      "SHADOWMAPTYPE": 0,
+      "CASCADECOUNT": 2,
+      "VOLUMETYPE": 0
+     }
+    },
+    {
+     "index": 5,
+     "defines": {
+      "SHADOWMAPTYPE": 1,
+      "CASCADECOUNT": 2,
+      "VOLUMETYPE": 0
+     }
+    },
+    {
+     "index": 6,
+     "defines": {
+      "SHADOWMAPTYPE": 0,
+      "CASCADECOUNT": 3,
+      "VOLUMETYPE": 0
+     }
+    },
+    {
+     "index": 7,
+     "defines": {
+      "SHADOWMAPTYPE": 1,
+      "CASCADECOUNT": 3,
+      "VOLUMETYPE": 0
+     }
+    },
+    {
+     "index": 8,
+     "defines": {
+      "SHADOWMAPTYPE": 0,
+      "CASCADECOUNT": 0,
+      "VOLUMETYPE": 1
+     }
+    },
+    {
+     "index": 9,
+     "defines": {
+      "SHADOWMAPTYPE": 1,
+      "CASCADECOUNT": 0,
+      "VOLUMETYPE": 1
+     }
+    },
+    {
+     "index": 10,
+     "defines": {
+      "SHADOWMAPTYPE": 0,
+      "CASCADECOUNT": 1,
+      "VOLUMETYPE": 1
+     }
+    },
+    {
+     "index": 11,
+     "defines": {
+      "SHADOWMAPTYPE": 1,
+      "CASCADECOUNT": 1,
+      "VOLUMETYPE": 1
+     }
+    },
+    {
+     "index": 12,
+     "defines": {
+      "SHADOWMAPTYPE": 0,
+      "CASCADECOUNT": 2,
+      "VOLUMETYPE": 1
+     }
+    },
+    {
+     "index": 13,
+     "defines": {
+      "SHADOWMAPTYPE": 1,
+      "CASCADECOUNT": 2,
+      "VOLUMETYPE": 1
+     }
+    },
+    {
+     "index": 14,
+     "defines": {
+      "SHADOWMAPTYPE": 0,
+      "CASCADECOUNT": 3,
+      "VOLUMETYPE": 1
+     }
+    },
+    {
+     "index": 15,
+     "defines": {
+      "SHADOWMAPTYPE": 1,
+      "CASCADECOUNT": 3,
+      "VOLUMETYPE": 1
+     }
+    }
+   ]
+  },
+  {
+   "name": "hs_RenderVolume",
+   "source": "RenderVolume_HS.hlsl",
+   "entry": "main",
+   "profile": "hs_5_0",
+   "table_size": 64,
+   "description": "Volume HS: bit0 = shadow map array, bits1-2 = cascade count-1, bit3 = paraboloid (omni), bits4-5 = VolumeDesc::eTessQuality",
+   "axes": [
+    {
+     "macro": "SHADOWMAPTYPE",
+     "shift": 0,
+     "bits": 1,
+     "values": [
+      0,
+      1
+     ]
+    },
+    {
+     "macro": "CASCADECOUNT",
+     "shift": 1,
+     "bits": 2,
+     "values": [
+      0,
+      1,
+      2,
+      3
+     ]
+    },
+    {
+     "macro": "VOLUMETYPE",
+     "shift": 3,
+     "bits": 1,
+     "values": [
+      0,
+      1
+     ]
+    },
+    {
+     "macro": "MAXTESSFACTOR",
+     "shift": 4,
+     "bits": 2,
+     "values": [
+      0,
+      1,
+      2
+     ]
+    }
+   ],
+   "permutations": [
+    {
+     "index": 0,
+     "defines": {
+      "SHADOWMAPTYPE": 0,
+      "CASCADECOUNT": 0,
+      "VOLUMETYPE": 0,
+      "MAXTESSFACTOR": 0
+     }
+    },
+    {
+     "index": 1,
+     "defines": {
+      "SHADOWMAPTYPE": 1,
+      "CASCADECOUNT": 0,
+      "VOLUMETYPE": 0,
+      "MAXTESSFACTOR": 0
+     }
+    },
+    {
+     "index": 2,
+     "defines": {
+      "SHADOWMAPTYPE": 0,
+      "CASCADECOUNT": 1,
+      "VOLUMETYPE": 0,
+      "MAXTESSFACTOR": 0
+     }
+    },
+    {
+     "index": 3,
+     "defines": {
+      "SHADOWMAPTYPE": 1,
+      "CASCADECOUNT": 1,
+      "VOLUMETYPE": 0,
+      "MAXTESSFACTOR": 0
+     }
+    },
+    {
+     "index": 4,
+     "defines": {
+      "SHADOWMAPTYPE": 0,
+      "CASCADECOUNT": 2,
+      "VOLUMETYPE": 0,
+      "MAXTESSFACTOR": 0
+     }
+    },
+    {
+     "index": 5,
+     "defines": {
+      "SHADOWMAPTYPE": 1,
+      "CASCADECOUNT": 2,
+      "VOLUMETYPE": 0,
+      "MAXTESSFACTOR": 0
+     }
+    },
+    {
+     "index": 6,
+     "defines": {
+      "SHADOWMAPTYPE": 0,
+      "CASCADECOUNT": 3,
+      "VOLUMETYPE": 0,
+      "MAXTESSFACTOR": 0
+     }
+    },
+    {
+     "index": 7,
+     "defines": {
+      "SHADOWMAPTYPE": 1,
+      "CASCADECOUNT": 3,
+      "VOLUMETYPE": 0,
+      "MAXTESSFACTOR": 0
+     }
+    },
+    {
+     "index": 8,
+     "defines": {
+      "SHADOWMAPTYPE": 0,
+      "CASCADECOUNT": 0,
+      "VOLUMETYPE": 1,
+      "MAXTESSFACTOR": 0
+     }
+    },
+    {
+     "index": 9,
+     "defines": {
+      "SHADOWMAPTYPE": 1,
+      "CASCADECOUNT": 0,
+      "VOLUMETYPE": 1,
+      "MAXTESSFACTOR": 0
+     }
+    },
+    {
+     "index": 10,
+     "defines": {
+      "SHADOWMAPTYPE": 0,
+      "CASCADECOUNT": 1,
+      "VOLUMETYPE": 1,
+      "MAXTESSFACTOR": 0
+     }
+    },
+    {
+     "index": 11,
+     "defines": {
+      "SHADOWMAPTYPE": 1,
+      "CASCADECOUNT": 1,
+      "VOLUMETYPE": 1,
+      "MAXTESSFACTOR": 0
+     }
+    },
+    {
+     "index": 12,
+     "defines": {
+      "SHADOWMAPTYPE": 0,
+      "CASCADECOUNT": 2,
+      "VOLUMETYPE": 1,
+      "MAXTESSFACTOR": 0
+     }
+    },
+    {
+     "index": 13,
+     "defines": {
+      "SHADOWMAPTYPE": 1,
+      "CASCADECOUNT": 2,
+      "VOLUMETYPE": 1,
+      "MAXTESSFACTOR": 0
+     }
+    },
+    {
+     "index": 14,
+     "defines": {
+      "SHADOWMAPTYPE": 0,
+      "CASCADECOUNT": 3,
+      "VOLUMETYPE": 1,
+      "MAXTESSFACTOR": 0
+     }
+    },
+    {
+     "index": 15,
+     "defines": {
+      "SHADOWMAPTYPE": 1,
+      "CASCADECOUNT": 3,
+      "VOLUMETYPE": 1,
+      "MAXTESSFACTOR": 0
+     }
+    },
+    {
+     "index": 16,
+     "defines": {
+      "SHADOWMAPTYPE": 0,
+      "CASCADECOUNT": 0,
+      "VOLUMETYPE": 0,
+      "MAXTESSFACTOR": 1
+     }
+    },
+    {
+     "index": 17,
+     "defines": {
+      "SHADOWMAPTYPE": 1,
+      "CASCADECOUNT": 0,
+      "VOLUMETYPE": 0,
+      "MAXTESSFACTOR": 1
+     }
+    },
+    {
+     "index": 18,
+     "defines": {
+      "SHADOWMAPTYPE": 0,
+      "CASCADECOUNT": 1,
+      "VOLUMETYPE": 0,
+      "MAXTESSFACTOR": 1
+     }
+    },
+    {
+     "index": 19,
+     "defines": {
+      "SHADOWMAPTYPE": 1,
+      "CASCADECOUNT": 1,
+      "VOLUMETYPE": 0,
+      "MAXTESSFACTOR": 1
+     }
+    },
+    {
+     "index": 20,
+     "defines": {
+      "SHADOWMAPTYPE": 0,
+      "CASCADECOUNT": 2,
+      "VOLUMETYPE": 0,
+      "MAXTESSFACTOR": 1
+     }
+    },
+    {
+     "index": 21,
+     "defines": {
+      "SHADOWMAPTYPE": 1,
+      "CASCADECOUNT": 2,
+      "VOLUMETYPE": 0,
+      "MAXTESSFACTOR": 1
+     }
+    },
+    {
+     "index": 22,
+     "defines": {
+      "SHADOWMAPTYPE": 0,
+      "CASCADECOUNT": 3,
+      "VOLUMETYPE": 0,
+      "MAXTESSFACTOR": 1
+     }
+    },
+    {
+     "index": 23,
+     "defines": {
+      "SHADOWMAPTYPE": 1,
+      "CASCADECOUNT": 3,
+      "VOLUMETYPE": 0,
+      "MAXTESSFACTOR": 1
+     }
+    },
+    {
+     "index": 24,
+     "defines": {
+      "SHADOWMAPTYPE": 0,
+      "CASCADECOUNT": 0,
+      "VOLUMETYPE": 1,
+      "MAXTESSFACTOR": 1
+     }
+    },
+    {
+     "index": 25,
+     "defines": {
+      "SHADOWMAPTYPE": 1,
+      "CASCADECOUNT": 0,
+      "VOLUMETYPE": 1,
+      "MAXTESSFACTOR": 1
+     }
+    },
+    {
+     "index": 26,
+     "defines": {
+      "SHADOWMAPTYPE": 0,
+      "CASCADECOUNT": 1,
+      "VOLUMETYPE": 1,
+      "MAXTESSFACTOR": 1
+     }
+    },
+    {
+     "index": 27,
+     "defines": {
+      "SHADOWMAPTYPE": 1,
+      "CASCADECOUNT": 1,
+      "VOLUMETYPE": 1,
+      "MAXTESSFACTOR": 1
+     }
+    },
+    {
+     "index": 28,
+     "defines": {
+      "SHADOWMAPTYPE": 0,
+      "CASCADECOUNT": 2,
+      "VOLUMETYPE": 1,
+      "MAXTESSFACTOR": 1
+     }
+    },
+    {
+     "index": 29,
+     "defines": {
+      "SHADOWMAPTYPE": 1,
+      "CASCADECOUNT": 2,
+      "VOLUMETYPE": 1,
+      "MAXTESSFACTOR": 1
+     }
+    },
+    {
+     "index": 30,
+     "defines": {
+      "SHADOWMAPTYPE": 0,
+      "CASCADECOUNT": 3,
+      "VOLUMETYPE": 1,
+      "MAXTESSFACTOR": 1
+     }
+    },
+    {
+     "index": 31,
+     "defines": {
+      "SHADOWMAPTYPE": 1,
+      "CASCADECOUNT": 3,
+      "VOLUMETYPE": 1,
+      "MAXTESSFACTOR": 1
+     }
+    },
+    {
+     "index": 32,
+     "defines": {
+      "SHADOWMAPTYPE": 0,
+      "CASCADECOUNT": 0,
+      "VOLUMETYPE": 0,
+      "MAXTESSFACTOR": 2
+     }
+    },
+    {
+     "index": 33,
+     "defines": {
+      "SHADOWMAPTYPE": 1,
+      "CASCADECOUNT": 0,
+      "VOLUMETYPE": 0,
+      "MAXTESSFACTOR": 2
+     }
+    },
+    {
+     "index": 34,
+     "defines": {
+      "SHADOWMAPTYPE": 0,
+      "CASCADECOUNT": 1,
+      "VOLUMETYPE": 0,
+      "MAXTESSFACTOR": 2
+     }
+    },
+    {
+     "index": 35,
+     "defines": {
+      "SHADOWMAPTYPE": 1,
+      "CASCADECOUNT": 1,
+      "VOLUMETYPE": 0,
+      "MAXTESSFACTOR": 2
+     }
+    },
+    {
+     "index": 36,
+     "defines": {
+      "SHADOWMAPTYPE": 0,
+      "CASCADECOUNT": 2,
+      "VOLUMETYPE": 0,
+      "MAXTESSFACTOR": 2
+     }
+    },
+    {
+     "index": 37,
+     "defines": {
+      "SHADOWMAPTYPE": 1,
+      "CASCADECOUNT": 2,
+      "VOLUMETYPE": 0,
+      "MAXTESSFACTOR": 2
+     }
+    },
+    {
+     "index": 38,
+     "defines": {
+      "SHADOWMAPTYPE": 0,
+      "CASCADECOUNT": 3,
+      "VOLUMETYPE": 0,
+      "MAXTESSFACTOR": 2
+     }
+    },
+    {
+     "index": 39,
+     "defines": {
+      "SHADOWMAPTYPE": 1,
+      "CASCADECOUNT": 3,
+      "VOLUMETYPE": 0,
+      "MAXTESSFACTOR": 2
+     }
+    },
+    {
+     "index": 40,
+     "defines": {
+      "SHADOWMAPTYPE": 0,
+      "CASCADECOUNT": 0,
+      "VOLUMETYPE": 1,
+      "MAXTESSFACTOR": 2
+     }
+    },
+    {
+     "index": 41,
+     "defines": {
+      "SHADOWMAPTYPE": 1,
+      "CASCADECOUNT": 0,
+      "VOLUMETYPE": 1,
+      "MAXTESSFACTOR": 2
+     }
+    },
+    {
+     "index": 42,
+     "defines": {
+      "SHADOWMAPTYPE": 0,
+      "CASCADECOUNT": 1,
+      "VOLUMETYPE": 1,
+      "MAXTESSFACTOR": 2
+     }
+    },
+    {
+     "index": 43,
+     "defines": {
+      "SHADOWMAPTYPE": 1,
+      "CASCADECOUNT": 1,
+      "VOLUMETYPE": 1,
+      "MAXTESSFACTOR": 2
+     }
+    },
+    {
+     "index": 44,
+     "defines": {
+      "SHADOWMAPTYPE": 0,
+      "CASCADECOUNT": 2,
+      "VOLUMETYPE": 1,
+      "MAXTESSFACTOR": 2
+     }
+    },
+    {
+     "index": 45,
+     "defines": {
+      "SHADOWMAPTYPE": 1,
+      "CASCADECOUNT": 2,
+      "VOLUMETYPE": 1,
+      "MAXTESSFACTOR": 2
+     }
+    },
+    {
+     "index": 46,
+     "defines": {
+      "SHADOWMAPTYPE": 0,
+      "CASCADECOUNT": 3,
+      "VOLUMETYPE": 1,
+      "MAXTESSFACTOR": 2
+     }
+    },
+    {
+     "index": 47,
+     "defines": {
+      "SHADOWMAPTYPE": 1,
+      "CASCADECOUNT": 3,
+      "VOLUMETYPE": 1,
+      "MAXTESSFACTOR": 2
+     }
+    }
+   ]
+  },
+  {
+   "name": "ps_Apply",
+   "source": "Apply_PS.hlsl",
+   "entry": "main",
+   "profile": "ps_5_0",
+   "table_size": 32,
+   "description": "Composite pass (ContextImp_D3D11::ApplyLighting_Composite): bit0 = output (scene depth) MSAA, bits1-2 = PostprocessDesc::eUpsampleQuality, bits3-4 = fog mode (0 none, 1 bDoFog && bIgnoreSkyFog, 2 bDoFog)",
+   "axes": [
+    {
+     "macro": "SAMPLEMODE",
+     "shift": 0,
+     "bits": 1,
+     "values": [
+      0,
+      1
+     ]
+    },
+    {
+     "macro": "UPSAMPLEMODE",
+     "shift": 1,
+     "bits": 2,
+     "values": [
+      0,
+      1,
+      2
+     ]
+    },
+    {
+     "macro": "FOGMODE",
+     "shift": 3,
+     "bits": 2,
+     "values": [
+      0,
+      1,
+      2
+     ]
+    }
+   ],
+   "permutations": [
+    {
+     "index": 0,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "UPSAMPLEMODE": 0,
+      "FOGMODE": 0
+     }
+    },
+    {
+     "index": 1,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "UPSAMPLEMODE": 0,
+      "FOGMODE": 0
+     }
+    },
+    {
+     "index": 2,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "UPSAMPLEMODE": 1,
+      "FOGMODE": 0
+     }
+    },
+    {
+     "index": 3,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "UPSAMPLEMODE": 1,
+      "FOGMODE": 0
+     }
+    },
+    {
+     "index": 4,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "UPSAMPLEMODE": 2,
+      "FOGMODE": 0
+     }
+    },
+    {
+     "index": 5,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "UPSAMPLEMODE": 2,
+      "FOGMODE": 0
+     }
+    },
+    {
+     "index": 8,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "UPSAMPLEMODE": 0,
+      "FOGMODE": 1
+     }
+    },
+    {
+     "index": 9,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "UPSAMPLEMODE": 0,
+      "FOGMODE": 1
+     }
+    },
+    {
+     "index": 10,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "UPSAMPLEMODE": 1,
+      "FOGMODE": 1
+     }
+    },
+    {
+     "index": 11,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "UPSAMPLEMODE": 1,
+      "FOGMODE": 1
+     }
+    },
+    {
+     "index": 12,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "UPSAMPLEMODE": 2,
+      "FOGMODE": 1
+     }
+    },
+    {
+     "index": 13,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "UPSAMPLEMODE": 2,
+      "FOGMODE": 1
+     }
+    },
+    {
+     "index": 16,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "UPSAMPLEMODE": 0,
+      "FOGMODE": 2
+     }
+    },
+    {
+     "index": 17,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "UPSAMPLEMODE": 0,
+      "FOGMODE": 2
+     }
+    },
+    {
+     "index": 18,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "UPSAMPLEMODE": 1,
+      "FOGMODE": 2
+     }
+    },
+    {
+     "index": 19,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "UPSAMPLEMODE": 1,
+      "FOGMODE": 2
+     }
+    },
+    {
+     "index": 20,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "UPSAMPLEMODE": 2,
+      "FOGMODE": 2
+     }
+    },
+    {
+     "index": 21,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "UPSAMPLEMODE": 2,
+      "FOGMODE": 2
+     }
+    }
+   ]
+  },
+  {
+   "name": "ps_ComputePhaseLookup",
+   "source": "ComputePhaseLookup_PS.hlsl",
+   "entry": "main",
+   "profile": "ps_5_0",
+   "table_size": 1,
+   "description": "Phase function LUT (BeginAccumulation_UpdateMediumLUT)",
+   "axes": [],
+   "permutations": [
+    {
+     "index": 0,
+     "defines": {}
+    }
+   ]
+  },
+  {
+   "name": "ps_Debug",
+   "source": "Debug_PS.hlsl",
+   "entry": "main",
+   "profile": "ps_5_0",
+   "table_size": 1,
+   "description": "Wireframe debug pass (DebugFlags::WIREFRAME)",
+   "axes": [],
+   "permutations": [
+    {
+     "index": 0,
+     "defines": {}
+    }
+   ]
+  },
+  {
+   "name": "ps_DownsampleDepth",
+   "source": "DownsampleDepth_PS.hlsl",
+   "entry": "main",
+   "profile": "ps_5_0",
+   "table_size": 2,
+   "description": "Depth copy/downsample (BeginAccumulation_CopyDepth): bit0 = scene depth is MSAA (framebuffer.uSamples > 1)",
+   "axes": [
+    {
+     "macro": "SAMPLEMODE",
+     "shift": 0,
+     "bits": 1,
+     "values": [
+      0,
+      1
+     ]
+    }
+   ],
+   "permutations": [
+    {
+     "index": 0,
+     "defines": {
+      "SAMPLEMODE": 0
+     }
+    },
+    {
+     "index": 1,
+     "defines": {
+      "SAMPLEMODE": 1
+     }
+    }
+   ]
+  },
+  {
+   "name": "ps_RenderVolume",
+   "source": "RenderVolume_PS.hlsl",
+   "entry": "main",
+   "profile": "ps_5_0",
+   "table_size": 512,
+   "description": "Volume PS (RenderVolume_DoVolume_*): bit0 = SAMPLEMODE (internal MSAA; only affects PASSMODE_FINAL: Texture2DMS scene depth), bits1-2 = LIGHTMODE (0 directional, 1 spotlight, 2 omni), bits3-4 = PASSMODE (0 geometry, 1 sky (ray length g_fZFar), 2 final (ray ends at scene depth)), bits5-6 = ATTENUATIONMODE (0 none, 1 polynomial, 2 inverse polynomial; only used by spotlight FALLOFFMODE_CUSTOM, else baked into the light LUTs), bits7-8 = FALLOFFMODE (Spotlight.eFalloffMode: 0 none -> LUT_P, 1 fixed -> LUT_P/S1/S2, 2 custom -> 9-sample Simpson integration with pow falloff). All 162 combinations are compiled; only 28 distinct blobs result.",
+   "axes": [
+    {
+     "macro": "SAMPLEMODE",
+     "shift": 0,
+     "bits": 1,
+     "values": [
+      0,
+      1
+     ]
+    },
+    {
+     "macro": "LIGHTMODE",
+     "shift": 1,
+     "bits": 2,
+     "values": [
+      0,
+      1,
+      2
+     ]
+    },
+    {
+     "macro": "PASSMODE",
+     "shift": 3,
+     "bits": 2,
+     "values": [
+      0,
+      1,
+      2
+     ]
+    },
+    {
+     "macro": "ATTENUATIONMODE",
+     "shift": 5,
+     "bits": 2,
+     "values": [
+      0,
+      1,
+      2
+     ]
+    },
+    {
+     "macro": "FALLOFFMODE",
+     "shift": 7,
+     "bits": 2,
+     "values": [
+      0,
+      1,
+      2
+     ]
+    }
+   ],
+   "permutations": [
+    {
+     "index": 0,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 0,
+      "PASSMODE": 0,
+      "ATTENUATIONMODE": 0,
+      "FALLOFFMODE": 0
+     }
+    },
+    {
+     "index": 1,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 0,
+      "PASSMODE": 0,
+      "ATTENUATIONMODE": 0,
+      "FALLOFFMODE": 0
+     }
+    },
+    {
+     "index": 2,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 1,
+      "PASSMODE": 0,
+      "ATTENUATIONMODE": 0,
+      "FALLOFFMODE": 0
+     }
+    },
+    {
+     "index": 3,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 1,
+      "PASSMODE": 0,
+      "ATTENUATIONMODE": 0,
+      "FALLOFFMODE": 0
+     }
+    },
+    {
+     "index": 4,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 2,
+      "PASSMODE": 0,
+      "ATTENUATIONMODE": 0,
+      "FALLOFFMODE": 0
+     }
+    },
+    {
+     "index": 5,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 2,
+      "PASSMODE": 0,
+      "ATTENUATIONMODE": 0,
+      "FALLOFFMODE": 0
+     }
+    },
+    {
+     "index": 8,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 0,
+      "PASSMODE": 1,
+      "ATTENUATIONMODE": 0,
+      "FALLOFFMODE": 0
+     }
+    },
+    {
+     "index": 9,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 0,
+      "PASSMODE": 1,
+      "ATTENUATIONMODE": 0,
+      "FALLOFFMODE": 0
+     }
+    },
+    {
+     "index": 10,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 1,
+      "PASSMODE": 1,
+      "ATTENUATIONMODE": 0,
+      "FALLOFFMODE": 0
+     }
+    },
+    {
+     "index": 11,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 1,
+      "PASSMODE": 1,
+      "ATTENUATIONMODE": 0,
+      "FALLOFFMODE": 0
+     }
+    },
+    {
+     "index": 12,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 2,
+      "PASSMODE": 1,
+      "ATTENUATIONMODE": 0,
+      "FALLOFFMODE": 0
+     }
+    },
+    {
+     "index": 13,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 2,
+      "PASSMODE": 1,
+      "ATTENUATIONMODE": 0,
+      "FALLOFFMODE": 0
+     }
+    },
+    {
+     "index": 16,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 0,
+      "PASSMODE": 2,
+      "ATTENUATIONMODE": 0,
+      "FALLOFFMODE": 0
+     }
+    },
+    {
+     "index": 17,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 0,
+      "PASSMODE": 2,
+      "ATTENUATIONMODE": 0,
+      "FALLOFFMODE": 0
+     }
+    },
+    {
+     "index": 18,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 1,
+      "PASSMODE": 2,
+      "ATTENUATIONMODE": 0,
+      "FALLOFFMODE": 0
+     }
+    },
+    {
+     "index": 19,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 1,
+      "PASSMODE": 2,
+      "ATTENUATIONMODE": 0,
+      "FALLOFFMODE": 0
+     }
+    },
+    {
+     "index": 20,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 2,
+      "PASSMODE": 2,
+      "ATTENUATIONMODE": 0,
+      "FALLOFFMODE": 0
+     }
+    },
+    {
+     "index": 21,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 2,
+      "PASSMODE": 2,
+      "ATTENUATIONMODE": 0,
+      "FALLOFFMODE": 0
+     }
+    },
+    {
+     "index": 32,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 0,
+      "PASSMODE": 0,
+      "ATTENUATIONMODE": 1,
+      "FALLOFFMODE": 0
+     }
+    },
+    {
+     "index": 33,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 0,
+      "PASSMODE": 0,
+      "ATTENUATIONMODE": 1,
+      "FALLOFFMODE": 0
+     }
+    },
+    {
+     "index": 34,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 1,
+      "PASSMODE": 0,
+      "ATTENUATIONMODE": 1,
+      "FALLOFFMODE": 0
+     }
+    },
+    {
+     "index": 35,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 1,
+      "PASSMODE": 0,
+      "ATTENUATIONMODE": 1,
+      "FALLOFFMODE": 0
+     }
+    },
+    {
+     "index": 36,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 2,
+      "PASSMODE": 0,
+      "ATTENUATIONMODE": 1,
+      "FALLOFFMODE": 0
+     }
+    },
+    {
+     "index": 37,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 2,
+      "PASSMODE": 0,
+      "ATTENUATIONMODE": 1,
+      "FALLOFFMODE": 0
+     }
+    },
+    {
+     "index": 40,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 0,
+      "PASSMODE": 1,
+      "ATTENUATIONMODE": 1,
+      "FALLOFFMODE": 0
+     }
+    },
+    {
+     "index": 41,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 0,
+      "PASSMODE": 1,
+      "ATTENUATIONMODE": 1,
+      "FALLOFFMODE": 0
+     }
+    },
+    {
+     "index": 42,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 1,
+      "PASSMODE": 1,
+      "ATTENUATIONMODE": 1,
+      "FALLOFFMODE": 0
+     }
+    },
+    {
+     "index": 43,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 1,
+      "PASSMODE": 1,
+      "ATTENUATIONMODE": 1,
+      "FALLOFFMODE": 0
+     }
+    },
+    {
+     "index": 44,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 2,
+      "PASSMODE": 1,
+      "ATTENUATIONMODE": 1,
+      "FALLOFFMODE": 0
+     }
+    },
+    {
+     "index": 45,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 2,
+      "PASSMODE": 1,
+      "ATTENUATIONMODE": 1,
+      "FALLOFFMODE": 0
+     }
+    },
+    {
+     "index": 48,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 0,
+      "PASSMODE": 2,
+      "ATTENUATIONMODE": 1,
+      "FALLOFFMODE": 0
+     }
+    },
+    {
+     "index": 49,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 0,
+      "PASSMODE": 2,
+      "ATTENUATIONMODE": 1,
+      "FALLOFFMODE": 0
+     }
+    },
+    {
+     "index": 50,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 1,
+      "PASSMODE": 2,
+      "ATTENUATIONMODE": 1,
+      "FALLOFFMODE": 0
+     }
+    },
+    {
+     "index": 51,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 1,
+      "PASSMODE": 2,
+      "ATTENUATIONMODE": 1,
+      "FALLOFFMODE": 0
+     }
+    },
+    {
+     "index": 52,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 2,
+      "PASSMODE": 2,
+      "ATTENUATIONMODE": 1,
+      "FALLOFFMODE": 0
+     }
+    },
+    {
+     "index": 53,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 2,
+      "PASSMODE": 2,
+      "ATTENUATIONMODE": 1,
+      "FALLOFFMODE": 0
+     }
+    },
+    {
+     "index": 64,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 0,
+      "PASSMODE": 0,
+      "ATTENUATIONMODE": 2,
+      "FALLOFFMODE": 0
+     }
+    },
+    {
+     "index": 65,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 0,
+      "PASSMODE": 0,
+      "ATTENUATIONMODE": 2,
+      "FALLOFFMODE": 0
+     }
+    },
+    {
+     "index": 66,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 1,
+      "PASSMODE": 0,
+      "ATTENUATIONMODE": 2,
+      "FALLOFFMODE": 0
+     }
+    },
+    {
+     "index": 67,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 1,
+      "PASSMODE": 0,
+      "ATTENUATIONMODE": 2,
+      "FALLOFFMODE": 0
+     }
+    },
+    {
+     "index": 68,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 2,
+      "PASSMODE": 0,
+      "ATTENUATIONMODE": 2,
+      "FALLOFFMODE": 0
+     }
+    },
+    {
+     "index": 69,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 2,
+      "PASSMODE": 0,
+      "ATTENUATIONMODE": 2,
+      "FALLOFFMODE": 0
+     }
+    },
+    {
+     "index": 72,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 0,
+      "PASSMODE": 1,
+      "ATTENUATIONMODE": 2,
+      "FALLOFFMODE": 0
+     }
+    },
+    {
+     "index": 73,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 0,
+      "PASSMODE": 1,
+      "ATTENUATIONMODE": 2,
+      "FALLOFFMODE": 0
+     }
+    },
+    {
+     "index": 74,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 1,
+      "PASSMODE": 1,
+      "ATTENUATIONMODE": 2,
+      "FALLOFFMODE": 0
+     }
+    },
+    {
+     "index": 75,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 1,
+      "PASSMODE": 1,
+      "ATTENUATIONMODE": 2,
+      "FALLOFFMODE": 0
+     }
+    },
+    {
+     "index": 76,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 2,
+      "PASSMODE": 1,
+      "ATTENUATIONMODE": 2,
+      "FALLOFFMODE": 0
+     }
+    },
+    {
+     "index": 77,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 2,
+      "PASSMODE": 1,
+      "ATTENUATIONMODE": 2,
+      "FALLOFFMODE": 0
+     }
+    },
+    {
+     "index": 80,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 0,
+      "PASSMODE": 2,
+      "ATTENUATIONMODE": 2,
+      "FALLOFFMODE": 0
+     }
+    },
+    {
+     "index": 81,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 0,
+      "PASSMODE": 2,
+      "ATTENUATIONMODE": 2,
+      "FALLOFFMODE": 0
+     }
+    },
+    {
+     "index": 82,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 1,
+      "PASSMODE": 2,
+      "ATTENUATIONMODE": 2,
+      "FALLOFFMODE": 0
+     }
+    },
+    {
+     "index": 83,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 1,
+      "PASSMODE": 2,
+      "ATTENUATIONMODE": 2,
+      "FALLOFFMODE": 0
+     }
+    },
+    {
+     "index": 84,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 2,
+      "PASSMODE": 2,
+      "ATTENUATIONMODE": 2,
+      "FALLOFFMODE": 0
+     }
+    },
+    {
+     "index": 85,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 2,
+      "PASSMODE": 2,
+      "ATTENUATIONMODE": 2,
+      "FALLOFFMODE": 0
+     }
+    },
+    {
+     "index": 128,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 0,
+      "PASSMODE": 0,
+      "ATTENUATIONMODE": 0,
+      "FALLOFFMODE": 1
+     }
+    },
+    {
+     "index": 129,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 0,
+      "PASSMODE": 0,
+      "ATTENUATIONMODE": 0,
+      "FALLOFFMODE": 1
+     }
+    },
+    {
+     "index": 130,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 1,
+      "PASSMODE": 0,
+      "ATTENUATIONMODE": 0,
+      "FALLOFFMODE": 1
+     }
+    },
+    {
+     "index": 131,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 1,
+      "PASSMODE": 0,
+      "ATTENUATIONMODE": 0,
+      "FALLOFFMODE": 1
+     }
+    },
+    {
+     "index": 132,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 2,
+      "PASSMODE": 0,
+      "ATTENUATIONMODE": 0,
+      "FALLOFFMODE": 1
+     }
+    },
+    {
+     "index": 133,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 2,
+      "PASSMODE": 0,
+      "ATTENUATIONMODE": 0,
+      "FALLOFFMODE": 1
+     }
+    },
+    {
+     "index": 136,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 0,
+      "PASSMODE": 1,
+      "ATTENUATIONMODE": 0,
+      "FALLOFFMODE": 1
+     }
+    },
+    {
+     "index": 137,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 0,
+      "PASSMODE": 1,
+      "ATTENUATIONMODE": 0,
+      "FALLOFFMODE": 1
+     }
+    },
+    {
+     "index": 138,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 1,
+      "PASSMODE": 1,
+      "ATTENUATIONMODE": 0,
+      "FALLOFFMODE": 1
+     }
+    },
+    {
+     "index": 139,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 1,
+      "PASSMODE": 1,
+      "ATTENUATIONMODE": 0,
+      "FALLOFFMODE": 1
+     }
+    },
+    {
+     "index": 140,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 2,
+      "PASSMODE": 1,
+      "ATTENUATIONMODE": 0,
+      "FALLOFFMODE": 1
+     }
+    },
+    {
+     "index": 141,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 2,
+      "PASSMODE": 1,
+      "ATTENUATIONMODE": 0,
+      "FALLOFFMODE": 1
+     }
+    },
+    {
+     "index": 144,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 0,
+      "PASSMODE": 2,
+      "ATTENUATIONMODE": 0,
+      "FALLOFFMODE": 1
+     }
+    },
+    {
+     "index": 145,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 0,
+      "PASSMODE": 2,
+      "ATTENUATIONMODE": 0,
+      "FALLOFFMODE": 1
+     }
+    },
+    {
+     "index": 146,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 1,
+      "PASSMODE": 2,
+      "ATTENUATIONMODE": 0,
+      "FALLOFFMODE": 1
+     }
+    },
+    {
+     "index": 147,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 1,
+      "PASSMODE": 2,
+      "ATTENUATIONMODE": 0,
+      "FALLOFFMODE": 1
+     }
+    },
+    {
+     "index": 148,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 2,
+      "PASSMODE": 2,
+      "ATTENUATIONMODE": 0,
+      "FALLOFFMODE": 1
+     }
+    },
+    {
+     "index": 149,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 2,
+      "PASSMODE": 2,
+      "ATTENUATIONMODE": 0,
+      "FALLOFFMODE": 1
+     }
+    },
+    {
+     "index": 160,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 0,
+      "PASSMODE": 0,
+      "ATTENUATIONMODE": 1,
+      "FALLOFFMODE": 1
+     }
+    },
+    {
+     "index": 161,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 0,
+      "PASSMODE": 0,
+      "ATTENUATIONMODE": 1,
+      "FALLOFFMODE": 1
+     }
+    },
+    {
+     "index": 162,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 1,
+      "PASSMODE": 0,
+      "ATTENUATIONMODE": 1,
+      "FALLOFFMODE": 1
+     }
+    },
+    {
+     "index": 163,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 1,
+      "PASSMODE": 0,
+      "ATTENUATIONMODE": 1,
+      "FALLOFFMODE": 1
+     }
+    },
+    {
+     "index": 164,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 2,
+      "PASSMODE": 0,
+      "ATTENUATIONMODE": 1,
+      "FALLOFFMODE": 1
+     }
+    },
+    {
+     "index": 165,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 2,
+      "PASSMODE": 0,
+      "ATTENUATIONMODE": 1,
+      "FALLOFFMODE": 1
+     }
+    },
+    {
+     "index": 168,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 0,
+      "PASSMODE": 1,
+      "ATTENUATIONMODE": 1,
+      "FALLOFFMODE": 1
+     }
+    },
+    {
+     "index": 169,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 0,
+      "PASSMODE": 1,
+      "ATTENUATIONMODE": 1,
+      "FALLOFFMODE": 1
+     }
+    },
+    {
+     "index": 170,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 1,
+      "PASSMODE": 1,
+      "ATTENUATIONMODE": 1,
+      "FALLOFFMODE": 1
+     }
+    },
+    {
+     "index": 171,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 1,
+      "PASSMODE": 1,
+      "ATTENUATIONMODE": 1,
+      "FALLOFFMODE": 1
+     }
+    },
+    {
+     "index": 172,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 2,
+      "PASSMODE": 1,
+      "ATTENUATIONMODE": 1,
+      "FALLOFFMODE": 1
+     }
+    },
+    {
+     "index": 173,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 2,
+      "PASSMODE": 1,
+      "ATTENUATIONMODE": 1,
+      "FALLOFFMODE": 1
+     }
+    },
+    {
+     "index": 176,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 0,
+      "PASSMODE": 2,
+      "ATTENUATIONMODE": 1,
+      "FALLOFFMODE": 1
+     }
+    },
+    {
+     "index": 177,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 0,
+      "PASSMODE": 2,
+      "ATTENUATIONMODE": 1,
+      "FALLOFFMODE": 1
+     }
+    },
+    {
+     "index": 178,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 1,
+      "PASSMODE": 2,
+      "ATTENUATIONMODE": 1,
+      "FALLOFFMODE": 1
+     }
+    },
+    {
+     "index": 179,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 1,
+      "PASSMODE": 2,
+      "ATTENUATIONMODE": 1,
+      "FALLOFFMODE": 1
+     }
+    },
+    {
+     "index": 180,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 2,
+      "PASSMODE": 2,
+      "ATTENUATIONMODE": 1,
+      "FALLOFFMODE": 1
+     }
+    },
+    {
+     "index": 181,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 2,
+      "PASSMODE": 2,
+      "ATTENUATIONMODE": 1,
+      "FALLOFFMODE": 1
+     }
+    },
+    {
+     "index": 192,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 0,
+      "PASSMODE": 0,
+      "ATTENUATIONMODE": 2,
+      "FALLOFFMODE": 1
+     }
+    },
+    {
+     "index": 193,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 0,
+      "PASSMODE": 0,
+      "ATTENUATIONMODE": 2,
+      "FALLOFFMODE": 1
+     }
+    },
+    {
+     "index": 194,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 1,
+      "PASSMODE": 0,
+      "ATTENUATIONMODE": 2,
+      "FALLOFFMODE": 1
+     }
+    },
+    {
+     "index": 195,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 1,
+      "PASSMODE": 0,
+      "ATTENUATIONMODE": 2,
+      "FALLOFFMODE": 1
+     }
+    },
+    {
+     "index": 196,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 2,
+      "PASSMODE": 0,
+      "ATTENUATIONMODE": 2,
+      "FALLOFFMODE": 1
+     }
+    },
+    {
+     "index": 197,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 2,
+      "PASSMODE": 0,
+      "ATTENUATIONMODE": 2,
+      "FALLOFFMODE": 1
+     }
+    },
+    {
+     "index": 200,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 0,
+      "PASSMODE": 1,
+      "ATTENUATIONMODE": 2,
+      "FALLOFFMODE": 1
+     }
+    },
+    {
+     "index": 201,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 0,
+      "PASSMODE": 1,
+      "ATTENUATIONMODE": 2,
+      "FALLOFFMODE": 1
+     }
+    },
+    {
+     "index": 202,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 1,
+      "PASSMODE": 1,
+      "ATTENUATIONMODE": 2,
+      "FALLOFFMODE": 1
+     }
+    },
+    {
+     "index": 203,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 1,
+      "PASSMODE": 1,
+      "ATTENUATIONMODE": 2,
+      "FALLOFFMODE": 1
+     }
+    },
+    {
+     "index": 204,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 2,
+      "PASSMODE": 1,
+      "ATTENUATIONMODE": 2,
+      "FALLOFFMODE": 1
+     }
+    },
+    {
+     "index": 205,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 2,
+      "PASSMODE": 1,
+      "ATTENUATIONMODE": 2,
+      "FALLOFFMODE": 1
+     }
+    },
+    {
+     "index": 208,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 0,
+      "PASSMODE": 2,
+      "ATTENUATIONMODE": 2,
+      "FALLOFFMODE": 1
+     }
+    },
+    {
+     "index": 209,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 0,
+      "PASSMODE": 2,
+      "ATTENUATIONMODE": 2,
+      "FALLOFFMODE": 1
+     }
+    },
+    {
+     "index": 210,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 1,
+      "PASSMODE": 2,
+      "ATTENUATIONMODE": 2,
+      "FALLOFFMODE": 1
+     }
+    },
+    {
+     "index": 211,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 1,
+      "PASSMODE": 2,
+      "ATTENUATIONMODE": 2,
+      "FALLOFFMODE": 1
+     }
+    },
+    {
+     "index": 212,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 2,
+      "PASSMODE": 2,
+      "ATTENUATIONMODE": 2,
+      "FALLOFFMODE": 1
+     }
+    },
+    {
+     "index": 213,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 2,
+      "PASSMODE": 2,
+      "ATTENUATIONMODE": 2,
+      "FALLOFFMODE": 1
+     }
+    },
+    {
+     "index": 256,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 0,
+      "PASSMODE": 0,
+      "ATTENUATIONMODE": 0,
+      "FALLOFFMODE": 2
+     }
+    },
+    {
+     "index": 257,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 0,
+      "PASSMODE": 0,
+      "ATTENUATIONMODE": 0,
+      "FALLOFFMODE": 2
+     }
+    },
+    {
+     "index": 258,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 1,
+      "PASSMODE": 0,
+      "ATTENUATIONMODE": 0,
+      "FALLOFFMODE": 2
+     }
+    },
+    {
+     "index": 259,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 1,
+      "PASSMODE": 0,
+      "ATTENUATIONMODE": 0,
+      "FALLOFFMODE": 2
+     }
+    },
+    {
+     "index": 260,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 2,
+      "PASSMODE": 0,
+      "ATTENUATIONMODE": 0,
+      "FALLOFFMODE": 2
+     }
+    },
+    {
+     "index": 261,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 2,
+      "PASSMODE": 0,
+      "ATTENUATIONMODE": 0,
+      "FALLOFFMODE": 2
+     }
+    },
+    {
+     "index": 264,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 0,
+      "PASSMODE": 1,
+      "ATTENUATIONMODE": 0,
+      "FALLOFFMODE": 2
+     }
+    },
+    {
+     "index": 265,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 0,
+      "PASSMODE": 1,
+      "ATTENUATIONMODE": 0,
+      "FALLOFFMODE": 2
+     }
+    },
+    {
+     "index": 266,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 1,
+      "PASSMODE": 1,
+      "ATTENUATIONMODE": 0,
+      "FALLOFFMODE": 2
+     }
+    },
+    {
+     "index": 267,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 1,
+      "PASSMODE": 1,
+      "ATTENUATIONMODE": 0,
+      "FALLOFFMODE": 2
+     }
+    },
+    {
+     "index": 268,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 2,
+      "PASSMODE": 1,
+      "ATTENUATIONMODE": 0,
+      "FALLOFFMODE": 2
+     }
+    },
+    {
+     "index": 269,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 2,
+      "PASSMODE": 1,
+      "ATTENUATIONMODE": 0,
+      "FALLOFFMODE": 2
+     }
+    },
+    {
+     "index": 272,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 0,
+      "PASSMODE": 2,
+      "ATTENUATIONMODE": 0,
+      "FALLOFFMODE": 2
+     }
+    },
+    {
+     "index": 273,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 0,
+      "PASSMODE": 2,
+      "ATTENUATIONMODE": 0,
+      "FALLOFFMODE": 2
+     }
+    },
+    {
+     "index": 274,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 1,
+      "PASSMODE": 2,
+      "ATTENUATIONMODE": 0,
+      "FALLOFFMODE": 2
+     }
+    },
+    {
+     "index": 275,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 1,
+      "PASSMODE": 2,
+      "ATTENUATIONMODE": 0,
+      "FALLOFFMODE": 2
+     }
+    },
+    {
+     "index": 276,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 2,
+      "PASSMODE": 2,
+      "ATTENUATIONMODE": 0,
+      "FALLOFFMODE": 2
+     }
+    },
+    {
+     "index": 277,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 2,
+      "PASSMODE": 2,
+      "ATTENUATIONMODE": 0,
+      "FALLOFFMODE": 2
+     }
+    },
+    {
+     "index": 288,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 0,
+      "PASSMODE": 0,
+      "ATTENUATIONMODE": 1,
+      "FALLOFFMODE": 2
+     }
+    },
+    {
+     "index": 289,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 0,
+      "PASSMODE": 0,
+      "ATTENUATIONMODE": 1,
+      "FALLOFFMODE": 2
+     }
+    },
+    {
+     "index": 290,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 1,
+      "PASSMODE": 0,
+      "ATTENUATIONMODE": 1,
+      "FALLOFFMODE": 2
+     }
+    },
+    {
+     "index": 291,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 1,
+      "PASSMODE": 0,
+      "ATTENUATIONMODE": 1,
+      "FALLOFFMODE": 2
+     }
+    },
+    {
+     "index": 292,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 2,
+      "PASSMODE": 0,
+      "ATTENUATIONMODE": 1,
+      "FALLOFFMODE": 2
+     }
+    },
+    {
+     "index": 293,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 2,
+      "PASSMODE": 0,
+      "ATTENUATIONMODE": 1,
+      "FALLOFFMODE": 2
+     }
+    },
+    {
+     "index": 296,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 0,
+      "PASSMODE": 1,
+      "ATTENUATIONMODE": 1,
+      "FALLOFFMODE": 2
+     }
+    },
+    {
+     "index": 297,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 0,
+      "PASSMODE": 1,
+      "ATTENUATIONMODE": 1,
+      "FALLOFFMODE": 2
+     }
+    },
+    {
+     "index": 298,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 1,
+      "PASSMODE": 1,
+      "ATTENUATIONMODE": 1,
+      "FALLOFFMODE": 2
+     }
+    },
+    {
+     "index": 299,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 1,
+      "PASSMODE": 1,
+      "ATTENUATIONMODE": 1,
+      "FALLOFFMODE": 2
+     }
+    },
+    {
+     "index": 300,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 2,
+      "PASSMODE": 1,
+      "ATTENUATIONMODE": 1,
+      "FALLOFFMODE": 2
+     }
+    },
+    {
+     "index": 301,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 2,
+      "PASSMODE": 1,
+      "ATTENUATIONMODE": 1,
+      "FALLOFFMODE": 2
+     }
+    },
+    {
+     "index": 304,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 0,
+      "PASSMODE": 2,
+      "ATTENUATIONMODE": 1,
+      "FALLOFFMODE": 2
+     }
+    },
+    {
+     "index": 305,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 0,
+      "PASSMODE": 2,
+      "ATTENUATIONMODE": 1,
+      "FALLOFFMODE": 2
+     }
+    },
+    {
+     "index": 306,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 1,
+      "PASSMODE": 2,
+      "ATTENUATIONMODE": 1,
+      "FALLOFFMODE": 2
+     }
+    },
+    {
+     "index": 307,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 1,
+      "PASSMODE": 2,
+      "ATTENUATIONMODE": 1,
+      "FALLOFFMODE": 2
+     }
+    },
+    {
+     "index": 308,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 2,
+      "PASSMODE": 2,
+      "ATTENUATIONMODE": 1,
+      "FALLOFFMODE": 2
+     }
+    },
+    {
+     "index": 309,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 2,
+      "PASSMODE": 2,
+      "ATTENUATIONMODE": 1,
+      "FALLOFFMODE": 2
+     }
+    },
+    {
+     "index": 320,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 0,
+      "PASSMODE": 0,
+      "ATTENUATIONMODE": 2,
+      "FALLOFFMODE": 2
+     }
+    },
+    {
+     "index": 321,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 0,
+      "PASSMODE": 0,
+      "ATTENUATIONMODE": 2,
+      "FALLOFFMODE": 2
+     }
+    },
+    {
+     "index": 322,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 1,
+      "PASSMODE": 0,
+      "ATTENUATIONMODE": 2,
+      "FALLOFFMODE": 2
+     }
+    },
+    {
+     "index": 323,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 1,
+      "PASSMODE": 0,
+      "ATTENUATIONMODE": 2,
+      "FALLOFFMODE": 2
+     }
+    },
+    {
+     "index": 324,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 2,
+      "PASSMODE": 0,
+      "ATTENUATIONMODE": 2,
+      "FALLOFFMODE": 2
+     }
+    },
+    {
+     "index": 325,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 2,
+      "PASSMODE": 0,
+      "ATTENUATIONMODE": 2,
+      "FALLOFFMODE": 2
+     }
+    },
+    {
+     "index": 328,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 0,
+      "PASSMODE": 1,
+      "ATTENUATIONMODE": 2,
+      "FALLOFFMODE": 2
+     }
+    },
+    {
+     "index": 329,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 0,
+      "PASSMODE": 1,
+      "ATTENUATIONMODE": 2,
+      "FALLOFFMODE": 2
+     }
+    },
+    {
+     "index": 330,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 1,
+      "PASSMODE": 1,
+      "ATTENUATIONMODE": 2,
+      "FALLOFFMODE": 2
+     }
+    },
+    {
+     "index": 331,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 1,
+      "PASSMODE": 1,
+      "ATTENUATIONMODE": 2,
+      "FALLOFFMODE": 2
+     }
+    },
+    {
+     "index": 332,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 2,
+      "PASSMODE": 1,
+      "ATTENUATIONMODE": 2,
+      "FALLOFFMODE": 2
+     }
+    },
+    {
+     "index": 333,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 2,
+      "PASSMODE": 1,
+      "ATTENUATIONMODE": 2,
+      "FALLOFFMODE": 2
+     }
+    },
+    {
+     "index": 336,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 0,
+      "PASSMODE": 2,
+      "ATTENUATIONMODE": 2,
+      "FALLOFFMODE": 2
+     }
+    },
+    {
+     "index": 337,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 0,
+      "PASSMODE": 2,
+      "ATTENUATIONMODE": 2,
+      "FALLOFFMODE": 2
+     }
+    },
+    {
+     "index": 338,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 1,
+      "PASSMODE": 2,
+      "ATTENUATIONMODE": 2,
+      "FALLOFFMODE": 2
+     }
+    },
+    {
+     "index": 339,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 1,
+      "PASSMODE": 2,
+      "ATTENUATIONMODE": 2,
+      "FALLOFFMODE": 2
+     }
+    },
+    {
+     "index": 340,
+     "defines": {
+      "SAMPLEMODE": 0,
+      "LIGHTMODE": 2,
+      "PASSMODE": 2,
+      "ATTENUATIONMODE": 2,
+      "FALLOFFMODE": 2
+     }
+    },
+    {
+     "index": 341,
+     "defines": {
+      "SAMPLEMODE": 1,
+      "LIGHTMODE": 2,
+      "PASSMODE": 2,
+      "ATTENUATIONMODE": 2,
+      "FALLOFFMODE": 2
+     }
+    }
+   ]
+  },
+  {
+   "name": "ps_Resolve",
+   "source": "Resolve_PS.hlsl",
+   "entry": "main",
+   "profile": "ps_5_0",
+   "table_size": 2,
+   "description": "Accumulation resolve (ApplyLighting_Resolve): bit0 = internal MSAA",
+   "axes": [
+    {
+     "macro": "SAMPLEMODE",
+     "shift": 0,
+     "bits": 1,
+     "values": [
+      0,
+      1
+     ]
+    }
+   ],
+   "permutations": [
+    {
+     "index": 0,
+     "defines": {
+      "SAMPLEMODE": 0
+     }
+    },
+    {
+     "index": 1,
+     "defines": {
+      "SAMPLEMODE": 1
+     }
+    }
+   ]
+  },
+  {
+   "name": "ps_TemporalFilter",
+   "source": "TemporalFilter_PS.hlsl",
+   "entry": "main",
+   "profile": "ps_5_0",
+   "table_size": 1,
+   "description": "Temporal filter (ApplyLighting_TemporalFilter)",
+   "axes": [],
+   "permutations": [
+    {
+     "index": 0,
+     "defines": {}
+    }
+   ]
+  },
+  {
+   "name": "vs_Quad",
+   "source": "Quad_VS.hlsl",
+   "entry": "main",
+   "profile": "vs_5_0",
+   "table_size": 1,
+   "description": "Fullscreen triangle VS (ContextImp_D3D11::DrawFullscreen)",
+   "axes": [],
+   "permutations": [
+    {
+     "index": 0,
+     "defines": {}
+    }
+   ]
+  },
+  {
+   "name": "vs_RenderVolume",
+   "source": "RenderVolume_VS.hlsl",
+   "entry": "main",
+   "profile": "vs_5_0",
+   "table_size": 8,
+   "description": "Volume VS: bits0-2 = mesh mode (0 frustum grid, 1 frustum base, 2 frustum cap, 3 omni volume, 4 geometry (unused by the C++))",
+   "axes": [
+    {
+     "macro": "MESHMODE",
+     "shift": 0,
+     "bits": 3,
+     "values": [
+      0,
+      1,
+      2,
+      3,
+      4
+     ]
+    }
+   ],
+   "permutations": [
+    {
+     "index": 0,
+     "defines": {
+      "MESHMODE": 0
+     }
+    },
+    {
+     "index": 1,
+     "defines": {
+      "MESHMODE": 1
+     }
+    },
+    {
+     "index": 2,
+     "defines": {
+      "MESHMODE": 2
+     }
+    },
+    {
+     "index": 3,
+     "defines": {
+      "MESHMODE": 3
+     }
+    },
+    {
+     "index": 4,
+     "defines": {
+      "MESHMODE": 4
+     }
+    }
+   ]
+  }
+ ]
+}
