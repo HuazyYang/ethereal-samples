@@ -40,9 +40,9 @@ public:
     // trackLiveness). FeatureDemo: (..., RenderTargets::HdrFramebuffer, main view, false, false, true).
     ForwardShadingPass2018(
         nvrhi::IDevice* device,
-        std::shared_ptr<donut::engine::ShaderFactory> shaderFactory,
-        std::shared_ptr<donut::engine::CommonRenderPasses> commonPasses,
-        std::shared_ptr<donut::engine::FramebufferFactory> framebufferFactory,
+        nvrhi::AutoPtr<donut::engine::ShaderFactory> shaderFactory,
+        nvrhi::AutoPtr<donut::engine::CommonRenderPasses> commonPasses,
+        nvrhi::AutoPtr<donut::engine::FramebufferFactory> framebufferFactory,
         const donut::engine::ICompositeView& compositeView,
         nvrhi::IBindingLayout* materialBindingLayout,
         bool singlePassStereo = false,
@@ -58,7 +58,7 @@ public:
         const std::vector<std::shared_ptr<SceneLight>>& lights,
         const dm::float3& ambientColorTop,
         const dm::float3& ambientColorBottom,
-        const std::vector<std::shared_ptr<donut::engine::LightProbe>>& lightProbes);
+        const std::vector<nvrhi::AutoPtr<donut::engine::LightProbe>>& lightProbes);
 
     void ResetBindingCache();
 
@@ -76,8 +76,8 @@ private:
     nvrhi::BufferHandle m_ForwardCB;                                            // +72 "ForwardShadingConstants"
     bool m_TrackLiveness = true;                                                // +104
     std::unique_ptr<donut::engine::BindingCache> m_BindingSets;                 // +112 / +176 (per shadow map / per probe textures)
-    std::shared_ptr<donut::engine::CommonRenderPasses> m_CommonPasses;          // +240
-    std::shared_ptr<donut::engine::FramebufferFactory> m_FramebufferFactory;    // +256
+    nvrhi::AutoPtr<donut::engine::CommonRenderPasses> m_CommonPasses;          // +240
+    nvrhi::AutoPtr<donut::engine::FramebufferFactory> m_FramebufferFactory;    // +256
 
     nvrhi::RenderState m_OpaqueRenderState;                                     // pipeline +80
     nvrhi::RenderState m_AlphaTestedRenderState;                                // pipeline +88

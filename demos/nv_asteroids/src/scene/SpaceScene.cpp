@@ -101,7 +101,7 @@ namespace
 // ------------------------------------------------------------------------------------------------
 // Construction
 
-SpaceScene::SpaceScene(std::shared_ptr<vfs::IFileSystem> fs)
+SpaceScene::SpaceScene(nvrhi::AutoPtr<vfs::IFileSystem> fs)
     : m_FS(std::move(fs))
 {
     // Asteroids.exe: 0x14005A010
@@ -157,7 +157,7 @@ void SpaceScene::SetSoundMuted(bool mute)
         engine->SetMute(mute);
 }
 
-std::shared_ptr<SpaceScene> SpaceScene::Load(std::shared_ptr<vfs::IFileSystem> fs, const std::filesystem::path& sceneFile,
+std::shared_ptr<SpaceScene> SpaceScene::Load(nvrhi::AutoPtr<vfs::IFileSystem> fs, const std::filesystem::path& sceneFile,
     engine::TextureCache* textureCache, engine::ThreadPool* threadPool)
 {
     // Asteroids.exe: 0x14005C890
@@ -581,14 +581,15 @@ std::shared_ptr<SpaceObject> SpaceScene::GetSpaceObject(size_t index) const
 // ------------------------------------------------------------------------------------------------
 // GPU resources and per-frame updates
 
-void SpaceScene::CreateRenderingResources(nvrhi::IDevice* device, std::shared_ptr<engine::CommonRenderPasses> commonPasses,
+void SpaceScene::CreateRenderingResources(nvrhi::IDevice* device, nvrhi::AutoPtr<engine::CommonRenderPasses> commonPasses,
     bool useMeshlets)
 {
     // Asteroids.exe: vfunc03 0x14005B440
     if (!m_MaterialBindingLayout)
         m_MaterialBindingLayout = CreateMaterialBindingLayout(device);
 
-    nvrhi::CommandListHandle commandList = device->createCommandList();
+    nvrhi::CommandListHandle commandList;
+    device->createCommandList(nvrhi::CommandListParameters(), &commandList);
     commandList->open();
     for (const auto& object : m_Objects)
         object->CreateRenderResources(device, commandList, *commonPasses, m_MaterialBindingLayout, useMeshlets, false);

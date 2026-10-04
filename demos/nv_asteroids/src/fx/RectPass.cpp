@@ -19,31 +19,31 @@ namespace fx
 {
     RectPass::RectPass(
         nvrhi::IDevice* device,
-        const std::shared_ptr<ShaderFactory>& shaderFactory,
+        const nvrhi::AutoPtr<ShaderFactory>& shaderFactory,
         const char* pixelShaderFile,
         const nvrhi::BindingLayoutDesc& pixelBindingLayoutDesc,
         const nvrhi::BlendState::RenderTarget& blendState,
-        const std::shared_ptr<FramebufferFactory>& framebufferFactory,
+        const nvrhi::AutoPtr<FramebufferFactory>& framebufferFactory,
         const ICompositeView& compositeView)
         : m_FramebufferFactory(framebufferFactory)
     {
         m_VertexShader = shaderFactory->CreateShader("demo/RectPass_vs.hlsl", "main", nullptr, nvrhi::ShaderType::Vertex);
         m_PixelShader = shaderFactory->CreateShader(pixelShaderFile, "main", nullptr, nvrhi::ShaderType::Pixel);
 
-        m_RectConstants = device->createBuffer(ConstantBufferDesc(sizeof(RectConstants), "RectConstants"));
+        device->createBuffer(ConstantBufferDesc(sizeof(RectConstants), "RectConstants"), &m_RectConstants);
 
         nvrhi::BindingLayoutDesc vertexLayoutDesc;
         vertexLayoutDesc.visibility = nvrhi::ShaderType::Vertex;
         vertexLayoutDesc.bindings = { nvrhi::BindingLayoutItem::VolatileConstantBuffer(0) };
-        m_VertexBindingLayout = device->createBindingLayout(vertexLayoutDesc);
+        device->createBindingLayout(vertexLayoutDesc, &m_VertexBindingLayout);
 
         nvrhi::BindingSetDesc vertexSetDesc;
         vertexSetDesc.bindings = { nvrhi::BindingSetItem::ConstantBuffer(0, m_RectConstants) };
-        m_VertexBindingSet = device->createBindingSet(vertexSetDesc, m_VertexBindingLayout);
+        device->createBindingSet(vertexSetDesc, m_VertexBindingLayout, &m_VertexBindingSet);
 
         nvrhi::BindingLayoutDesc pixelLayoutDesc = pixelBindingLayoutDesc;
         pixelLayoutDesc.visibility = nvrhi::ShaderType::Pixel;
-        m_PixelBindingLayout = device->createBindingLayout(pixelLayoutDesc);
+        device->createBindingLayout(pixelLayoutDesc, &m_PixelBindingLayout);
 
         const IView* sampleView = compositeView.GetChildView(ViewType::PLANAR, 0);
 
@@ -62,7 +62,8 @@ namespace fx
                 ? nvrhi::ComparisonFunc::GreaterOrEqual
                 : nvrhi::ComparisonFunc::LessOrEqual);
 
-        m_Pipeline = device->createGraphicsPipeline(pipelineDesc, m_FramebufferFactory->GetFramebuffer(*sampleView)->getFramebufferInfo());
+        device->createGraphicsPipeline1(pipelineDesc,
+            m_FramebufferFactory->GetFramebuffer(*sampleView)->getFramebufferInfo().getInfo(), &m_Pipeline);
     }
 
     void RectPass::Render(

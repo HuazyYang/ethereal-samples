@@ -27,9 +27,9 @@ namespace fx
         // depthBuffer: the scene depth (RenderTargets[0]), bound as t_Depth.
         ShieldPass(
             nvrhi::IDevice* device,
-            const std::shared_ptr<donut::engine::ShaderFactory>& shaderFactory,
-            const std::shared_ptr<donut::engine::CommonRenderPasses>& commonPasses,
-            const std::shared_ptr<donut::engine::FramebufferFactory>& framebufferFactory,
+            const nvrhi::AutoPtr<donut::engine::ShaderFactory>& shaderFactory,
+            const nvrhi::AutoPtr<donut::engine::CommonRenderPasses>& commonPasses,
+            const nvrhi::AutoPtr<donut::engine::FramebufferFactory>& framebufferFactory,
             const donut::engine::ICompositeView& compositeView,
             nvrhi::ITexture* depthBuffer);
 
@@ -53,6 +53,6 @@ namespace fx
         nvrhi::ShaderHandle m_PixelShader;
         nvrhi::BindingLayoutHandle m_BindingLayout;
         nvrhi::BindingSetHandle m_BindingSet;
-        std::shared_ptr<donut::engine::FramebufferFactory> m_FramebufferFactory;
+        nvrhi::AutoPtr<donut::engine::FramebufferFactory> m_FramebufferFactory;
     };
 }

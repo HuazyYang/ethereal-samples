@@ -54,7 +54,7 @@ namespace demo
         if (slot.used == slot.scopes.size())
         {
             slot.scopes.emplace_back();
-            slot.scopes.back().query = m_Device->createTimerQuery();
+            m_Device->createTimerQuery(&slot.scopes.back().query);
         }
 
         Scope& scope = slot.scopes[slot.used];

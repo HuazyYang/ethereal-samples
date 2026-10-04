@@ -51,9 +51,9 @@ public:
     // 'materialBindingLayout' is the layout of SceneMaterial::bindingSet (2018: CommonRenderPasses+328).
     GBufferFillPass2018(
         nvrhi::IDevice* device,
-        std::shared_ptr<donut::engine::ShaderFactory> shaderFactory,
-        std::shared_ptr<donut::engine::CommonRenderPasses> commonPasses,
-        std::shared_ptr<donut::engine::FramebufferFactory> framebufferFactory,
+        nvrhi::AutoPtr<donut::engine::ShaderFactory> shaderFactory,
+        nvrhi::AutoPtr<donut::engine::CommonRenderPasses> commonPasses,
+        nvrhi::AutoPtr<donut::engine::FramebufferFactory> framebufferFactory,
         const donut::engine::ICompositeView& compositeView,
         nvrhi::IBindingLayout* materialBindingLayout,
         const CreateParameters& params);
@@ -93,8 +93,8 @@ private:
     nvrhi::GraphicsPipelineHandle m_AlphaTestedPipeline;                        // +72
     bool m_UseAlphaToCoverage = true;                                           // +88 (no alpha-tested PS)
     uint32_t m_SupportedViewTypes = 1;                                          // +92
-    std::shared_ptr<donut::engine::CommonRenderPasses> m_CommonPasses;          // +96
-    std::shared_ptr<donut::engine::FramebufferFactory> m_FramebufferFactory;    // +112
+    nvrhi::AutoPtr<donut::engine::CommonRenderPasses> m_CommonPasses;          // +96
+    nvrhi::AutoPtr<donut::engine::FramebufferFactory> m_FramebufferFactory;    // +112
 
     // deviation: the 2018 binding layout (+48) had a VS section (b0) and a PS section (b1) pointing at the same
     // buffer; nvrhi main layouts have one visibility, so there are two layouts and two sets.

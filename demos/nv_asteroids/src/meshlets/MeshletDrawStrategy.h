@@ -68,13 +68,16 @@ using MeshletMaterialCallback = std::function<bool(SceneMaterial* material, Mesh
 // empty cursor and vfunc02 returns it), passes call Render() instead.
 class MeshletDrawStrategy : public donut::render::IDrawStrategy
 {
+    // Adds no interface and no class ID of its own.
+    NVRHI_INHERIT_INTERFACE_TABLE()
+
 public:
     // 0x1400400E0. 'depthBuffer' / 'hiZBuffer' are render targets 0 and 1 (2018 RenderTargets object),
     // 'randomsTexture' is media/randoms_texture.dds (FeatureDemo+1056), 'viewDistanceTexture' the 1D
     // "ViewDistanceMap" (FeatureDemo+1176), 'pixelShaderFile' e.g. "gbuffer_ps.hlsl" (empty for the depth role).
     MeshletDrawStrategy(
         nvrhi::IDevice* device,
-        std::shared_ptr<donut::engine::ShaderFactory> shaderFactory,
+        nvrhi::AutoPtr<donut::engine::ShaderFactory> shaderFactory,
         std::shared_ptr<SpaceScene> scene,
         std::shared_ptr<MeshletRenderResources> resources,
         nvrhi::ITexture* depthBuffer,
@@ -92,7 +95,7 @@ public:
     void CreateShaders();
 
     // IDrawStrategy (vfunc01 0x1400448D0 / vfunc02 0x140041240)
-    void PrepareForView(const std::shared_ptr<donut::engine::SceneGraphNode>& rootNode, const donut::engine::IView& view) override;
+    void PrepareForView(donut::engine::SceneGraphNode* rootNode, const donut::engine::IView& view) override;
     const donut::render::DrawItem* GetNextItem() override;
 
     // FeatureDemo's "numCulled" readback (RenderScene, when enableZCullStats): maps the "DebugUAVDest" copy of
@@ -169,7 +172,7 @@ private:
     std::unique_ptr<HiZPass> m_HiZPass;                         // +16  (G-buffer role only)
     std::shared_ptr<SpaceScene> m_Scene;                       // +24
     nvrhi::DeviceHandle m_Device;                               // +40 (2018: the nvrhi D3D12 device object)
-    std::shared_ptr<donut::engine::ShaderFactory> m_ShaderFactory; // +160
+    nvrhi::AutoPtr<donut::engine::ShaderFactory> m_ShaderFactory; // +160
     std::shared_ptr<MeshletRenderResources> m_Resources;        // +200
     std::string m_PixelShaderFile;                              // +216
 

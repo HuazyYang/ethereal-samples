@@ -110,27 +110,43 @@ namespace
     }
 }
 
-UIRenderer::UIRenderer(app::DeviceManager* deviceManager, std::shared_ptr<FeatureDemo> demo, UIData& ui)
-    : ImGui_Renderer(deviceManager)
+UIRenderer::UIRenderer(app::DeviceManager* deviceManager, nvrhi::AutoPtr<FeatureDemo> demo, UIData& ui)
+    : ImGuiRenderPass(deviceManager)
     , m_Demo(std::move(demo))
     , m_UI(ui)
 {
-    m_CommandList = GetDevice()->createCommandList();
+    GetDevice()->createCommandList(nvrhi::CommandListParameters(), &m_CommandList);
     LoadKeynoteCounters();
 }
 
 bool UIRenderer::LoadFont(vfs::IFileSystem& fs, const std::filesystem::path& fontFile, float fontSize)
 {
-    std::shared_ptr<app::RegisteredFont> font = CreateFontFromFile(fs, fontFile, fontSize);
-    m_LoadedFonts.push_back(font);
-    return font && font->HasFontData();
+    // A slot is appended whether or not the load succeeds: the demo refers to its fonts
+    // by load order.
+    LoadedFont loaded;
+    if (NVRHI_FAILED(fs.readFile(fontFile, &loaded.data)) || !loaded.data ||
+        loaded.data->GetSize() == 0)
+    {
+        log::warning("Couldn't read the font %s", fontFile.generic_string().c_str());
+        m_LoadedFonts.push_back(std::move(loaded));
+        return false;
+    }
+
+    ImFontConfig config;
+    config.FontDataOwnedByAtlas = false;   // the blob owns the data and outlives the atlas entry
+    loaded.font = ImGui::GetIO().Fonts->AddFontFromMemoryTTF(
+        loaded.data->GetDataPtr(), int(loaded.data->GetSize()), fontSize, &config);
+
+    const bool ok = loaded.font != nullptr;
+    m_LoadedFonts.push_back(std::move(loaded));
+    return ok;
 }
 
 ImFont* UIRenderer::GetFont(int slot) const
 {
-    if (slot < 0 || size_t(slot) >= m_LoadedFonts.size() || !m_LoadedFonts[slot])
+    if (slot < 0 || size_t(slot) >= m_LoadedFonts.size())
         return nullptr;
-    return m_LoadedFonts[slot]->GetScaledFont();
+    return m_LoadedFonts[slot].font;
 }
 
 void UIRenderer::LoadKeynoteCounters()
@@ -173,7 +189,7 @@ void UIRenderer::LoadKeynoteCounters()
     addCounter("fps_counter", KeynoteCounter::Fps);
 }
 
-void UIRenderer::buildUI()
+void UIRenderer::BuildUI()
 {
     if (m_Demo->IsSceneLoading())
     {

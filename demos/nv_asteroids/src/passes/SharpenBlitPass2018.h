@@ -20,8 +20,8 @@ namespace donut::engine
 class SharpenBlitPass2018
 {
 public:
-    SharpenBlitPass2018(nvrhi::IDevice* device, std::shared_ptr<donut::engine::ShaderFactory> shaderFactory,
-        std::shared_ptr<donut::engine::CommonRenderPasses> commonPasses);
+    SharpenBlitPass2018(nvrhi::IDevice* device, nvrhi::AutoPtr<donut::engine::ShaderFactory> shaderFactory,
+        nvrhi::AutoPtr<donut::engine::CommonRenderPasses> commonPasses);
 
     // Draws 'source' over the whole viewport of 'framebuffer' (source and target boxes are [0,1]^2).
     void Render(nvrhi::ICommandList* commandList, nvrhi::IFramebuffer* framebuffer, const nvrhi::Viewport& viewport,
@@ -33,7 +33,7 @@ public:
 
 private:
     nvrhi::DeviceHandle m_Device;
-    std::shared_ptr<donut::engine::CommonRenderPasses> m_CommonPasses;
+    nvrhi::AutoPtr<donut::engine::CommonRenderPasses> m_CommonPasses;
     nvrhi::ShaderHandle m_PixelShader;
     nvrhi::BufferHandle m_Constants;
     nvrhi::BindingLayoutHandle m_BindingLayout;

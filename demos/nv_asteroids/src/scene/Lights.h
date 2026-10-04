@@ -11,6 +11,8 @@
 // shaders/demo/include/light_cb.h) with the 2018 formulas.
 
 #include <donut/core/math/math.h>
+#include <donut/engine/ShadowMap.h>
+#include <nvrhi/core/autoptr.h>
 
 #include <memory>
 #include <string>
@@ -27,7 +29,7 @@ class SceneLight
 {
 public:
     std::string name;
-    std::shared_ptr<donut::engine::IShadowMap> shadowMap;
+    nvrhi::AutoPtr<donut::engine::IShadowMap> shadowMap;
     donut::math::float3 color = 1.f;
 
     virtual ~SceneLight() = default;

@@ -103,7 +103,8 @@ namespace
 bool IsNvMeshShaderSupported(nvrhi::IDevice* device)
 {
     // Asteroids.exe: WinMain (0x14003CC90) -> 0x140001980(ID3D12Device*, &supported)
-    ID3D12Device* d3dDevice = device->getNativeObject(nvrhi::ObjectTypes::D3D12_Device);
+    ID3D12Device* d3dDevice = static_cast<ID3D12Device*>(
+        device->getNativeObject(nvrhi::ObjectTypes::D3D12_Device));
     if (!d3dDevice)
         return false;
 
@@ -123,13 +124,16 @@ nvrhi::GraphicsPipelineHandle CreateNvMeshPipeline(nvrhi::IDevice* device, const
     const nvrhi::FramebufferInfo& framebufferInfo)
 {
     // Asteroids.exe: 0x1400454A0 (meshlets), 0x140067DA0 (particles)
-    ID3D12Device* d3dDevice = device->getNativeObject(nvrhi::ObjectTypes::D3D12_Device);
-    nvrhi::d3d12::IDevice* nvrhiD3D12Device = device->getNativeObject(nvrhi::ObjectTypes::Nvrhi_D3D12_Device);
+    ID3D12Device* d3dDevice = static_cast<ID3D12Device*>(
+        device->getNativeObject(nvrhi::ObjectTypes::D3D12_Device));
+    nvrhi::d3d12::IDevice* nvrhiD3D12Device = static_cast<nvrhi::d3d12::IDevice*>(
+        device->getNativeObject(nvrhi::ObjectTypes::Nvrhi_D3D12_Device));
     if (!d3dDevice || !nvrhiD3D12Device || !desc.meshShader)
         return nullptr;
 
     // 2018: 0x14019B5E0 (nvrhi D3D12 root signature from the pipeline's binding layouts).
-    nvrhi::d3d12::RootSignatureHandle rootSignature = nvrhiD3D12Device->buildRootSignature(desc.bindingLayouts, false, false);
+    nvrhi::d3d12::RootSignatureHandle rootSignature;
+    nvrhiD3D12Device->buildRootSignature(desc.bindingLayouts, false, false, nullptr, 0, &rootSignature);
     if (!rootSignature)
     {
         log::error("Failed to create a mesh shading PSO (root signature)");
@@ -139,7 +143,8 @@ nvrhi::GraphicsPipelineHandle CreateNvMeshPipeline(nvrhi::IDevice* device, const
     const nvrhi::RenderState& state = desc.renderState;
 
     D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
-    psoDesc.pRootSignature = rootSignature->getNativeObject(nvrhi::ObjectTypes::D3D12_RootSignature);
+    psoDesc.pRootSignature = static_cast<ID3D12RootSignature*>(
+        rootSignature->getNativeObject(nvrhi::ObjectTypes::D3D12_RootSignature));
     psoDesc.PS = GetBytecode(desc.pixelShader);     // VS stays null: the mesh / task stages come from the extensions
 
     psoDesc.BlendState.AlphaToCoverageEnable = state.blendState.alphaToCoverageEnable;
@@ -234,8 +239,8 @@ nvrhi::GraphicsPipelineHandle CreateNvMeshPipeline(nvrhi::IDevice* device, const
     pipelineDesc.renderState = desc.renderState;
     pipelineDesc.bindingLayouts = desc.bindingLayouts;
 
-    nvrhi::GraphicsPipelineHandle pipeline = nvrhiD3D12Device->createHandleForNativeGraphicsPipeline(
-        rootSignature, pipelineState, pipelineDesc, framebufferInfo);
+    nvrhi::GraphicsPipelineHandle pipeline;
+    nvrhiD3D12Device->createHandleForNativeGraphicsPipeline(rootSignature, pipelineState, pipelineDesc, framebufferInfo, &pipeline);
     pipelineState->Release();   // the handle holds its own reference
     return pipeline;
 }
@@ -243,7 +248,8 @@ nvrhi::GraphicsPipelineHandle CreateNvMeshPipeline(nvrhi::IDevice* device, const
 bool NvDispatchMeshTasks(nvrhi::ICommandList* commandList, uint32_t numTasks)
 {
     // Asteroids.exe: 0x140001AD0
-    ID3D12GraphicsCommandList* d3dCommandList = commandList->getNativeObject(nvrhi::ObjectTypes::D3D12_GraphicsCommandList);
+    ID3D12GraphicsCommandList* d3dCommandList = static_cast<ID3D12GraphicsCommandList*>(
+        commandList->getNativeObject(nvrhi::ObjectTypes::D3D12_GraphicsCommandList));
     PFN_DispatchMeshTasks dispatch = GetDispatchMeshTasks();
     if (!d3dCommandList || !dispatch)
     {

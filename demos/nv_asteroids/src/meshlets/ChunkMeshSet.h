@@ -9,6 +9,8 @@
 
 #include <donut/core/chunk/chunkFile.h>
 #include <donut/core/math/math.h>
+#include <nvrhi/core/autoptr.h>
+#include <nvrhi/core/datablob.h>
 
 #include <memory>
 #include <string>
@@ -16,7 +18,7 @@
 
 namespace donut::vfs
 {
-    class IBlob;
+    class nvrhi::IDataBlob;
     class IFileSystem;
 }
 
@@ -160,7 +162,7 @@ namespace chunk2018
         std::vector<std::string> strings;
 
         // owns the file data referenced by the StreamViews
-        std::shared_ptr<donut::chunk::ChunkFile const> source;
+        nvrhi::AutoPtr<donut::chunk::ChunkFile> source;
         const char* string(uint64_t index) const
         {
             return index < strings.size() ? strings[size_t(index)].c_str() : nullptr;
@@ -171,5 +173,5 @@ namespace chunk2018
     };
 
     // Reads the first MeshSet from a .chk blob. Errors are reported via donut::log.
-    std::shared_ptr<MeshSet> LoadMeshSet(const std::shared_ptr<donut::vfs::IBlob>& blob, const char* path);
+    std::shared_ptr<MeshSet> LoadMeshSet(const nvrhi::AutoPtr<nvrhi::IDataBlob>& blob, const char* path);
 }

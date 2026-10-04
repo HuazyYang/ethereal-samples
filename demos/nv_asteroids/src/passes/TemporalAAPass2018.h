@@ -41,7 +41,7 @@ public:
         bool enableHistoryClamping = true;
     };
 
-    TemporalAAPass2018(nvrhi::IDevice* device, std::shared_ptr<donut::engine::ShaderFactory> shaderFactory,
+    TemporalAAPass2018(nvrhi::IDevice* device, nvrhi::AutoPtr<donut::engine::ShaderFactory> shaderFactory,
         const CreateParameters& params);
 
     // Resolves the current frame into GetOutput() with GetHistory() as the history. 'view' is the current planar

@@ -18,14 +18,14 @@ namespace fx
 {
     ShieldPass::ShieldPass(
         nvrhi::IDevice* device,
-        const std::shared_ptr<ShaderFactory>& shaderFactory,
-        const std::shared_ptr<CommonRenderPasses>& commonPasses,
-        const std::shared_ptr<FramebufferFactory>& framebufferFactory,
+        const nvrhi::AutoPtr<ShaderFactory>& shaderFactory,
+        const nvrhi::AutoPtr<CommonRenderPasses>& commonPasses,
+        const nvrhi::AutoPtr<FramebufferFactory>& framebufferFactory,
         const ICompositeView& compositeView,
         nvrhi::ITexture* depthBuffer)
         : m_FramebufferFactory(framebufferFactory)
     {
-        m_ShieldConstants = device->createBuffer(ConstantBufferDesc(sizeof(surface2018::ShieldConstants), "ShieldConstants"));
+        device->createBuffer(ConstantBufferDesc(sizeof(surface2018::ShieldConstants), "ShieldConstants"), &m_ShieldConstants);
 
         nvrhi::BindingSetDesc bindingSetDesc;
         bindingSetDesc.bindings = {
@@ -52,7 +52,7 @@ namespace fx
             .disableDepthWrite()
             .disableStencil();
 
-        m_Pipeline = device->createGraphicsPipeline(pipelineDesc, m_FramebufferFactory->GetFramebuffer(*sampleView));
+        device->createGraphicsPipeline2(pipelineDesc, m_FramebufferFactory->GetFramebuffer(*sampleView), &m_Pipeline);
     }
 
     void ShieldPass::Render(

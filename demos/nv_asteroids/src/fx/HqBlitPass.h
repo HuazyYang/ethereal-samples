@@ -23,8 +23,8 @@ namespace fx
     public:
         HqBlitPass(
             nvrhi::IDevice* device,
-            const std::shared_ptr<donut::engine::ShaderFactory>& shaderFactory,
-            const std::shared_ptr<donut::engine::CommonRenderPasses>& commonPasses,
+            const nvrhi::AutoPtr<donut::engine::ShaderFactory>& shaderFactory,
+            const nvrhi::AutoPtr<donut::engine::CommonRenderPasses>& commonPasses,
             nvrhi::IFramebuffer* framebuffer);
 
         // viewport: destination viewport in the framebuffer (the scissor is its floor/ceil).
@@ -39,7 +39,7 @@ namespace fx
         nvrhi::ShaderHandle m_PixelShader;
         nvrhi::BindingLayoutHandle m_BindingLayout;
         nvrhi::GraphicsPipelineHandle m_Pipeline;
-        std::shared_ptr<donut::engine::CommonRenderPasses> m_CommonPasses;
+        nvrhi::AutoPtr<donut::engine::CommonRenderPasses> m_CommonPasses;
         std::unordered_map<nvrhi::ITexture*, nvrhi::BindingSetHandle> m_BindingSets;   // keyed by source texture
     };
 }

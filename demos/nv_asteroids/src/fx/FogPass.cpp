@@ -40,9 +40,9 @@ namespace fx
 
     FogPass::FogPass(
         nvrhi::IDevice* device,
-        const std::shared_ptr<ShaderFactory>& shaderFactory,
-        const std::shared_ptr<CommonRenderPasses>& commonPasses,
-        const std::shared_ptr<FramebufferFactory>& framebufferFactory,
+        const nvrhi::AutoPtr<ShaderFactory>& shaderFactory,
+        const nvrhi::AutoPtr<CommonRenderPasses>& commonPasses,
+        const nvrhi::AutoPtr<FramebufferFactory>& framebufferFactory,
         nvrhi::ITexture* depthBuffer,
         const ICompositeView& compositeView)
         : m_Device(device)
@@ -54,7 +54,7 @@ namespace fx
         const IView* sampleView = compositeView.GetChildView(ViewType::PLANAR, 0);
         nvrhi::IFramebuffer* outputFramebuffer = m_FramebufferFactory->GetFramebuffer(*sampleView);
 
-        m_FogConstants = device->createBuffer(ConstantBufferDesc(sizeof(FogConstants), "FogConstants"));
+        device->createBuffer(ConstantBufferDesc(sizeof(FogConstants), "FogConstants"), &m_FogConstants);
 
         // 2018 sampler: border addressing (white border), linear filters, shadow compare.
         auto shadowSamplerDesc = nvrhi::SamplerDesc()
@@ -62,7 +62,7 @@ namespace fx
             .setBorderColor(1.f)
             .setAllFilters(true)
             .setReductionType(nvrhi::SamplerReductionType::Comparison);
-        m_ShadowSampler = device->createSampler(shadowSamplerDesc);
+        device->createSampler(shadowSamplerDesc, &m_ShadowSampler);
 
         m_TracePixelShader = shaderFactory->CreateShader("demo/fog.hlsl", "ps_trace", nullptr, nvrhi::ShaderType::Pixel);
         m_FilterPixelShader = shaderFactory->CreateShader("demo/fog.hlsl", "ps_filter", nullptr, nvrhi::ShaderType::Pixel);
@@ -78,9 +78,9 @@ namespace fx
         fogDesc.initialState = nvrhi::ResourceStates::RenderTarget;
         fogDesc.keepInitialState = true;
         fogDesc.debugName = "UnfilteredFog";
-        m_UnfilteredFog = device->createTexture(fogDesc);
+        device->createTexture(fogDesc, &m_UnfilteredFog);
 
-        m_TraceFramebuffer = device->createFramebuffer(nvrhi::FramebufferDesc().addColorAttachment(m_UnfilteredFog));
+        device->createFramebuffer(nvrhi::FramebufferDesc().addColorAttachment(m_UnfilteredFog), &m_TraceFramebuffer);
 
         // Trace: b0 FogConstants, t0 depth, t1 shadow map array, s0 shadow sampler.
         nvrhi::BindingLayoutDesc traceLayoutDesc;
@@ -91,7 +91,7 @@ namespace fx
             nvrhi::BindingLayoutItem::Texture_SRV(1),
             nvrhi::BindingLayoutItem::Sampler(0)
         };
-        m_TraceBindingLayout = device->createBindingLayout(traceLayoutDesc);
+        device->createBindingLayout(traceLayoutDesc, &m_TraceBindingLayout);
 
         nvrhi::GraphicsPipelineDesc tracePipelineDesc;
         tracePipelineDesc.primType = nvrhi::PrimitiveType::TriangleStrip;
@@ -100,7 +100,7 @@ namespace fx
         tracePipelineDesc.bindingLayouts = { m_TraceBindingLayout };
         tracePipelineDesc.renderState.rasterState.setCullNone();
         tracePipelineDesc.renderState.depthStencilState.disableDepthTest().disableDepthWrite();
-        m_TracePipeline = device->createGraphicsPipeline(tracePipelineDesc, m_TraceFramebuffer);
+        device->createGraphicsPipeline2(tracePipelineDesc, m_TraceFramebuffer, &m_TracePipeline);
 
         // Filter: b0 FogConstants, t0 depth, t1 unfiltered fog.
         nvrhi::BindingLayoutDesc filterLayoutDesc;
@@ -110,7 +110,7 @@ namespace fx
             nvrhi::BindingLayoutItem::Texture_SRV(0),
             nvrhi::BindingLayoutItem::Texture_SRV(1)
         };
-        m_FilterBindingLayout = device->createBindingLayout(filterLayoutDesc);
+        device->createBindingLayout(filterLayoutDesc, &m_FilterBindingLayout);
 
         nvrhi::BindingSetDesc filterSetDesc;
         filterSetDesc.bindings = {
@@ -118,7 +118,7 @@ namespace fx
             nvrhi::BindingSetItem::Texture_SRV(0, m_DepthBuffer),
             nvrhi::BindingSetItem::Texture_SRV(1, m_UnfilteredFog)
         };
-        m_FilterBindingSet = device->createBindingSet(filterSetDesc, m_FilterBindingLayout);
+        device->createBindingSet(filterSetDesc, m_FilterBindingLayout, &m_FilterBindingSet);
 
         nvrhi::GraphicsPipelineDesc filterPipelineDesc;
         filterPipelineDesc.primType = nvrhi::PrimitiveType::TriangleStrip;
@@ -128,7 +128,7 @@ namespace fx
         filterPipelineDesc.renderState.rasterState.setCullNone();
         filterPipelineDesc.renderState.depthStencilState.disableDepthTest().disableDepthWrite();
         filterPipelineDesc.renderState.blendState.targets[0] = BlendStateRT(nvrhi::BlendFactor::One, nvrhi::BlendFactor::InvSrcAlpha);
-        m_FilterPipeline = device->createGraphicsPipeline(filterPipelineDesc, outputFramebuffer);
+        device->createGraphicsPipeline2(filterPipelineDesc, outputFramebuffer, &m_FilterPipeline);
     }
 
     void FogPass::Render(
@@ -142,7 +142,7 @@ namespace fx
     {
         demo::ProfBegin(commandList, "Fog");
 
-        const IShadowMap* shadowMap = light.shadowMap.get();
+        const IShadowMap* shadowMap = light.shadowMap.Get();
         nvrhi::ITexture* shadowTexture = shadowMap ? shadowMap->GetTexture() : m_CommonPasses->m_BlackTexture2DArray.Get();
 
         nvrhi::BindingSetDesc traceSetDesc;

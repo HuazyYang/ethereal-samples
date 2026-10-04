@@ -29,7 +29,9 @@ nvrhi::BindingLayoutHandle DeferredLightingPass2018::CreateGBufferBindingLayout(
         nvrhi::BindingLayoutItem::Texture_SRV(10),
         nvrhi::BindingLayoutItem::Texture_SRV(11),
     };
-    return device->createBindingLayout(layoutDesc);
+    nvrhi::BindingLayoutHandle result;
+    device->createBindingLayout(layoutDesc, &result);
+    return result;
 }
 
 nvrhi::BindingSetHandle DeferredLightingPass2018::CreateGBufferBindingSet(nvrhi::IDevice* device,
@@ -44,14 +46,16 @@ nvrhi::BindingSetHandle DeferredLightingPass2018::CreateGBufferBindingSet(nvrhi:
         nvrhi::BindingSetItem::Texture_SRV(10, gbuffer1),
         nvrhi::BindingSetItem::Texture_SRV(11, gbuffer2),
     };
-    return device->createBindingSet(setDesc, layout);
+    nvrhi::BindingSetHandle result;
+    device->createBindingSet(setDesc, layout, &result);
+    return result;
 }
 
 DeferredLightingPass2018::DeferredLightingPass2018(
     nvrhi::IDevice* device,
-    std::shared_ptr<ShaderFactory> shaderFactory,
-    std::shared_ptr<CommonRenderPasses> commonPasses,
-    std::shared_ptr<FramebufferFactory> framebufferFactory,
+    nvrhi::AutoPtr<ShaderFactory> shaderFactory,
+    nvrhi::AutoPtr<CommonRenderPasses> commonPasses,
+    nvrhi::AutoPtr<FramebufferFactory> framebufferFactory,
     const ICompositeView& compositeView,
     nvrhi::IShader* pixelShader,
     nvrhi::IBindingLayout* gbufferBindingLayout)
@@ -69,14 +73,14 @@ DeferredLightingPass2018::DeferredLightingPass2018(
         .setAllFilters(true)
         .setAllAddressModes(nvrhi::SamplerAddressMode::Border)
         .setBorderColor(nvrhi::Color(1.f));
-    m_ShadowSampler = m_Device->createSampler(samplerDesc);
+    m_Device->createSampler(samplerDesc, &m_ShadowSampler);
 
     samplerDesc.setReductionType(nvrhi::SamplerReductionType::Comparison);
-    m_ShadowSamplerComparison = m_Device->createSampler(samplerDesc);
+    m_Device->createSampler(samplerDesc, &m_ShadowSamplerComparison);
 
     // "DeferredLightingConstants" (+32)
-    m_DeferredCB = m_Device->createBuffer(nvrhi::utils::CreateVolatileConstantBufferDesc(
-        sizeof(surface2018::DeferredLightingConstants), "DeferredLightingConstants", c_MaxRenderPassConstantBufferVersions));
+    m_Device->createBuffer(nvrhi::utils::CreateVolatileConstantBufferDesc(
+        sizeof(surface2018::DeferredLightingConstants), "DeferredLightingConstants", c_MaxRenderPassConstantBufferVersions), &m_DeferredCB);
 
     // Binding layouts (+56, +64)
     nvrhi::BindingLayoutDesc shadowLayoutDesc;
@@ -87,7 +91,7 @@ DeferredLightingPass2018::DeferredLightingPass2018(
         nvrhi::BindingLayoutItem::Sampler(0),                   // s_ShadowSampler
         nvrhi::BindingLayoutItem::Sampler(1),                   // s_ShadowSamplerComparison
     };
-    m_ShadowBindingLayout = m_Device->createBindingLayout(shadowLayoutDesc);
+    m_Device->createBindingLayout(shadowLayoutDesc, &m_ShadowBindingLayout);
 
     nvrhi::BindingLayoutDesc probeLayoutDesc;
     probeLayoutDesc.visibility = nvrhi::ShaderType::Pixel;
@@ -99,7 +103,7 @@ DeferredLightingPass2018::DeferredLightingPass2018(
         nvrhi::BindingLayoutItem::Sampler(2),                   // s_LightProbeSampler
         nvrhi::BindingLayoutItem::Sampler(3),                   // s_BrdfSampler
     };
-    m_LightProbeBindingLayout = m_Device->createBindingLayout(probeLayoutDesc);
+    m_Device->createBindingLayout(probeLayoutDesc, &m_LightProbeBindingLayout);
 
     // Pipeline (+40): full-screen strip, no depth test, no culling.
     const IView* sampleView = compositeView.GetChildView(ViewType::PLANAR, 0);
@@ -115,7 +119,7 @@ DeferredLightingPass2018::DeferredLightingPass2018(
         pipelineDesc.renderState.rasterState.setCullNone();
         pipelineDesc.renderState.depthStencilState.disableDepthTest().disableDepthWrite().disableStencil();
 
-        m_Pipeline = m_Device->createGraphicsPipeline(pipelineDesc, framebuffer);
+        m_Device->createGraphicsPipeline2(pipelineDesc, framebuffer, &m_Pipeline);
     }
     else
     {
@@ -138,7 +142,7 @@ void DeferredLightingPass2018::Render(
     float2 randomOffset,
     const float3& ambientColorTop,
     const float3& ambientColorBottom,
-    const std::vector<std::shared_ptr<LightProbe>>& lightProbes,
+    const std::vector<nvrhi::AutoPtr<LightProbe>>& lightProbes,
     nvrhi::ITexture* indirectDiffuse)
 {
     if (!m_Pipeline || !gbufferBindingSet)

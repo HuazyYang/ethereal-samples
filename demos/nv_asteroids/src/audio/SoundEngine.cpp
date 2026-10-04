@@ -133,14 +133,14 @@ namespace audio
 
     std::unique_ptr<WavFile> WavFile::Read(donut::vfs::IFileSystem& fs, const std::filesystem::path& path)
     {
-        auto blob = fs.readFile(path);
-        if (!blob)
+        nvrhi::AutoPtr<nvrhi::IDataBlob> blob;
+        if (NVRHI_FAILED(fs.readFile(path, &blob)) || !blob)
             return nullptr;
 
         auto wav = std::unique_ptr<WavFile>(new WavFile());
-        wav->m_Data.resize(blob->size());
-        if (blob->size())
-            memcpy(wav->m_Data.data(), blob->data(), blob->size());
+        wav->m_Data.resize(blob->GetSize());
+        if (blob->GetSize())
+            memcpy(wav->m_Data.data(), blob->GetDataPtr(), blob->GetSize());
 
         // The 2018 reader only accepts the canonical layout: RIFF size consistent with the file,
         // 'fmt ' as the first sub-chunk, PCM format, and a 'data' tag somewhere in the file.
@@ -208,7 +208,7 @@ namespace audio
     // ------------------------------------------------------------------------------------------
     // Sound
 
-    std::unique_ptr<Sound> Sound::Create(std::shared_ptr<donut::vfs::IFileSystem> fs,
+    std::unique_ptr<Sound> Sound::Create(nvrhi::AutoPtr<donut::vfs::IFileSystem> fs,
         const std::filesystem::path& path, bool loop)
     {
         std::shared_ptr<Engine> engine = Engine::Get();

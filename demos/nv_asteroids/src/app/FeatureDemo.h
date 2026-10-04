@@ -15,9 +15,17 @@
 
 #include "app/Animation.h"
 #include "app/InputReplay.h"
+#include "app/DemoLightProbe.h"
+#include "meshlets/MeshletDrawStrategy.h"
 
 #include <donut/app/ApplicationBase.h>
 #include <donut/app/Camera.h>
+// nvrhi::AutoPtr destroys through a complete type, so the passes held by value below
+// need their definitions here and not just a forward declaration.
+#include <donut/engine/FramebufferFactory.h>
+#include <donut/engine/ShadowMap.h>
+#include <donut/render/SsaoPass.h>
+#include <donut/render/TemporalAntiAliasingPass.h>
 #include <donut/core/math/math.h>
 #include <nvrhi/nvrhi.h>
 
@@ -97,6 +105,9 @@ struct DemoLightProbe;
 
 class FeatureDemo : public donut::app::ApplicationBase
 {
+    // Adds no interface and no class ID of its own: ApplicationBase's table is correct for it.
+    NVRHI_INHERIT_INTERFACE_TABLE()
+
 public:
     // Camera preset of Camera%d.json (40 bytes in the vector at +584).
     struct CameraPreset
@@ -127,16 +138,16 @@ public:
     // ApplicationBase (2018 slots 11..16)
     void RenderScene(nvrhi::IFramebuffer* framebuffer) override;                        // 0x1400342A0
     void RenderSplashScreen(nvrhi::IFramebuffer* framebuffer) override;                 // 0x1400354A0
-    bool LoadScene(std::shared_ptr<donut::vfs::IFileSystem> fs,
+    bool LoadScene(donut::vfs::IFileSystem* fs,
         const std::filesystem::path& sceneFileName) override;                           // 0x140031280
     void SceneUnloading() override;                                                     // 0x140037020
     void SceneLoaded() override;                                                        // 0x140036540
 
     // Used by UIRenderer and main.
-    const std::shared_ptr<donut::vfs::IFileSystem>& GetRootFileSystem() const { return m_RootFs; }
+    const nvrhi::AutoPtr<donut::vfs::IFileSystem>& GetRootFileSystem() const { return m_RootFs; }
     const std::filesystem::path& GetMediaPath() const { return m_MediaPath; }
-    const std::shared_ptr<donut::engine::ShaderFactory>& GetShaderFactory() const { return m_ShaderFactory; }
-    const std::shared_ptr<donut::engine::TextureCache>& GetTextureCache() const { return m_TextureCache; }
+    const nvrhi::AutoPtr<donut::engine::ShaderFactory>& GetShaderFactory() const { return m_ShaderFactory; }
+    const nvrhi::AutoPtr<donut::engine::TextureCache>& GetTextureCache() const { return m_TextureCache; }
     SpaceScene* GetScene() const { return m_Scene.get(); }
     bool HasSunLight() const { return m_SunLight != nullptr; }
     UIData& GetUIData() const { return *m_UI; }
@@ -155,7 +166,7 @@ private:
     void SaveCameraPreset(int index);                                                   // 0x140035810
     void LoadLightProbes(donut::engine::ThreadPool& threadPool);                        // 0x140030D40
     void SaveLightProbes();                                                             // 0x140035D40
-    void SaveTextureToFile(nvrhi::ITexture* texture, const std::shared_ptr<donut::vfs::IFileSystem>& fs,
+    void SaveTextureToFile(nvrhi::ITexture* texture, const nvrhi::AutoPtr<donut::vfs::IFileSystem>& fs,
         const std::filesystem::path& path);                                             // 0x1400360F0
 
     // ---- input (FeatureDemo_Input.cpp) ------------------------------------------------------------
@@ -176,7 +187,7 @@ private:
     bool UpdateViews();                                                                 // 0x140037C50
     void UpdateSun();                                                                   // inlined in 0x1400342A0
     void UpdateLights();                                                                // 0x140031980
-    void CollectLightProbes(std::vector<std::shared_ptr<donut::engine::LightProbe>>& probes); // 0x1400377C0
+    void CollectLightProbes(std::vector<nvrhi::AutoPtr<donut::engine::LightProbe>>& probes); // 0x1400377C0
     void UpdateScene(nvrhi::ICommandList* commandList);                                 // 0x140038380
     void UpdateViewDistanceMap(nvrhi::ICommandList* commandList, float cameraHeight, float farDistance); // 0x1400384F0
     void UpdateAsteroidRendererSettings();                                              // 0x140037370
@@ -184,8 +195,8 @@ private:
     void RenderGBuffer();                                                               // 0x140032630
     void RenderLightingAndEffects();                                                    // 0x140033CA0
     void ResolveOrAccumulate(const nvrhi::Viewport& viewport);                          // 0x14002B2A0
-    nvrhi::ITexture* PostProcess(const std::shared_ptr<donut::engine::FramebufferFactory>& framebufferWithDepth,
-        const std::shared_ptr<donut::engine::FramebufferFactory>& framebuffer, nvrhi::ITexture* source); // 0x140033960
+    nvrhi::ITexture* PostProcess(const nvrhi::AutoPtr<donut::engine::FramebufferFactory>& framebufferWithDepth,
+        const nvrhi::AutoPtr<donut::engine::FramebufferFactory>& framebuffer, nvrhi::ITexture* source); // 0x140033960
     void RenderOverlay(const nvrhi::Viewport& windowViewport, nvrhi::IFramebuffer* framebuffer); // 0x1400321F0
     void RenderShadowView(const donut::engine::IView& view);
     void SaveScreenshotIfRequested(nvrhi::IFramebuffer* framebuffer);
@@ -197,19 +208,19 @@ private:
     float m_CurrentTime = 0.f;                                                  // +100 demo time (stops when paused)
     float m_ElapsedTime = 0.f;                                                  // +104 last frame step (0 when paused)
     donut::app::DeviceManager* m_DeviceManager = nullptr;                       // +112
-    std::shared_ptr<donut::engine::ShaderFactory> m_ShaderFactory;              // +120
-    std::shared_ptr<donut::vfs::IFileSystem> m_RootFs;                          // +136
+    nvrhi::AutoPtr<donut::engine::ShaderFactory> m_ShaderFactory;              // +120
+    nvrhi::AutoPtr<donut::vfs::IFileSystem> m_RootFs;                          // +136
     std::filesystem::path m_MediaPath;                                          // +152
 
     std::shared_ptr<SpaceScene> m_Scene;                                        // +184
-    std::shared_ptr<donut::render::InstancedOpaqueDrawStrategy> m_OpaqueDrawStrategy;   // +200
-    std::shared_ptr<donut::render::TransparentDrawStrategy> m_TransparentDrawStrategy;  // +216
+    nvrhi::AutoPtr<donut::render::InstancedOpaqueDrawStrategy> m_OpaqueDrawStrategy;   // +200
+    nvrhi::AutoPtr<donut::render::TransparentDrawStrategy> m_TransparentDrawStrategy;  // +216
     std::shared_ptr<MeshletRenderResources> m_MeshletResources;                 // +232
-    std::shared_ptr<MeshletDrawStrategy> m_GBufferRenderer;                     // +248 gbuffer_ps
-    std::shared_ptr<MeshletDrawStrategy> m_DepthRenderer;                       // +264 no pixel shader (depth/shadows)
-    std::shared_ptr<MeshletDrawStrategy> m_MaterialIdRenderer;                  // +280 material_id_ps
-    std::shared_ptr<MeshletDrawStrategy> m_ForwardRenderer;                     // +296 forward_ps
-    std::shared_ptr<MeshletDrawStrategy> m_ShipForwardRenderer;                 // +312 forward_ps (mode 3)
+    nvrhi::AutoPtr<MeshletDrawStrategy> m_GBufferRenderer;                     // +248 gbuffer_ps
+    nvrhi::AutoPtr<MeshletDrawStrategy> m_DepthRenderer;                       // +264 no pixel shader (depth/shadows)
+    nvrhi::AutoPtr<MeshletDrawStrategy> m_MaterialIdRenderer;                  // +280 material_id_ps
+    nvrhi::AutoPtr<MeshletDrawStrategy> m_ForwardRenderer;                     // +296 forward_ps
+    nvrhi::AutoPtr<MeshletDrawStrategy> m_ShipForwardRenderer;                 // +312 forward_ps (mode 3)
     std::shared_ptr<PipelineStatisticsQuery> m_PipelineStatsQuery;              // +328
 
     donut::app::BaseCamera* m_ActiveCamera = nullptr;                           // +336
@@ -218,8 +229,8 @@ private:
     std::unique_ptr<ThirdPersonCamera> m_ShipCamera;                            // +576
     std::vector<CameraPreset> m_CameraPresets;                                  // +584
 
-    std::shared_ptr<donut::engine::PlanarView> m_View;                          // +608 (2018: PlanarView or StereoView)
-    std::shared_ptr<donut::engine::PlanarView> m_ViewPrevious;                  // +624
+    nvrhi::AutoPtr<donut::engine::PlanarView> m_View;                          // +608 (2018: PlanarView or StereoView)
+    nvrhi::AutoPtr<donut::engine::PlanarView> m_ViewPrevious;                  // +624
     dm::float3 m_ViewOrigin = 0.f;                                              // +640
     dm::float3 m_ViewOriginPrevious = 0.f;                                      // +652
     nvrhi::ShaderHandle m_GBufferPixelShader;                                   // +664 gbuffer_ps.hlsl
@@ -240,9 +251,9 @@ private:
     std::shared_ptr<ToneMappingPass2018> m_ToneMappingPass;                     // +832 (2018 framework pass)
     std::shared_ptr<DeferredLightingPass2018> m_DeferredLightingPass;           // +840
     std::shared_ptr<GBufferFillPass2018> m_GBufferPass;                         // +848
-    std::shared_ptr<donut::render::SsaoPass> m_SsaoPass;                        // +856
+    nvrhi::AutoPtr<donut::render::SsaoPass> m_SsaoPass;                        // +856
     std::shared_ptr<LightProbeProcessingPass2018> m_LightProbePass;             // +864 (2018 framework pass)
-    std::shared_ptr<donut::render::TemporalAntiAliasingPass> m_TemporalAntiAliasingPass; // +880
+    nvrhi::AutoPtr<donut::render::TemporalAntiAliasingPass> m_TemporalAntiAliasingPass; // +880
     std::shared_ptr<BloomPass2018> m_BloomPass;                                 // +888 (2018 framework pass)
     std::shared_ptr<HbaoPlusPass> m_HbaoPlus;                                   // +896
     std::shared_ptr<GBufferFillPass2018> m_MaterialIdPass;                      // +904 never created by the binary
@@ -255,17 +266,17 @@ private:
     std::shared_ptr<SharpenBlitPass2018> m_SharpenBlitPass;                     // 2018 CommonRenderPasses sharpen blit (+48)
     std::shared_ptr<fx::ShowCubemapPass> m_ShowCubemapPass;                     // +952 probe debug view
     std::shared_ptr<fx::ShieldPass> m_ShieldPass;                               // +960
-    std::shared_ptr<donut::render::CascadedShadowMap> m_ShadowMap;              // +968
+    nvrhi::AutoPtr<donut::render::CascadedShadowMap> m_ShadowMap;              // +968
     std::shared_ptr<SceneDirectionalLight> m_SunLight;                          // +984
     std::vector<std::shared_ptr<SceneLight>> m_Lights;                          // +1000
-    std::shared_ptr<donut::engine::LoadedTexture> m_SplashTexture;              // +1024 splash.jpg
-    std::shared_ptr<donut::engine::LoadedTexture> m_SkyTexture;                 // +1040 SkyAndStars/...
-    std::shared_ptr<donut::engine::LoadedTexture> m_RandomsTexture;             // +1056 randoms_texture.dds
-    std::shared_ptr<donut::engine::LoadedTexture> m_ColorLutTexture;            // +1072 color LUT
-    std::vector<std::shared_ptr<DemoLightProbe>> m_LightProbes;                 // +1088
-    std::shared_ptr<donut::engine::LoadedTexture> m_LightProbeDiffuse;          // +1112 LightProbeDiffuse.dds
-    std::shared_ptr<donut::engine::LoadedTexture> m_LightProbeSpecular;         // +1128 LightProbeSpecular.dds
-    std::shared_ptr<donut::engine::LoadedTexture> m_EnvironmentBrdf;            // +1144 EnvironmentBrdf.dds
+    nvrhi::AutoPtr<donut::engine::LoadedTexture> m_SplashTexture;              // +1024 splash.jpg
+    nvrhi::AutoPtr<donut::engine::LoadedTexture> m_SkyTexture;                 // +1040 SkyAndStars/...
+    nvrhi::AutoPtr<donut::engine::LoadedTexture> m_RandomsTexture;             // +1056 randoms_texture.dds
+    nvrhi::AutoPtr<donut::engine::LoadedTexture> m_ColorLutTexture;            // +1072 color LUT
+    std::vector<nvrhi::AutoPtr<DemoLightProbe>> m_LightProbes;                 // +1088
+    nvrhi::AutoPtr<donut::engine::LoadedTexture> m_LightProbeDiffuse;          // +1112 LightProbeDiffuse.dds
+    nvrhi::AutoPtr<donut::engine::LoadedTexture> m_LightProbeSpecular;         // +1128 LightProbeSpecular.dds
+    nvrhi::AutoPtr<donut::engine::LoadedTexture> m_EnvironmentBrdf;            // +1144 EnvironmentBrdf.dds
     std::shared_ptr<fx::PlanetSet> m_Planets;                                   // +1160
     std::shared_ptr<fx::SunDisk> m_SunDisk;                                     // +1168
     nvrhi::TextureHandle m_ViewDistanceMap;                                     // +1176
@@ -296,9 +307,9 @@ private:
 
     // deviation: donut's CascadedShadowMap takes a donut DirectionalLight that lives in a scene graph; the
     // 2018 map took the free-standing sun. A one-node graph carries a donut light that mirrors the sun.
-    std::shared_ptr<donut::engine::SceneGraph> m_ShadowLightGraph;
-    std::shared_ptr<donut::engine::DirectionalLight> m_ShadowLight;
-    std::shared_ptr<donut::engine::FramebufferFactory> m_ShadowFramebuffer;
+    nvrhi::AutoPtr<donut::engine::SceneGraph> m_ShadowLightGraph;
+    nvrhi::AutoPtr<donut::engine::DirectionalLight> m_ShadowLight;
+    nvrhi::AutoPtr<donut::engine::FramebufferFactory> m_ShadowFramebuffer;
 
 public:
     // Developer option (deviation, not in the binary): "-screenshot <file.png> <frame>" saves the final image.

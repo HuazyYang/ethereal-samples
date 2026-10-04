@@ -9,7 +9,7 @@ using namespace donut;
 using namespace donut::math;
 #include "../../shaders/framework/taa_cb_2018.h"
 
-TemporalAAPass2018::TemporalAAPass2018(nvrhi::IDevice* device, std::shared_ptr<engine::ShaderFactory> shaderFactory,
+TemporalAAPass2018::TemporalAAPass2018(nvrhi::IDevice* device, nvrhi::AutoPtr<engine::ShaderFactory> shaderFactory,
     const CreateParameters& params)
     : m_Device(device)
 {
@@ -28,7 +28,7 @@ TemporalAAPass2018::TemporalAAPass2018(nvrhi::IDevice* device, std::shared_ptr<e
     nvrhi::SamplerDesc samplerDesc;
     samplerDesc.addressU = samplerDesc.addressV = samplerDesc.addressW = nvrhi::SamplerAddressMode::Border;
     samplerDesc.borderColor = nvrhi::Color(0.f);
-    m_Sampler = device->createSampler(samplerDesc);
+    device->createSampler(samplerDesc, &m_Sampler);
 
     const nvrhi::TextureDesc& resolvedDesc = params.resolvedColor1->getDesc();
     m_ResolvedColorSize = float2(float(resolvedDesc.width), float(resolvedDesc.height));
@@ -39,7 +39,7 @@ TemporalAAPass2018::TemporalAAPass2018(nvrhi::IDevice* device, std::shared_ptr<e
     constantBufferDesc.isConstantBuffer = true;
     constantBufferDesc.isVolatile = true;
     constantBufferDesc.maxVersions = params.numConstantBufferVersions;
-    m_Constants = device->createBuffer(constantBufferDesc);
+    device->createBuffer(constantBufferDesc, &m_Constants);
 
     for (int i = 0; i < 2; ++i)
     {
@@ -56,13 +56,13 @@ TemporalAAPass2018::TemporalAAPass2018(nvrhi::IDevice* device, std::shared_ptr<e
             nvrhi::utils::CreateBindingSetAndLayout(device, nvrhi::ShaderType::Compute, 0, setDesc, m_BindingLayout,
                 m_BindingSets[0]);
         else
-            m_BindingSets[1] = device->createBindingSet(setDesc, m_BindingLayout);
+            device->createBindingSet(setDesc, m_BindingLayout, &m_BindingSets[1]);
     }
 
     nvrhi::ComputePipelineDesc pipelineDesc;
     pipelineDesc.CS = m_ResolveCS;
     pipelineDesc.bindingLayouts = { m_BindingLayout };
-    m_Pipeline = device->createComputePipeline(pipelineDesc);
+    device->createComputePipeline(pipelineDesc, &m_Pipeline);
 }
 
 void TemporalAAPass2018::Resolve(nvrhi::ICommandList* commandList, const Parameters& params, bool historyValid,
@@ -71,7 +71,7 @@ void TemporalAAPass2018::Resolve(nvrhi::ICommandList* commandList, const Paramet
     if (!historyValid)
     {
         // ResolveOrAccumulate (0x14002B2A0) without history: the HDR image seeds the output texture, no resolve.
-        commandList->copyTexture(GetOutput(), nvrhi::TextureSlice(), m_Unresolved, nvrhi::TextureSlice());
+        commandList->copyTexture1(GetOutput(), nvrhi::TextureSlice(), m_Unresolved, nvrhi::TextureSlice());
         return;
     }
 

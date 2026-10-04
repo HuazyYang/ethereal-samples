@@ -37,7 +37,7 @@ namespace fx
             return float3(cosf(az) * cosf(el), sinf(el), sinf(az) * cosf(el)) * radius;
         }
 
-        nvrhi::ITexture* TextureOrFallback(const std::shared_ptr<LoadedTexture>& texture, nvrhi::ITexture* fallback)
+        nvrhi::ITexture* TextureOrFallback(const nvrhi::AutoPtr<LoadedTexture>& texture, nvrhi::ITexture* fallback)
         {
             return (texture && texture->texture) ? texture->texture.Get() : fallback;
         }
@@ -67,7 +67,7 @@ namespace fx
         if (planet.angularSize == 0.f)
             planet.angularSize = 30.f;
 
-        auto load = [&](const char* key, bool sRGB) -> std::shared_ptr<LoadedTexture>
+        auto load = [&](const char* key, bool sRGB) -> nvrhi::AutoPtr<LoadedTexture>
         {
             const std::filesystem::path path = mediaPath / node[key].asString();
             const TextureLoadOptions options{ SRGBModeFromBool(sRGB) };
@@ -111,12 +111,12 @@ namespace fx
 
     void PlanetSet::CreateRenderPasses(
         nvrhi::IDevice* device,
-        const std::shared_ptr<ShaderFactory>& shaderFactory,
-        const std::shared_ptr<FramebufferFactory>& framebufferFactory,
+        const nvrhi::AutoPtr<ShaderFactory>& shaderFactory,
+        const nvrhi::AutoPtr<FramebufferFactory>& framebufferFactory,
         const ICompositeView& compositeView,
-        const std::shared_ptr<CommonRenderPasses>& commonPasses)
+        const nvrhi::AutoPtr<CommonRenderPasses>& commonPasses)
     {
-        m_PlanetConstants = device->createBuffer(ConstantBufferDesc(sizeof(PlanetConstants), "PlanetConstants"));
+        device->createBuffer(ConstantBufferDesc(sizeof(PlanetConstants), "PlanetConstants"), &m_PlanetConstants);
 
         // b0 PlanetConstants, t0 Surface, t1 Normals, t2 Rings, s0 SurfaceSampler
         nvrhi::BindingLayoutDesc pixelLayoutDesc;
@@ -151,8 +151,8 @@ namespace fx
                 nvrhi::BindingSetItem::Sampler(0, commonPasses->m_LinearWrapSampler)
             };
 
-            planet.bindingSet = device->createBindingSet(bindingSetDesc, m_RectPass->GetPixelBindingLayout());
-            planet.ringsBindingSet = device->createBindingSet(bindingSetDesc, m_RingsRectPass->GetPixelBindingLayout());
+            device->createBindingSet(bindingSetDesc, m_RectPass->GetPixelBindingLayout(), &planet.bindingSet);
+            device->createBindingSet(bindingSetDesc, m_RingsRectPass->GetPixelBindingLayout(), &planet.ringsBindingSet);
         }
     }
 

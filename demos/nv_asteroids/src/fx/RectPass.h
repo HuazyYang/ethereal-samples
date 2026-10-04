@@ -31,11 +31,11 @@ namespace fx
     public:
         RectPass(
             nvrhi::IDevice* device,
-            const std::shared_ptr<donut::engine::ShaderFactory>& shaderFactory,
+            const nvrhi::AutoPtr<donut::engine::ShaderFactory>& shaderFactory,
             const char* pixelShaderFile,
             const nvrhi::BindingLayoutDesc& pixelBindingLayoutDesc,
             const nvrhi::BlendState::RenderTarget& blendState,
-            const std::shared_ptr<donut::engine::FramebufferFactory>& framebufferFactory,
+            const nvrhi::AutoPtr<donut::engine::FramebufferFactory>& framebufferFactory,
             const donut::engine::ICompositeView& compositeView);
 
         // direction: world-space direction of the quad center (need not be normalized).
@@ -59,6 +59,6 @@ namespace fx
         nvrhi::BindingLayoutHandle m_VertexBindingLayout;
         nvrhi::BindingSetHandle m_VertexBindingSet;
         nvrhi::BindingLayoutHandle m_PixelBindingLayout;
-        std::shared_ptr<donut::engine::FramebufferFactory> m_FramebufferFactory;
+        nvrhi::AutoPtr<donut::engine::FramebufferFactory> m_FramebufferFactory;
     };
 }

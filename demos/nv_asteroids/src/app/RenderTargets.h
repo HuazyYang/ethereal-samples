@@ -40,17 +40,17 @@ public:
     // ResolvedColor1 is the resolved output, ResolvedColor2 and this texture are the feedback pair.
     nvrhi::TextureHandle TemporalFeedback;
 
-    std::shared_ptr<donut::engine::FramebufferFactory> HdrFramebuffer;          // [15] HdrColor + depth
-    std::shared_ptr<donut::engine::FramebufferFactory> HdrFramebufferNoDepth;   // [17] HdrColor
-    std::shared_ptr<donut::engine::FramebufferFactory> GBufferFramebuffer;      // [19] GBuffer0..2 + MotionVectors + depth
-    std::shared_ptr<donut::engine::FramebufferFactory> LdrFramebuffer;          // [21] LdrColor
-    std::shared_ptr<donut::engine::FramebufferFactory> ResolvedFramebuffer1;    // [23] ResolvedColor1
-    std::shared_ptr<donut::engine::FramebufferFactory> ResolvedFramebuffer2;    // [25] ResolvedColor2
-    std::shared_ptr<donut::engine::FramebufferFactory> BloomFramebuffer;        // [27] BloomColor
-    std::shared_ptr<donut::engine::FramebufferFactory> BloomFramebufferWithDepth; // [29] BloomColor + depth
-    std::shared_ptr<donut::engine::FramebufferFactory> UnusedFramebuffer31;     // [31] never created by the binary
-    std::shared_ptr<donut::engine::FramebufferFactory> DumpFramebuffer;         // [33] DumpTexture (optional)
-    std::shared_ptr<donut::engine::FramebufferFactory> AccumulationFramebuffer; // [35] AccumulationRenderingBuffer (optional)
+    nvrhi::AutoPtr<donut::engine::FramebufferFactory> HdrFramebuffer;          // [15] HdrColor + depth
+    nvrhi::AutoPtr<donut::engine::FramebufferFactory> HdrFramebufferNoDepth;   // [17] HdrColor
+    nvrhi::AutoPtr<donut::engine::FramebufferFactory> GBufferFramebuffer;      // [19] GBuffer0..2 + MotionVectors + depth
+    nvrhi::AutoPtr<donut::engine::FramebufferFactory> LdrFramebuffer;          // [21] LdrColor
+    nvrhi::AutoPtr<donut::engine::FramebufferFactory> ResolvedFramebuffer1;    // [23] ResolvedColor1
+    nvrhi::AutoPtr<donut::engine::FramebufferFactory> ResolvedFramebuffer2;    // [25] ResolvedColor2
+    nvrhi::AutoPtr<donut::engine::FramebufferFactory> BloomFramebuffer;        // [27] BloomColor
+    nvrhi::AutoPtr<donut::engine::FramebufferFactory> BloomFramebufferWithDepth; // [29] BloomColor + depth
+    nvrhi::AutoPtr<donut::engine::FramebufferFactory> UnusedFramebuffer31;     // [31] never created by the binary
+    nvrhi::AutoPtr<donut::engine::FramebufferFactory> DumpFramebuffer;         // [33] DumpTexture (optional)
+    nvrhi::AutoPtr<donut::engine::FramebufferFactory> AccumulationFramebuffer; // [35] AccumulationRenderingBuffer (optional)
 
     // 'dumpFormat' != UNKNOWN creates DumpTexture (an array of 'dumpArraySize' slices) with a staging copy;
     // 'enableAccumulation' creates AccumulationRenderingBuffer.

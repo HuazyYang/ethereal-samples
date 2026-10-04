@@ -28,10 +28,10 @@ void SceneMaterial::FillConstants(MaterialConstants2018& constants) const
     constants.materialID = materialID;
 }
 
-static void DropFailedTexture(std::shared_ptr<engine::LoadedTexture>& texture)
+static void DropFailedTexture(nvrhi::AutoPtr<engine::LoadedTexture>& texture)
 {
     if (texture && !texture->texture)
-        texture.reset();
+        texture = nullptr;
 }
 
 void SceneMaterial::CreateResources(nvrhi::IDevice* device, nvrhi::ICommandList* commandList,
@@ -54,7 +54,7 @@ void SceneMaterial::CreateResources(nvrhi::IDevice* device, nvrhi::ICommandList*
     bufferDesc.isConstantBuffer = true;
     bufferDesc.initialState = nvrhi::ResourceStates::ConstantBuffer;
     bufferDesc.keepInitialState = true;
-    materialConstants = device->createBuffer(bufferDesc);
+    device->createBuffer(bufferDesc, &materialConstants);
 
     MaterialConstants2018 constants{};
     FillConstants(constants);
@@ -62,7 +62,7 @@ void SceneMaterial::CreateResources(nvrhi::IDevice* device, nvrhi::ICommandList*
     dirty = false;
 
     // Asteroids.exe: 0x14000F780 / 0x1400526C0 (pixel stage only)
-    auto textureOr = [](const std::shared_ptr<engine::LoadedTexture>& texture, nvrhi::ITexture* fallback) -> nvrhi::ITexture*
+    auto textureOr = [](const nvrhi::AutoPtr<engine::LoadedTexture>& texture, nvrhi::ITexture* fallback) -> nvrhi::ITexture*
     {
         return texture ? texture->texture.Get() : fallback;
     };
@@ -76,7 +76,7 @@ void SceneMaterial::CreateResources(nvrhi::IDevice* device, nvrhi::ICommandList*
         nvrhi::BindingSetItem::Texture_SRV(2, textureOr(normalsTexture, commonPasses.m_BlackTexture)),
         nvrhi::BindingSetItem::Texture_SRV(3, textureOr(emissiveTexture, commonPasses.m_BlackTexture)),
     };
-    bindingSet = device->createBindingSet(setDesc, bindingLayout);
+    device->createBindingSet(setDesc, bindingLayout, &bindingSet);
 }
 
 void SceneMaterial::UpdateConstants(nvrhi::ICommandList* commandList)
@@ -103,7 +103,9 @@ nvrhi::BindingLayoutHandle CreateMaterialBindingLayout(nvrhi::IDevice* device)
         nvrhi::BindingLayoutItem::Texture_SRV(2),
         nvrhi::BindingLayoutItem::Texture_SRV(3),
     };
-    return device->createBindingLayout(layoutDesc);
+    nvrhi::BindingLayoutHandle result;
+    device->createBindingLayout(layoutDesc, &result);
+    return result;
 }
 
 static float3 ReadColor(const Json::Value& node)
@@ -113,7 +115,7 @@ static float3 ReadColor(const Json::Value& node)
     return float3(node[0].asFloat(), node[1].asFloat(), node[2].asFloat());
 }
 
-static std::shared_ptr<engine::LoadedTexture> LoadMaterialTexture(const Json::Value& textures, const char* key,
+static nvrhi::AutoPtr<engine::LoadedTexture> LoadMaterialTexture(const Json::Value& textures, const char* key,
     bool sRGB, const std::filesystem::path& basePath, const MaterialLoadParams& params)
 {
     const Json::Value& value = textures[key];

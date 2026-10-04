@@ -121,7 +121,7 @@ struct AsteroidTypeDesc
 
 struct AsteroidLoadContext
 {
-    std::shared_ptr<donut::vfs::IFileSystem> fs;
+    nvrhi::AutoPtr<donut::vfs::IFileSystem> fs;
     donut::engine::TextureCache* textureCache = nullptr;
     donut::engine::ThreadPool* threadPool = nullptr;    // optional: parallel type loading and texture decode
     SceneLoadProgress* progress = nullptr;

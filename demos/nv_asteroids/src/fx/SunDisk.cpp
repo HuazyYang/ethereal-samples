@@ -18,11 +18,11 @@ namespace fx
 {
     SunDisk::SunDisk(
         nvrhi::IDevice* device,
-        const std::shared_ptr<ShaderFactory>& shaderFactory,
-        const std::shared_ptr<FramebufferFactory>& framebufferFactory,
+        const nvrhi::AutoPtr<ShaderFactory>& shaderFactory,
+        const nvrhi::AutoPtr<FramebufferFactory>& framebufferFactory,
         const ICompositeView& compositeView)
     {
-        m_SunConstants = device->createBuffer(ConstantBufferDesc(sizeof(SunConstants), "SunConstants"));
+        device->createBuffer(ConstantBufferDesc(sizeof(SunConstants), "SunConstants"), &m_SunConstants);
 
         nvrhi::BindingLayoutDesc pixelLayoutDesc;
         pixelLayoutDesc.bindings = { nvrhi::BindingLayoutItem::VolatileConstantBuffer(0) };
@@ -33,7 +33,7 @@ namespace fx
 
         nvrhi::BindingSetDesc bindingSetDesc;
         bindingSetDesc.bindings = { nvrhi::BindingSetItem::ConstantBuffer(0, m_SunConstants) };
-        m_BindingSet = device->createBindingSet(bindingSetDesc, m_RectPass->GetPixelBindingLayout());
+        device->createBindingSet(bindingSetDesc, m_RectPass->GetPixelBindingLayout(), &m_BindingSet);
     }
 
     SunDisk::~SunDisk() = default;

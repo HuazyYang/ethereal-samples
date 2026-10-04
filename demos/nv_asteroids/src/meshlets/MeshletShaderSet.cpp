@@ -249,7 +249,7 @@ MeshletPipelineRef MeshletShaderSet::CreatePipeline(uint32_t variant, const nvrh
             .setRenderState(renderState);
         pipelineDesc.bindingLayouts = bindingLayouts;
 
-        entry.pipeline = m_Device->createMeshletPipeline(pipelineDesc, framebufferInfo);
+        m_Device->createMeshletPipeline1(pipelineDesc, framebufferInfo, &entry.pipeline);
         if (!entry.pipeline)
             log::error("Failed to create a mesh shading PSO");
     }

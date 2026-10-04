@@ -29,8 +29,8 @@ namespace fx
         // factory (targets+120), view (+608)).
         SunDisk(
             nvrhi::IDevice* device,
-            const std::shared_ptr<donut::engine::ShaderFactory>& shaderFactory,
-            const std::shared_ptr<donut::engine::FramebufferFactory>& framebufferFactory,
+            const nvrhi::AutoPtr<donut::engine::ShaderFactory>& shaderFactory,
+            const nvrhi::AutoPtr<donut::engine::FramebufferFactory>& framebufferFactory,
             const donut::engine::ICompositeView& compositeView);
         ~SunDisk();
 

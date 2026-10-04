@@ -44,9 +44,9 @@ namespace
 
 GBufferFillPass2018::GBufferFillPass2018(
     nvrhi::IDevice* device,
-    std::shared_ptr<ShaderFactory> shaderFactory,
-    std::shared_ptr<CommonRenderPasses> commonPasses,
-    std::shared_ptr<FramebufferFactory> framebufferFactory,
+    nvrhi::AutoPtr<ShaderFactory> shaderFactory,
+    nvrhi::AutoPtr<CommonRenderPasses> commonPasses,
+    nvrhi::AutoPtr<FramebufferFactory> framebufferFactory,
     const ICompositeView& compositeView,
     nvrhi::IBindingLayout* materialBindingLayout,
     const CreateParameters& params)
@@ -82,30 +82,30 @@ GBufferFillPass2018::GBufferFillPass2018(
         attributes.push_back(MakeVertexAttribute("PREV_TRANSFORM", nvrhi::Format::RGBA32_FLOAT, 5, 96, 3, 48, true));
 
     if (m_VertexShader)
-        m_InputLayout = m_Device->createInputLayout(attributes.data(), uint32_t(attributes.size()), m_VertexShader);
+        m_Device->createInputLayout(attributes.data(), uint32_t(attributes.size()), m_VertexShader, &m_InputLayout);
 
     // "GBufferFillConstants" (+56)
-    m_GBufferCB = m_Device->createBuffer(nvrhi::utils::CreateVolatileConstantBufferDesc(
-        sizeof(surface2018::GBufferFillConstants), "GBufferFillConstants", c_MaxRenderPassConstantBufferVersions));
+    m_Device->createBuffer(nvrhi::utils::CreateVolatileConstantBufferDesc(
+        sizeof(surface2018::GBufferFillConstants), "GBufferFillConstants", c_MaxRenderPassConstantBufferVersions), &m_GBufferCB);
 
     // View binding layout (+48) and set (+80): c_GBuffer at b0 for gbuffer_vs and at b1 for the pixel shader.
     nvrhi::BindingLayoutDesc vertexLayoutDesc;
     vertexLayoutDesc.visibility = nvrhi::ShaderType::Vertex | nvrhi::ShaderType::Geometry;
     vertexLayoutDesc.bindings = { nvrhi::BindingLayoutItem::VolatileConstantBuffer(0) };
-    m_VertexViewBindingLayout = m_Device->createBindingLayout(vertexLayoutDesc);
+    m_Device->createBindingLayout(vertexLayoutDesc, &m_VertexViewBindingLayout);
 
     nvrhi::BindingLayoutDesc pixelLayoutDesc;
     pixelLayoutDesc.visibility = nvrhi::ShaderType::Pixel;
     pixelLayoutDesc.bindings = { nvrhi::BindingLayoutItem::VolatileConstantBuffer(1) };
-    m_PixelViewBindingLayout = m_Device->createBindingLayout(pixelLayoutDesc);
+    m_Device->createBindingLayout(pixelLayoutDesc, &m_PixelViewBindingLayout);
 
     nvrhi::BindingSetDesc vertexSetDesc;
     vertexSetDesc.bindings = { nvrhi::BindingSetItem::ConstantBuffer(0, m_GBufferCB) };
-    m_VertexViewBindingSet = m_Device->createBindingSet(vertexSetDesc, m_VertexViewBindingLayout);
+    m_Device->createBindingSet(vertexSetDesc, m_VertexViewBindingLayout, &m_VertexViewBindingSet);
 
     nvrhi::BindingSetDesc pixelSetDesc;
     pixelSetDesc.bindings = { nvrhi::BindingSetItem::ConstantBuffer(1, m_GBufferCB) };
-    m_PixelViewBindingSet = m_Device->createBindingSet(pixelSetDesc, m_PixelViewBindingLayout);
+    m_Device->createBindingSet(pixelSetDesc, m_PixelViewBindingLayout, &m_PixelViewBindingSet);
 
     // Render states of the opaque (+64) and alpha-tested (+72) pipelines.
     const bool reverseDepth = sampleView && sampleView->IsReverseDepth();
@@ -209,13 +209,13 @@ void GBufferFillPass2018::CreatePipelines(nvrhi::IFramebuffer* framebuffer)
     pipelineDesc.primType = nvrhi::PrimitiveType::TriangleList;
     pipelineDesc.bindingLayouts = { m_MaterialBindingLayout, m_VertexViewBindingLayout, m_PixelViewBindingLayout };
     pipelineDesc.renderState = m_OpaqueRenderState;
-    m_OpaquePipeline = m_Device->createGraphicsPipeline(pipelineDesc, framebuffer);
+    m_Device->createGraphicsPipeline2(pipelineDesc, framebuffer, &m_OpaquePipeline);
 
     pipelineDesc.renderState = m_AlphaTestedRenderState;
     if (!m_UseAlphaToCoverage)
         pipelineDesc.PS = m_PixelShaderAlphaTested;
 
-    m_AlphaTestedPipeline = m_Device->createGraphicsPipeline(pipelineDesc, framebuffer);
+    m_Device->createGraphicsPipeline2(pipelineDesc, framebuffer, &m_AlphaTestedPipeline);
 }
 
 bool GBufferFillPass2018::SetupMaterial(SceneMaterial* material, MeshletPassState& state) const

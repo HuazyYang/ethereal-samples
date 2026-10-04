@@ -62,10 +62,10 @@ struct SceneMaterial
     std::string name;
     SceneMaterialDomain domain = SceneMaterialDomain::Opaque;
 
-    std::shared_ptr<donut::engine::LoadedTexture> diffuseTexture;
-    std::shared_ptr<donut::engine::LoadedTexture> specularTexture;
-    std::shared_ptr<donut::engine::LoadedTexture> normalsTexture;     // JSON "Bumpmap"
-    std::shared_ptr<donut::engine::LoadedTexture> emissiveTexture;    // JSON "Emittance"
+    nvrhi::AutoPtr<donut::engine::LoadedTexture> diffuseTexture;
+    nvrhi::AutoPtr<donut::engine::LoadedTexture> specularTexture;
+    nvrhi::AutoPtr<donut::engine::LoadedTexture> normalsTexture;     // JSON "Bumpmap"
+    nvrhi::AutoPtr<donut::engine::LoadedTexture> emissiveTexture;    // JSON "Emittance"
 
     nvrhi::BufferHandle materialConstants;
     nvrhi::BindingSetHandle bindingSet;

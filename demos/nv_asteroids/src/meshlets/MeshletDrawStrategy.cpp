@@ -64,7 +64,9 @@ namespace
         desc.cpuAccess = nvrhi::CpuAccessMode::Read;
         desc.initialState = nvrhi::ResourceStates::CopyDest;
         desc.keepInitialState = true;
-        return device->createBuffer(desc);
+        nvrhi::BufferHandle result;
+        device->createBuffer(desc, &result);
+        return result;
     }
 
     // 2018: 0x14000BE30 created the layout from the first binding set desc and stored it in the shared slot.
@@ -79,13 +81,15 @@ namespace
                 return nullptr;
             return set;
         }
-        return device->createBindingSet(setDesc, layout);
+        nvrhi::BindingSetHandle result;
+        device->createBindingSet(setDesc, layout, &result);
+        return result;
     }
 }
 
 MeshletDrawStrategy::MeshletDrawStrategy(
     nvrhi::IDevice* device,
-    std::shared_ptr<engine::ShaderFactory> shaderFactory,
+    nvrhi::AutoPtr<engine::ShaderFactory> shaderFactory,
     std::shared_ptr<SpaceScene> scene,
     std::shared_ptr<MeshletRenderResources> resources,
     nvrhi::ITexture* depthBuffer,
@@ -147,7 +151,7 @@ void MeshletDrawStrategy::CreateShaders()
     m_AsteroidShaders = std::make_unique<MeshletShaderSet>(m_Device, *m_ShaderFactory, desc);
 }
 
-void MeshletDrawStrategy::PrepareForView(const std::shared_ptr<engine::SceneGraphNode>&, const engine::IView&)
+void MeshletDrawStrategy::PrepareForView(engine::SceneGraphNode*, const engine::IView&)
 {
     // vfunc01 (0x1400448D0): resets the (always empty) item cursor at +72.
 }
@@ -509,7 +513,7 @@ MeshletPipelineRef MeshletDrawStrategy::GetOrCreatePipeline(MeshletShaderSet& sh
     if (!passState.framebuffer)
         return {};
 
-    const nvrhi::FramebufferInfo& framebufferInfo = passState.framebuffer->getFramebufferInfo();
+    const nvrhi::FramebufferInfo framebufferInfo = passState.framebuffer->getFramebufferInfo().getInfo();
 
     nvrhi::BindingLayoutVector layouts = passState.bindingLayouts;
     if (meshletLayout0)
@@ -549,7 +553,8 @@ void MeshletDrawStrategy::DispatchMeshlets(nvrhi::ICommandList* commandList, con
         state.addBindingSet(m_Resources->nvExtensionBindingSet);
         commandList->setGraphicsState(state);
 
-        nvrhi::d3d12::ICommandList* d3d12CommandList = commandList->getNativeObject(nvrhi::ObjectTypes::Nvrhi_D3D12_CommandList);
+        nvrhi::d3d12::ICommandList* d3d12CommandList = static_cast<nvrhi::d3d12::ICommandList*>(
+            commandList->getNativeObject(nvrhi::ObjectTypes::Nvrhi_D3D12_CommandList));
         if (d3d12CommandList)
             d3d12CommandList->updateGraphicsVolatileBuffers();
 

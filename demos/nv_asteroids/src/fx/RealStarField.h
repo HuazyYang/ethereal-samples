@@ -37,7 +37,7 @@ namespace fx
     public:
         RealStarFieldResources(
             nvrhi::IDevice* device,
-            const std::shared_ptr<donut::vfs::IFileSystem>& fs,
+            const nvrhi::AutoPtr<donut::vfs::IFileSystem>& fs,
             const std::filesystem::path& mediaPath);
         ~RealStarFieldResources();  // out of line: StarInstance is incomplete here
 
@@ -49,7 +49,7 @@ namespace fx
         [[nodiscard]] uint32_t GetNumStars() const;
 
     private:
-        void LoadStars(const std::shared_ptr<donut::vfs::IFileSystem>& fs, const std::filesystem::path& path);
+        void LoadStars(const nvrhi::AutoPtr<donut::vfs::IFileSystem>& fs, const std::filesystem::path& path);
 
         nvrhi::BufferHandle m_StarBuffer;
         std::vector<StarInstance> m_Stars;
@@ -89,9 +89,9 @@ namespace fx
 
         RealStarFieldPass(
             nvrhi::IDevice* device,
-            const std::shared_ptr<donut::engine::ShaderFactory>& shaderFactory,
-            const std::shared_ptr<donut::engine::CommonRenderPasses>& commonPasses,
-            const std::shared_ptr<donut::engine::FramebufferFactory>& framebufferFactory,
+            const nvrhi::AutoPtr<donut::engine::ShaderFactory>& shaderFactory,
+            const nvrhi::AutoPtr<donut::engine::CommonRenderPasses>& commonPasses,
+            const nvrhi::AutoPtr<donut::engine::FramebufferFactory>& framebufferFactory,
             const donut::engine::ICompositeView& compositeView,
             const std::shared_ptr<RealStarFieldResources>& resources);
 
@@ -109,7 +109,7 @@ namespace fx
         nvrhi::BindingLayoutHandle m_BindingLayout;
         nvrhi::BindingSetHandle m_BindingSet;
         nvrhi::GraphicsPipelineHandle m_Pipeline;
-        std::shared_ptr<donut::engine::CommonRenderPasses> m_CommonPasses;
-        std::shared_ptr<donut::engine::FramebufferFactory> m_FramebufferFactory;
+        nvrhi::AutoPtr<donut::engine::CommonRenderPasses> m_CommonPasses;
+        nvrhi::AutoPtr<donut::engine::FramebufferFactory> m_FramebufferFactory;
     };
 }

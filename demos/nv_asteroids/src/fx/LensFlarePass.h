@@ -30,16 +30,16 @@ namespace fx
     public:
         LensFlarePass(
             nvrhi::IDevice* device,
-            const std::shared_ptr<donut::engine::ShaderFactory>& shaderFactory,
-            const std::shared_ptr<donut::engine::CommonRenderPasses>& commonPasses,
-            const std::shared_ptr<donut::engine::FramebufferFactory>& framebufferFactory,
+            const nvrhi::AutoPtr<donut::engine::ShaderFactory>& shaderFactory,
+            const nvrhi::AutoPtr<donut::engine::CommonRenderPasses>& commonPasses,
+            const nvrhi::AutoPtr<donut::engine::FramebufferFactory>& framebufferFactory,
             const donut::engine::ICompositeView& compositeView);
 
         // cameraPosition: FeatureDemo +640 (camera-relative rendering offset, = -view translation).
         void Render(
             nvrhi::ICommandList* commandList,
             const donut::engine::ICompositeView& compositeView,
-            const std::shared_ptr<donut::engine::FramebufferFactory>& framebufferFactory,
+            const nvrhi::AutoPtr<donut::engine::FramebufferFactory>& framebufferFactory,
             const SceneDirectionalLight& sun,
             const donut::math::float3& cameraPosition);
 
@@ -52,6 +52,6 @@ namespace fx
         nvrhi::BindingLayoutHandle m_BindingLayout;
         nvrhi::GraphicsPipelineHandle m_Pipeline;
         std::map<nvrhi::ITexture*, nvrhi::BindingSetHandle> m_BindingSets;   // keyed by shadow map texture
-        std::shared_ptr<donut::engine::CommonRenderPasses> m_CommonPasses;
+        nvrhi::AutoPtr<donut::engine::CommonRenderPasses> m_CommonPasses;
     };
 }

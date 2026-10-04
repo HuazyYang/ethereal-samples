@@ -54,22 +54,24 @@ namespace
     // run individual original shader blobs in place of the rebuilt ones.
     class OverlayFileSystem : public vfs::IFileSystem
     {
+        NVRHI_INHERIT_INTERFACE_TABLE()
+
     public:
-        OverlayFileSystem(std::shared_ptr<vfs::IFileSystem> primary, std::shared_ptr<vfs::IFileSystem> secondary)
+        OverlayFileSystem(nvrhi::AutoPtr<vfs::IFileSystem> primary, nvrhi::AutoPtr<vfs::IFileSystem> secondary)
             : m_Primary(std::move(primary)), m_Secondary(std::move(secondary)) {}
 
         bool folderExists(const std::filesystem::path& name) override
         { return m_Primary->folderExists(name) || m_Secondary->folderExists(name); }
         bool fileExists(const std::filesystem::path& name) override
         { return m_Primary->fileExists(name) || m_Secondary->fileExists(name); }
-        std::shared_ptr<vfs::IBlob> readFile(const std::filesystem::path& name) override
+        nvrhi::FRESULT readFile(const std::filesystem::path& name, nvrhi::IDataBlob** ppBlob) override
         {
-            if (auto blob = m_Primary->readFile(name))
+            if (NVRHI_SUCCEEDED(m_Primary->readFile(name, ppBlob)))
             {
                 log::info("shaderOverride: using %s", name.generic_string().c_str());
-                return blob;
+                return nvrhi::FS_OK;
             }
-            return m_Secondary->readFile(name);
+            return m_Secondary->readFile(name, ppBlob);
         }
         bool writeFile(const std::filesystem::path&, const void*, size_t) override { return false; }
         int enumerateFiles(const std::filesystem::path& path, const std::vector<std::string>& extensions,
@@ -79,7 +81,7 @@ namespace
         { return m_Secondary->enumerateDirectories(path, callback, allowDuplicates); }
 
     private:
-        std::shared_ptr<vfs::IFileSystem> m_Primary, m_Secondary;
+        nvrhi::AutoPtr<vfs::IFileSystem> m_Primary, m_Secondary;
     };
 
     // Compiled shader directories. The build provides ASTEROIDS_DONUT_SHADER_DIR / ASTEROIDS_SHADER_DIR;
@@ -105,7 +107,7 @@ FeatureDemo::FeatureDemo(donut::app::DeviceManager* deviceManager, UIData* uiDat
 
     // media.db next to the executable, encrypted, opened read-only.
     const std::filesystem::path databasePath = exeDirectory / "media.db";
-    auto mediaFs = std::make_shared<SQLiteFileSystem>(databasePath, true, ToAnsi(c_MediaDatabasePassword));
+    auto mediaFs = MAKE_RC_OBJ_PTR(SQLiteFileSystem, databasePath, true, ToAnsi(c_MediaDatabasePassword));
     if (!mediaFs->isOpen())
     {
         log::error("Couldn't open the media database file.");
@@ -135,19 +137,19 @@ FeatureDemo::FeatureDemo(donut::app::DeviceManager* deviceManager, UIData* uiDat
     const std::filesystem::path demoShaderDir = FindShaderDirectory(configuredDemoShaders,
         exeDirectory / "shaders" / "asteroids" / donut::app::GetShaderTypeName(nvrhi::GraphicsAPI::D3D12));
 
-    auto rootFs = std::make_shared<vfs::RootFileSystem>();
-    rootFs->mount("/media", std::make_shared<vfs::RelativeFileSystem>(mediaFs, "media"));
+    auto rootFs = MAKE_RC_OBJ_PTR(vfs::RootFileSystem);
+    rootFs->mount("/media", MAKE_RC_OBJ_PTR(vfs::RelativeFileSystem, mediaFs, "media"));
     rootFs->mount("/shaders/donut", donutShaderDir);
     rootFs->mount("/shaders/asteroids", demoShaderDir);
     if (!demo::g_Options.shaderOverrideDir.empty())
     {
         const std::filesystem::path overrideDir = demo::g_Options.shaderOverrideDir;
-        auto native = std::make_shared<vfs::NativeFileSystem>();
+        auto native = MAKE_RC_OBJ_PTR(vfs::NativeFileSystem);
         auto overlay = [&](const char* sub)
         {
-            return std::make_shared<OverlayFileSystem>(
-                std::make_shared<vfs::RelativeFileSystem>(native, overrideDir / sub),
-                std::make_shared<vfs::RelativeFileSystem>(native, demoShaderDir / sub));
+            return MAKE_RC_OBJ_PTR(OverlayFileSystem, 
+                MAKE_RC_OBJ_PTR(vfs::RelativeFileSystem, native, overrideDir / sub),
+                MAKE_RC_OBJ_PTR(vfs::RelativeFileSystem, native, demoShaderDir / sub));
         };
         rootFs->mount("/shaders/demo", overlay("demo"));
         rootFs->mount("/shaders/framework", overlay("framework"));
@@ -161,9 +163,9 @@ FeatureDemo::FeatureDemo(donut::app::DeviceManager* deviceManager, UIData* uiDat
     m_RootFs = rootFs;
     m_MediaPath = "/media";
 
-    m_ShaderFactory = std::make_shared<engine::ShaderFactory>(device, m_RootFs, "/shaders");
-    m_CommonPasses = std::make_shared<engine::CommonRenderPasses>(device, m_ShaderFactory);
-    m_CommandList = device->createCommandList();
+    m_ShaderFactory = MAKE_RC_OBJ_PTR(engine::ShaderFactory, device, m_RootFs, "/shaders");
+    m_CommonPasses = MAKE_RC_OBJ_PTR(engine::CommonRenderPasses, device, m_ShaderFactory);
+    device->createCommandList(nvrhi::CommandListParameters(), &m_CommandList);
     if (demo::g_Options.gpuProfile)
         demo::GpuProfiler::Get().Enable(device);
 
@@ -172,11 +174,11 @@ FeatureDemo::FeatureDemo(donut::app::DeviceManager* deviceManager, UIData* uiDat
     // deviation: donut's CascadedShadowMap takes no shader factory / common passes, and the 2018 extra
     // parameter block {4.0f, 1000, 1} has no counterpart (unresolved meaning). 2048 px, 3 cascades,
     // 1 per-object shadow, D24S8 (2018 format 47) are kept.
-    m_ShadowMap = std::make_shared<render::CascadedShadowMap>(device, 2048, 3, 1, nvrhi::Format::D24S8);
+    m_ShadowMap = MAKE_RC_OBJ_PTR(render::CascadedShadowMap, device, 2048, 3, 1, nvrhi::Format::D24S8);
 
     m_HbaoPlus = std::make_shared<HbaoPlusPass>(device);
 
-    m_TextureCache = std::make_shared<engine::TextureCache>(device, m_RootFs, nullptr);
+    m_TextureCache = MAKE_RC_OBJ_PTR(engine::TextureCache, device, m_RootFs, nullptr);
     m_TextureCache->SetGenerateMipmaps(demo::g_Options.enableMipmaps);
     m_TextureCache->SetMaxTextureSize(0);
 
@@ -194,7 +196,7 @@ FeatureDemo::FeatureDemo(donut::app::DeviceManager* deviceManager, UIData* uiDat
         desc.debugName = "ViewDistanceMap";
         desc.initialState = nvrhi::ResourceStates::ShaderResource;
         desc.keepInitialState = true;
-        m_ViewDistanceMap = device->createTexture(desc);
+        device->createTexture(desc, &m_ViewDistanceMap);
     }
 
     m_PipelineStatsQuery = std::make_shared<PipelineStatisticsQuery>(m_DeviceManager->GetDevice(), 3);

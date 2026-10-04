@@ -68,7 +68,7 @@ struct SpaceObjectLoadContext
 class SpaceObject
 {
 public:
-    explicit SpaceObject(std::shared_ptr<donut::vfs::IFileSystem> fs);
+    explicit SpaceObject(nvrhi::AutoPtr<donut::vfs::IFileSystem> fs);
     ~SpaceObject();
     SpaceObject(const SpaceObject&) = delete;
     SpaceObject& operator=(const SpaceObject&) = delete;
@@ -150,7 +150,7 @@ private:
     std::vector<std::shared_ptr<SceneMaterial>> m_ImportedMaterials;    // owning (assimp-imported materials)
     SceneBufferGroup m_Buffers;
     uint32_t m_LoadFlags = 0;
-    std::shared_ptr<donut::vfs::IFileSystem> m_FS;
+    nvrhi::AutoPtr<donut::vfs::IFileSystem> m_FS;
     std::filesystem::path m_Directory;
     std::vector<donut::math::affine3> m_InstanceTransforms;
     uint32_t m_EnabledAttributes = VertexAttr_All;

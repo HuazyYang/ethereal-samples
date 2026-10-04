@@ -8,8 +8,8 @@ using namespace donut;
 using namespace donut::math;
 #include "../../shaders/framework/blit_cb_2018.h"
 
-SharpenBlitPass2018::SharpenBlitPass2018(nvrhi::IDevice* device, std::shared_ptr<engine::ShaderFactory> shaderFactory,
-    std::shared_ptr<engine::CommonRenderPasses> commonPasses)
+SharpenBlitPass2018::SharpenBlitPass2018(nvrhi::IDevice* device, nvrhi::AutoPtr<engine::ShaderFactory> shaderFactory,
+    nvrhi::AutoPtr<engine::CommonRenderPasses> commonPasses)
     : m_Device(device)
     , m_CommonPasses(std::move(commonPasses))
 {
@@ -17,8 +17,8 @@ SharpenBlitPass2018::SharpenBlitPass2018(nvrhi::IDevice* device, std::shared_ptr
     // linear clamp sampler (+296).
     m_PixelShader = shaderFactory->CreateShader("framework/sharpen_ps.hlsl", "main", nullptr, nvrhi::ShaderType::Pixel);
 
-    m_Constants = device->createBuffer(nvrhi::utils::CreateVolatileConstantBufferDesc(
-        sizeof(blit2018::BlitConstants), "BlitConstants", engine::c_MaxRenderPassConstantBufferVersions));
+    device->createBuffer(nvrhi::utils::CreateVolatileConstantBufferDesc(
+        sizeof(blit2018::BlitConstants), "BlitConstants", engine::c_MaxRenderPassConstantBufferVersions), &m_Constants);
 
     nvrhi::BindingLayoutDesc layoutDesc;
     layoutDesc.visibility = nvrhi::ShaderType::All;
@@ -27,14 +27,14 @@ SharpenBlitPass2018::SharpenBlitPass2018(nvrhi::IDevice* device, std::shared_ptr
         nvrhi::BindingLayoutItem::Texture_SRV(0),
         nvrhi::BindingLayoutItem::Sampler(0)
     };
-    m_BindingLayout = device->createBindingLayout(layoutDesc);
+    device->createBindingLayout(layoutDesc, &m_BindingLayout);
 }
 
 void SharpenBlitPass2018::Render(nvrhi::ICommandList* commandList, nvrhi::IFramebuffer* framebuffer,
     const nvrhi::Viewport& viewport, nvrhi::ITexture* source, float sharpenFactor)
 {
     // Asteroids.exe: 0x14007AAB0 / 0x14007A5B0
-    const nvrhi::FramebufferInfo& framebufferInfo = framebuffer->getFramebufferInfo();
+    const nvrhi::FramebufferInfo framebufferInfo = framebuffer->getFramebufferInfo().getInfo();
     if (!m_Pipeline || !(m_PipelineFramebufferInfo == framebufferInfo))
     {
         nvrhi::GraphicsPipelineDesc desc;
@@ -44,7 +44,7 @@ void SharpenBlitPass2018::Render(nvrhi::ICommandList* commandList, nvrhi::IFrame
         desc.bindingLayouts = { m_BindingLayout };
         desc.renderState.rasterState.setCullNone();             // 2018 cull mode 2 (none)
         desc.renderState.depthStencilState.setDepthTestEnable(false).setStencilEnable(false);
-        m_Pipeline = m_Device->createGraphicsPipeline(desc, framebufferInfo);
+        m_Device->createGraphicsPipeline1(desc, framebufferInfo, &m_Pipeline);
         m_PipelineFramebufferInfo = framebufferInfo;
     }
 
@@ -59,7 +59,7 @@ void SharpenBlitPass2018::Render(nvrhi::ICommandList* commandList, nvrhi::IFrame
             nvrhi::BindingSetItem::Texture_SRV(0, source),
             nvrhi::BindingSetItem::Sampler(0, m_CommonPasses->m_LinearClampSampler)
         };
-        bindingSet = m_Device->createBindingSet(setDesc, m_BindingLayout);
+        m_Device->createBindingSet(setDesc, m_BindingLayout, &bindingSet);
     }
 
     // Source and target boxes are both [0,1]^2 (xmmword_140259690), sourceSlice 0.

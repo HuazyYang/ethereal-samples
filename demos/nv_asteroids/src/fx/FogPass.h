@@ -44,9 +44,9 @@ namespace fx
         // ((width+1)/2, (height+1)/2) of it. The pass is recreated with the render targets.
         FogPass(
             nvrhi::IDevice* device,
-            const std::shared_ptr<donut::engine::ShaderFactory>& shaderFactory,
-            const std::shared_ptr<donut::engine::CommonRenderPasses>& commonPasses,
-            const std::shared_ptr<donut::engine::FramebufferFactory>& framebufferFactory,
+            const nvrhi::AutoPtr<donut::engine::ShaderFactory>& shaderFactory,
+            const nvrhi::AutoPtr<donut::engine::CommonRenderPasses>& commonPasses,
+            const nvrhi::AutoPtr<donut::engine::FramebufferFactory>& framebufferFactory,
             nvrhi::ITexture* depthBuffer,
             const donut::engine::ICompositeView& compositeView);
 
@@ -77,7 +77,7 @@ namespace fx
         nvrhi::GraphicsPipelineHandle m_TracePipeline;
         nvrhi::GraphicsPipelineHandle m_FilterPipeline;
         donut::engine::BindingCache m_TraceBindingSets;     // 2018: unordered_map<ITexture* shadowMap, BindingSet>
-        std::shared_ptr<donut::engine::CommonRenderPasses> m_CommonPasses;
-        std::shared_ptr<donut::engine::FramebufferFactory> m_FramebufferFactory;
+        nvrhi::AutoPtr<donut::engine::CommonRenderPasses> m_CommonPasses;
+        nvrhi::AutoPtr<donut::engine::FramebufferFactory> m_FramebufferFactory;
     };
 }

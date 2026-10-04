@@ -34,14 +34,14 @@ public:
 
     BloomPass2018(
         nvrhi::IDevice* device,
-        const std::shared_ptr<donut::engine::ShaderFactory>& shaderFactory,
-        std::shared_ptr<donut::engine::CommonRenderPasses> commonPasses,
-        std::shared_ptr<donut::engine::FramebufferFactory> framebufferFactory,
+        const nvrhi::AutoPtr<donut::engine::ShaderFactory>& shaderFactory,
+        nvrhi::AutoPtr<donut::engine::CommonRenderPasses> commonPasses,
+        nvrhi::AutoPtr<donut::engine::FramebufferFactory> framebufferFactory,
         const donut::engine::ICompositeView& compositeView);
 
     void Render(
         nvrhi::ICommandList* commandList,
-        const std::shared_ptr<donut::engine::FramebufferFactory>& framebufferFactory,
+        const nvrhi::AutoPtr<donut::engine::FramebufferFactory>& framebufferFactory,
         const donut::engine::ICompositeView& compositeView,
         nvrhi::ITexture* sourceDestTexture,
         float sigmaInPixels);
@@ -62,8 +62,8 @@ private:
         nvrhi::BindingSetHandle bloomBlurBindingSetPass2;   // +88 (V constants, pass1)
     };
 
-    std::shared_ptr<donut::engine::CommonRenderPasses> m_CommonPasses;
-    std::shared_ptr<donut::engine::FramebufferFactory> m_FramebufferFactory;
+    nvrhi::AutoPtr<donut::engine::CommonRenderPasses> m_CommonPasses;
+    nvrhi::AutoPtr<donut::engine::FramebufferFactory> m_FramebufferFactory;
     nvrhi::DeviceHandle m_Device;
     std::vector<PerViewData> m_PerViewData;
     nvrhi::BufferHandle m_BloomHBlurCB;                     // "BloomConstantsH"

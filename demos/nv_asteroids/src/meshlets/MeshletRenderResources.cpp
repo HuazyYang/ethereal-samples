@@ -12,7 +12,9 @@ namespace
 
     nvrhi::BufferHandle CreateVolatileConstants(nvrhi::IDevice* device, uint32_t byteSize, const char* name)
     {
-        return device->createBuffer(nvrhi::utils::CreateVolatileConstantBufferDesc(byteSize, name, c_MaxConstantBufferVersions));
+        nvrhi::BufferHandle result;
+        device->createBuffer(nvrhi::utils::CreateVolatileConstantBufferDesc(byteSize, name, c_MaxConstantBufferVersions), &result);
+        return result;
     }
 
     nvrhi::BufferHandle CreateUavBuffer(nvrhi::IDevice* device, uint64_t byteSize, uint32_t structStride, const char* name)
@@ -26,7 +28,9 @@ namespace
         desc.debugName = name;
         desc.initialState = nvrhi::ResourceStates::UnorderedAccess;
         desc.keepInitialState = true;
-        return device->createBuffer(desc);
+        nvrhi::BufferHandle result;
+        device->createBuffer(desc, &result);
+        return result;
     }
 }
 
@@ -49,17 +53,18 @@ MeshletRenderResources::MeshletRenderResources(nvrhi::IDevice* device)
         .setAllFilters(true)
         .setMaxAnisotropy(1.f)
         .setBorderColor(nvrhi::Color(1.f));
-    linearClampSampler = device->createSampler(samplerDesc);
+    device->createSampler(samplerDesc, &linearClampSampler);
 
     // Same desc with reduction type 3 (maximum).
     samplerDesc.setReductionType(nvrhi::SamplerReductionType::Maximum);
-    maxReductionSampler = device->createSampler(samplerDesc);
+    device->createSampler(samplerDesc, &maxReductionSampler);
 
     nvrhi::TextureDesc nullDesc;
     nullDesc.setWidth(1).setHeight(1).setFormat(nvrhi::Format::R32_FLOAT).setDebugName("MeshletNullTexture")
         .setInitialState(nvrhi::ResourceStates::ShaderResource).setKeepInitialState(true);
-    nullTexture = device->createTexture(nullDesc);
-    nvrhi::CommandListHandle commandList = device->createCommandList();
+    device->createTexture(nullDesc, &nullTexture);
+    nvrhi::CommandListHandle commandList;
+    device->createCommandList(nvrhi::CommandListParameters(), &commandList);
     commandList->open();
     const float zero = 0.f;
     commandList->writeTexture(nullTexture, 0, 0, &zero, sizeof(zero));

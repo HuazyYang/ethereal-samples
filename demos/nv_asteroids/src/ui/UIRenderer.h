@@ -4,10 +4,17 @@
 //
 // The demo UI on top of the framework's ImGui renderer: the loading screen, the exit and benchmark
 // popups, the "Settings" window and the keynote counters overlay (keynoteCounters.json, 0x140030A90).
-// Only buildUI is overridden; every other virtual is the base class's.
+// Only BuildUI is overridden; every other virtual is the base class's.
+//
+// deviation: donut main's ImGui_Renderer carried a font registry (RegisteredFont,
+// CreateFontFromFile, rescaling on DPI change). ImGuiRenderPass has none, so the three
+// demo fonts are registered against the ImGui atlas here. ImGui 1.92 rasterizes a font
+// per requested size, which is what the rescaling used to do by hand.
 
-#include <donut/app/imgui_renderer.h>
+#include <donut/app/ImGuiRenderPass.h>
 #include <donut/core/math/math.h>
+#include <nvrhi/core/autoptr.h>
+#include <nvrhi/core/datablob.h>
 
 #include <filesystem>
 #include <memory>
@@ -23,8 +30,11 @@ namespace donut::vfs
     class IFileSystem;
 }
 
-class UIRenderer : public donut::app::ImGui_Renderer
+class UIRenderer : public donut::app::ImGuiRenderPass
 {
+    // Adds no interface and no class ID of its own.
+    NVRHI_INHERIT_INTERFACE_TABLE()
+
 public:
     // Font slots in load order (WinMain loads OpenSans 17, geforce-light 51, geforce-bold 51).
     enum FontSlot
@@ -34,13 +44,13 @@ public:
         FontGeForceBold = 2
     };
 
-    UIRenderer(donut::app::DeviceManager* deviceManager, std::shared_ptr<FeatureDemo> demo, UIData& ui);
+    UIRenderer(donut::app::DeviceManager* deviceManager, nvrhi::AutoPtr<FeatureDemo> demo, UIData& ui);
 
     // Asteroids.exe: 0x140091DE0 (ImGui_Renderer::LoadFont in 2018). Fonts are referenced by load order.
     bool LoadFont(donut::vfs::IFileSystem& fs, const std::filesystem::path& fontFile, float fontSize);
 
 protected:
-    void buildUI() override;
+    void BuildUI() override;
 
 private:
     // One entry of keynoteCounters.json (56 bytes in the vector at +456).
@@ -74,9 +84,16 @@ private:
 
     ImFont* GetFont(int slot) const;                                                // 0x140091B40
 
-    std::shared_ptr<FeatureDemo> m_Demo;                                            // +424
+    nvrhi::AutoPtr<FeatureDemo> m_Demo;                                            // +424
     UIData& m_UI;                                                                   // +440
     nvrhi::CommandListHandle m_CommandList;                                         // +448 (created, never used)
     std::vector<KeynoteCounter> m_Counters;                                         // +456
-    std::vector<std::shared_ptr<donut::app::RegisteredFont>> m_LoadedFonts;
+    // One registered font. The TTF stays in the blob: the atlas entry is created with
+    // FontDataOwnedByAtlas = false, so ImGui must not free it.
+    struct LoadedFont
+    {
+        nvrhi::AutoPtr<nvrhi::IDataBlob> data;
+        ImFont* font = nullptr;
+    };
+    std::vector<LoadedFont> m_LoadedFonts;
 };

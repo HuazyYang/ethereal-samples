@@ -37,7 +37,7 @@ public:
 private:
     nvrhi::DeviceHandle m_Device;                               // +0
     nvrhi::BufferHandle m_ReadbackBuffer;                       // +8  "PipelineStatsQueryResult" (88 bytes per slot)
-    nvrhi::RefCountPtr<ID3D12QueryHeap> m_QueryHeap;            // +16 D3D12_QUERY_HEAP_TYPE_PIPELINE_STATISTICS
+    nvrhi::AutoPtr<ID3D12QueryHeap> m_QueryHeap;            // +16 D3D12_QUERY_HEAP_TYPE_PIPELINE_STATISTICS
     std::vector<D3D12_QUERY_DATA_PIPELINE_STATISTICS> m_Results; // +24
     uint32_t m_NumSlots = 0;
 };

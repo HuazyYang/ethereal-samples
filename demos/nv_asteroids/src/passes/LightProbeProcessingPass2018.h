@@ -33,8 +33,8 @@ class LightProbeProcessingPass2018
 public:
     LightProbeProcessingPass2018(
         nvrhi::IDevice* device,
-        std::shared_ptr<donut::engine::ShaderFactory> shaderFactory,
-        std::shared_ptr<donut::engine::CommonRenderPasses> commonPasses,
+        nvrhi::AutoPtr<donut::engine::ShaderFactory> shaderFactory,
+        nvrhi::AutoPtr<donut::engine::CommonRenderPasses> commonPasses,
         uint32_t intermediateTextureSize = 1024,
         nvrhi::Format intermediateTextureFormat = nvrhi::Format::RGBA16_FLOAT);
 
@@ -99,7 +99,7 @@ private:
     uint32_t m_IntermediateTextureSize;
     nvrhi::TextureHandle m_EnvironmentBrdfTexture;
     uint32_t m_EnvironmentBrdfTextureSize = 64;
-    std::shared_ptr<donut::engine::CommonRenderPasses> m_CommonPasses;
+    nvrhi::AutoPtr<donut::engine::CommonRenderPasses> m_CommonPasses;
 
     std::unordered_map<nvrhi::FramebufferInfo, nvrhi::GraphicsPipelineHandle> m_BlitPsoCache;
     std::unordered_map<nvrhi::FramebufferInfo, nvrhi::GraphicsPipelineHandle> m_DiffusePsoCache;

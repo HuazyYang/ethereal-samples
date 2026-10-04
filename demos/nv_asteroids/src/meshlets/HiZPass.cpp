@@ -32,7 +32,7 @@ HiZPass::HiZPass(nvrhi::IDevice* device, engine::ShaderFactory& shaderFactory,
         .setAllFilters(true)
         .setMaxAnisotropy(1.f)
         .setBorderColor(nvrhi::Color(1.f));
-    m_Sampler = device->createSampler(samplerDesc);
+    device->createSampler(samplerDesc, &m_Sampler);
 
     nvrhi::BindingSetDesc setDesc;
     setDesc.addItem(nvrhi::BindingSetItem::Texture_SRV(0, depthBuffer));          // t_ZBuffer
@@ -57,7 +57,7 @@ HiZPass::HiZPass(nvrhi::IDevice* device, engine::ShaderFactory& shaderFactory,
 
     nvrhi::ComputePipelineDesc pipelineDesc;
     pipelineDesc.setComputeShader(m_ComputeShader).addBindingLayout(m_BindingLayout);
-    m_Pipeline = device->createComputePipeline(pipelineDesc);
+    device->createComputePipeline(pipelineDesc, &m_Pipeline);
 }
 
 void HiZPass::Dispatch(nvrhi::ICommandList* commandList, uint32_t viewWidth, uint32_t viewHeight) const

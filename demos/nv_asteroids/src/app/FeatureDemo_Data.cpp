@@ -144,18 +144,18 @@ void FeatureDemo::SaveLightProbes()
     // system, i.e. into media.db.
     // unresolved: SQLiteFileSystem::writeFile is not implemented (the 2018 database was opened read-only
     // as well), so the save reports "Failed to write texture to ..." unless /media is remounted writable.
-    const std::pair<const std::shared_ptr<engine::LoadedTexture>*, const char*> outputs[] = {
+    const std::pair<const nvrhi::AutoPtr<engine::LoadedTexture>*, const char*> outputs[] = {
         { &m_LightProbeDiffuse, "LightProbeDiffuse.dds" },
         { &m_LightProbeSpecular, "LightProbeSpecular.dds" },
         { &m_EnvironmentBrdf, "EnvironmentBrdf.dds" },
     };
 
     // Developer option (deviation): "-probeOutput DIR" also writes the files to a native folder.
-    std::shared_ptr<vfs::IFileSystem> nativeFs;
+    nvrhi::AutoPtr<vfs::IFileSystem> nativeFs;
     if (!demo::g_Options.probeOutputDir.empty())
     {
         std::filesystem::create_directories(demo::g_Options.probeOutputDir);
-        nativeFs = std::make_shared<vfs::NativeFileSystem>();
+        nativeFs = MAKE_RC_OBJ_PTR(vfs::NativeFileSystem);
     }
 
     for (const auto& [texture, fileName] : outputs)
@@ -168,13 +168,14 @@ void FeatureDemo::SaveLightProbes()
     }
 }
 
-void FeatureDemo::SaveTextureToFile(nvrhi::ITexture* texture, const std::shared_ptr<vfs::IFileSystem>& fs,
+void FeatureDemo::SaveTextureToFile(nvrhi::ITexture* texture, const nvrhi::AutoPtr<vfs::IFileSystem>& fs,
     const std::filesystem::path& path)
 {
     nvrhi::IDevice* device = GetDevice();
     const nvrhi::TextureDesc& desc = texture->getDesc();
 
-    nvrhi::StagingTextureHandle staging = device->createStagingTexture(desc, nvrhi::CpuAccessMode::Read);
+    nvrhi::StagingTextureHandle staging;
+    device->createStagingTexture(desc, nvrhi::CpuAccessMode::Read, &staging);
 
     m_CommandList->open();
     for (uint32_t arraySlice = 0; arraySlice < desc.arraySize; arraySlice++)
@@ -182,19 +183,19 @@ void FeatureDemo::SaveTextureToFile(nvrhi::ITexture* texture, const std::shared_
         for (uint32_t mipLevel = 0; mipLevel < desc.mipLevels; mipLevel++)
         {
             const nvrhi::TextureSlice slice = nvrhi::TextureSlice().setArraySlice(arraySlice).setMipLevel(mipLevel);
-            m_CommandList->copyTexture(staging, slice, texture, slice);
+            m_CommandList->copyTexture2(staging, slice, texture, slice);
         }
     }
     m_CommandList->close();
     device->executeCommandList(m_CommandList);
 
-    std::shared_ptr<vfs::IBlob> blob = engine::SaveStagingTextureAsDDS(device, staging);
+    nvrhi::AutoPtr<nvrhi::IDataBlob> blob = engine::SaveStagingTextureAsDDS(device, staging);
     if (!blob)
     {
         log::error("Failed to serialize a texture for saving");
         return;
     }
 
-    if (!fs->writeFile(path, blob->data(), blob->size()))
+    if (!fs->writeFile(path, blob->GetDataPtr(), blob->GetSize()))
         log::error("Failed to write texture to %s", path.generic_string().c_str());
 }

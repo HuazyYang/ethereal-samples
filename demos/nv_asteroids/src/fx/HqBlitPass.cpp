@@ -10,8 +10,8 @@ namespace fx
 {
     HqBlitPass::HqBlitPass(
         nvrhi::IDevice* device,
-        const std::shared_ptr<ShaderFactory>& shaderFactory,
-        const std::shared_ptr<CommonRenderPasses>& commonPasses,
+        const nvrhi::AutoPtr<ShaderFactory>& shaderFactory,
+        const nvrhi::AutoPtr<CommonRenderPasses>& commonPasses,
         nvrhi::IFramebuffer* framebuffer)
         : m_Device(device)
         , m_CommonPasses(commonPasses)
@@ -25,7 +25,7 @@ namespace fx
             nvrhi::BindingLayoutItem::Texture_SRV(0),
             nvrhi::BindingLayoutItem::Sampler(0)
         };
-        m_BindingLayout = device->createBindingLayout(layoutDesc);
+        device->createBindingLayout(layoutDesc, &m_BindingLayout);
 
         nvrhi::GraphicsPipelineDesc pipelineDesc;
         pipelineDesc.primType = nvrhi::PrimitiveType::TriangleStrip;
@@ -36,7 +36,7 @@ namespace fx
         pipelineDesc.renderState.rasterState.setCullNone();
         pipelineDesc.renderState.depthStencilState.disableDepthTest().disableDepthWrite().disableStencil();
 
-        m_Pipeline = device->createGraphicsPipeline(pipelineDesc, framebuffer);
+        device->createGraphicsPipeline2(pipelineDesc, framebuffer, &m_Pipeline);
     }
 
     void HqBlitPass::Render(
@@ -56,7 +56,7 @@ namespace fx
                 // bilinear-tap math, so linear clamp is the natural choice.
                 nvrhi::BindingSetItem::Sampler(0, m_CommonPasses->m_LinearClampSampler)
             };
-            bindingSet = m_Device->createBindingSet(setDesc, m_BindingLayout);
+            m_Device->createBindingSet(setDesc, m_BindingLayout, &bindingSet);
         }
 
         demo::ProfBegin(commandList, "Upscale");

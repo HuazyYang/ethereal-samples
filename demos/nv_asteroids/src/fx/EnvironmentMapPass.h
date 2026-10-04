@@ -28,9 +28,9 @@ namespace fx
     public:
         EnvironmentMapPass(
             nvrhi::IDevice* device,
-            const std::shared_ptr<donut::engine::ShaderFactory>& shaderFactory,
-            const std::shared_ptr<donut::engine::CommonRenderPasses>& commonPasses,
-            const std::shared_ptr<donut::engine::FramebufferFactory>& framebufferFactory,
+            const nvrhi::AutoPtr<donut::engine::ShaderFactory>& shaderFactory,
+            const nvrhi::AutoPtr<donut::engine::CommonRenderPasses>& commonPasses,
+            const nvrhi::AutoPtr<donut::engine::FramebufferFactory>& framebufferFactory,
             const donut::engine::ICompositeView& compositeView,
             nvrhi::ITexture* environmentMap,
             nvrhi::ITexture* starMap);
@@ -50,8 +50,8 @@ namespace fx
         nvrhi::BindingLayoutHandle m_BindingLayout;
         nvrhi::BindingSetHandle m_BindingSet;
         nvrhi::GraphicsPipelineHandle m_Pipeline;
-        std::shared_ptr<donut::engine::CommonRenderPasses> m_CommonPasses;
-        std::shared_ptr<donut::engine::FramebufferFactory> m_FramebufferFactory;
+        nvrhi::AutoPtr<donut::engine::CommonRenderPasses> m_CommonPasses;
+        nvrhi::AutoPtr<donut::engine::FramebufferFactory> m_FramebufferFactory;
         bool m_HasStarMap = false;
     };
 }

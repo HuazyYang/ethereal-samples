@@ -7,10 +7,10 @@ using namespace donut::engine;
 
 namespace
 {
-    std::shared_ptr<FramebufferFactory> MakeFramebuffer(nvrhi::IDevice* device,
+    nvrhi::AutoPtr<FramebufferFactory> MakeFramebuffer(nvrhi::IDevice* device,
         std::initializer_list<nvrhi::ITexture*> colorTargets, nvrhi::ITexture* depthTarget)
     {
-        auto factory = std::make_shared<FramebufferFactory>(device);
+        auto factory = MAKE_RC_OBJ_PTR(FramebufferFactory, device);
         for (nvrhi::ITexture* texture : colorTargets)
             factory->RenderTargets.push_back(texture);
         factory->DepthTarget = depthTarget;
@@ -44,30 +44,30 @@ RenderTargets::RenderTargets(nvrhi::IDevice* device, uint2 size, nvrhi::Format d
     // deviation: the binary's clear value is 0 although Clear() clears depth to 1; use the matching value.
     desc.clearValue = nvrhi::Color(1.f);
     desc.debugName = "DepthBuffer";
-    DepthBuffer = device->createTexture(desc);
+    device->createTexture(desc, &DepthBuffer);
 
     desc.isTypeless = false;
     desc.clearValue = nvrhi::Color(0.f);
     desc.format = nvrhi::Format::RGBA16_FLOAT;          // 2018 format 34
     desc.initialState = nvrhi::ResourceStates::RenderTarget;
     desc.debugName = "HdrColor";
-    HdrColor = device->createTexture(desc);
+    device->createTexture(desc, &HdrColor);
 
     desc.format = nvrhi::Format::SRGBA8_UNORM;          // 2018 format 22
     desc.debugName = "GBuffer0";
-    GBuffer0 = device->createTexture(desc);
+    device->createTexture(desc, &GBuffer0);
 
     desc.format = nvrhi::Format::SRGBA8_UNORM;
     desc.debugName = "GBuffer1";
-    GBuffer1 = device->createTexture(desc);
+    device->createTexture(desc, &GBuffer1);
 
     desc.format = nvrhi::Format::RGBA16_SNORM;          // 2018 format 36
     desc.debugName = "GBuffer2";
-    GBuffer2 = device->createTexture(desc);
+    device->createTexture(desc, &GBuffer2);
 
     desc.format = nvrhi::Format::RG16_FLOAT;            // 2018 format 30
     desc.debugName = "MotionVectors";
-    MotionVectors = device->createTexture(desc);
+    device->createTexture(desc, &MotionVectors);
 
     if (dumpFormat != nvrhi::Format::UNKNOWN)
     {
@@ -77,8 +77,8 @@ RenderTargets::RenderTargets(nvrhi::IDevice* device, uint2 size, nvrhi::Format d
         dumpDesc.debugName = "DumpTexture";
         dumpDesc.dimension = nvrhi::TextureDimension::Texture2DArray;
         dumpDesc.arraySize = dumpArraySize;
-        DumpTexture = device->createTexture(dumpDesc);
-        DumpStagingTexture = device->createStagingTexture(dumpDesc, nvrhi::CpuAccessMode::Read);
+        device->createTexture(dumpDesc, &DumpTexture);
+        device->createStagingTexture(dumpDesc, nvrhi::CpuAccessMode::Read, &DumpStagingTexture);
     }
 
     if (enableAccumulation)
@@ -88,7 +88,7 @@ RenderTargets::RenderTargets(nvrhi::IDevice* device, uint2 size, nvrhi::Format d
         accumulationDesc.dimension = nvrhi::TextureDimension::Texture2DArray;
         accumulationDesc.arraySize = 64;
         accumulationDesc.debugName = "AccumulationRenderingBuffer";
-        AccumulationRenderingBuffer = device->createTexture(accumulationDesc);
+        device->createTexture(accumulationDesc, &AccumulationRenderingBuffer);
     }
 
     desc.dimension = nvrhi::TextureDimension::Texture2D;
@@ -96,22 +96,22 @@ RenderTargets::RenderTargets(nvrhi::IDevice* device, uint2 size, nvrhi::Format d
     desc.format = nvrhi::Format::RGBA16_FLOAT;
     desc.isUAV = true;
     desc.debugName = "ResolvedColor1";
-    ResolvedColor1 = device->createTexture(desc);
+    device->createTexture(desc, &ResolvedColor1);
 
     desc.debugName = "ResolvedColor2";
-    ResolvedColor2 = device->createTexture(desc);
+    device->createTexture(desc, &ResolvedColor2);
 
     desc.debugName = "TemporalFeedback";
-    TemporalFeedback = device->createTexture(desc);
+    device->createTexture(desc, &TemporalFeedback);
 
     desc.isUAV = false;
     desc.debugName = "BloomColor";
-    BloomColor = device->createTexture(desc);
+    device->createTexture(desc, &BloomColor);
 
     desc.format = nvrhi::Format::SRGBA8_UNORM;
     desc.isUAV = false;
     desc.debugName = "LdrColor";
-    LdrColor = device->createTexture(desc);
+    device->createTexture(desc, &LdrColor);
 
     desc.width = ((size.x + 127) >> 3) & 0x1FFFFFF0u;
     desc.height = ((size.y + 127) >> 3) & 0x1FFFFFF0u;
@@ -121,7 +121,7 @@ RenderTargets::RenderTargets(nvrhi::IDevice* device, uint2 size, nvrhi::Format d
     desc.format = nvrhi::Format::R32_FLOAT;             // 2018 format 33
     desc.initialState = nvrhi::ResourceStates::ShaderResource;
     desc.debugName = "HiZTexture";
-    HiZTexture = device->createTexture(desc);
+    device->createTexture(desc, &HiZTexture);
 
     HdrFramebuffer = MakeFramebuffer(device, { HdrColor }, DepthBuffer);
     GBufferFramebuffer = MakeFramebuffer(device, { GBuffer0, GBuffer1, GBuffer2, MotionVectors }, DepthBuffer);

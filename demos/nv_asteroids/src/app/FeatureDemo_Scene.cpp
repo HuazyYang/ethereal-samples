@@ -71,7 +71,7 @@ namespace
 // LoadScene (loading thread)
 // =====================================================================================================
 
-bool FeatureDemo::LoadScene(std::shared_ptr<vfs::IFileSystem> fs, const std::filesystem::path& sceneFileName)
+bool FeatureDemo::LoadScene(vfs::IFileSystem* fs, const std::filesystem::path& sceneFileName)
 {
     // deviation: a donut ThreadPool replaces the 2018 concurrency::task_group.
     engine::ThreadPool threadPool;
@@ -89,7 +89,7 @@ bool FeatureDemo::LoadScene(std::shared_ptr<vfs::IFileSystem> fs, const std::fil
 
     // The binary loads the scene through the root file system (+136), not the 'fs' argument.
     (void)fs;
-    m_Scene = SpaceScene::Load(m_RootFs, sceneFileName, m_TextureCache.get(), &threadPool);
+    m_Scene = SpaceScene::Load(m_RootFs, sceneFileName, m_TextureCache.Get(), &threadPool);
 
     threadPool.WaitForTasks();
     return m_Scene != nullptr;
@@ -110,12 +110,12 @@ void FeatureDemo::SceneLoaded()
     }
     else
     {
-        m_ColorLutTexture = std::make_shared<engine::LoadedTexture>();
+        m_ColorLutTexture = MAKE_RC_OBJ_PTR(engine::LoadedTexture);
     }
 
     // Unused by the meshlet renderer but created by the binary (+200, +216).
-    m_OpaqueDrawStrategy = std::make_shared<render::InstancedOpaqueDrawStrategy>();
-    m_TransparentDrawStrategy = std::make_shared<render::TransparentDrawStrategy>();
+    m_OpaqueDrawStrategy = MAKE_RC_OBJ_PTR(render::InstancedOpaqueDrawStrategy);
+    m_TransparentDrawStrategy = MAKE_RC_OBJ_PTR(render::TransparentDrawStrategy);
 
     // 0x140072F60: finish the deferred texture uploads; donut's ApplicationBase::SceneLoaded does exactly that
     // (ProcessRenderingThreadCommands + LoadingFinished) and marks the scene as loaded.
@@ -216,17 +216,17 @@ void FeatureDemo::CreateLightProbeTextures(uint32_t numProbes)
     desc.arraySize = 6 * numProbes;
     desc.mipLevels = 1;
     desc.debugName = "LightProbeDiffuse";
-    m_LightProbeDiffuse = std::make_shared<engine::LoadedTexture>();
-    m_LightProbeDiffuse->texture = device->createTexture(desc);
+    m_LightProbeDiffuse = MAKE_RC_OBJ_PTR(engine::LoadedTexture);
+    device->createTexture(desc, &m_LightProbeDiffuse->texture);
 
     desc.width = desc.height = c_ProbeSpecularSize;
     desc.mipLevels = c_ProbeSpecularMips;
     desc.debugName = "LightProbeSpecular";
-    m_LightProbeSpecular = std::make_shared<engine::LoadedTexture>();
-    m_LightProbeSpecular->texture = device->createTexture(desc);
+    m_LightProbeSpecular = MAKE_RC_OBJ_PTR(engine::LoadedTexture);
+    device->createTexture(desc, &m_LightProbeSpecular->texture);
 
     // Filled by RenderLightProbes from the LightProbeProcessingPass.
-    m_EnvironmentBrdf = std::make_shared<engine::LoadedTexture>();
+    m_EnvironmentBrdf = MAKE_RC_OBJ_PTR(engine::LoadedTexture);
 }
 
 void FeatureDemo::CreateLightProbeObjects(uint32_t numProbes)
@@ -235,7 +235,7 @@ void FeatureDemo::CreateLightProbeObjects(uint32_t numProbes)
 
     for (uint32_t index = 0; index < numProbes; index++)
     {
-        auto probe = std::make_shared<DemoLightProbe>();
+        auto probe = MAKE_RC_OBJ_PTR(DemoLightProbe);
         probe->name = std::to_string(index + 1);
         probe->diffuseMap = m_LightProbeDiffuse ? m_LightProbeDiffuse->texture : nullptr;
         probe->specularMap = m_LightProbeSpecular ? m_LightProbeSpecular->texture : nullptr;
@@ -268,7 +268,8 @@ void FeatureDemo::RenderLightProbes()
     cubeDesc.initialState = nvrhi::ResourceStates::RenderTarget;
     cubeDesc.keepInitialState = true;
     cubeDesc.debugName = "LightProbeCapture";
-    nvrhi::TextureHandle captureColor = device->createTexture(cubeDesc);
+    nvrhi::TextureHandle captureColor;
+    device->createTexture(cubeDesc, &captureColor);
 
     cubeDesc.mipLevels = 1;
     cubeDesc.format = nvrhi::Format::D24S8;
@@ -276,9 +277,10 @@ void FeatureDemo::RenderLightProbes()
     cubeDesc.clearValue = nvrhi::Color(1.f);
     cubeDesc.initialState = nvrhi::ResourceStates::DepthWrite;
     cubeDesc.debugName = "LightProbeCaptureDepth";
-    nvrhi::TextureHandle captureDepth = device->createTexture(cubeDesc);
+    nvrhi::TextureHandle captureDepth;
+    device->createTexture(cubeDesc, &captureDepth);
 
-    auto captureFramebuffer = std::make_shared<engine::FramebufferFactory>(device);
+    auto captureFramebuffer = MAKE_RC_OBJ_PTR(engine::FramebufferFactory, device);
     captureFramebuffer->RenderTargets = { captureColor };
     captureFramebuffer->DepthTarget = captureDepth;
 
@@ -301,7 +303,7 @@ void FeatureDemo::RenderLightProbes()
     auto forwardPass = std::make_shared<ForwardShadingPass2018>(device, m_ShaderFactory, m_CommonPasses,
         captureFramebuffer, cubeView, m_Scene->GetMaterialBindingLayout(), false, false, true);
 
-    auto forwardStrategy = std::make_shared<MeshletDrawStrategy>(device, m_ShaderFactory, m_Scene, m_MeshletResources,
+    auto forwardStrategy = MAKE_RC_OBJ_PTR(MeshletDrawStrategy, device, m_ShaderFactory, m_Scene, m_MeshletResources,
         captureDepth, m_RenderTargets ? m_RenderTargets->HiZTexture.Get() : nullptr,
         m_RandomsTexture ? m_RandomsTexture->texture.Get() : nullptr, m_ViewDistanceMap,
         "forward_ps.hlsl", MeshletRenderRole::Forward);
@@ -453,7 +455,7 @@ void FeatureDemo::CreateRenderPasses(bool& exposureResetRequired, nvrhi::IFrameb
         taaParams.feedback2 = targets.TemporalFeedback;
         taaParams.motionVectorStencilMask = 1;
         taaParams.useCatmullRomFilter = true;
-        m_TemporalAntiAliasingPass = std::make_shared<render::TemporalAntiAliasingPass>(device, m_ShaderFactory,
+        m_TemporalAntiAliasingPass = MAKE_RC_OBJ_PTR(render::TemporalAntiAliasingPass, device, m_ShaderFactory,
             m_CommonPasses, view, taaParams);
 
         // The resolve (and the jitter) is the 2018 pass; donut's pass only renders the motion vectors.
@@ -469,7 +471,7 @@ void FeatureDemo::CreateRenderPasses(bool& exposureResetRequired, nvrhi::IFrameb
     // +856: the binary creates a pixel SSAO pass here that nothing ever renders (HBAO+ is used instead).
     // deviation: donut main's SsaoPass is a compute pass with different inputs; since it is never rendered it
     // is not created.
-    m_SsaoPass.reset();
+    m_SsaoPass = nullptr;
 
     // +920
     m_FogPass = std::make_shared<fx::FogPass>(device, m_ShaderFactory, m_CommonPasses, targets.HdrFramebufferNoDepth,
@@ -527,7 +529,7 @@ void FeatureDemo::CreateRenderPasses(bool& exposureResetRequired, nvrhi::IFrameb
     nvrhi::ITexture* randoms = m_RandomsTexture ? m_RandomsTexture->texture.Get() : nullptr;
     auto makeRenderer = [&](const char* pixelShader, MeshletRenderRole role)
     {
-        return std::make_shared<MeshletDrawStrategy>(device, m_ShaderFactory, m_Scene, m_MeshletResources,
+        return MAKE_RC_OBJ_PTR(MeshletDrawStrategy, device, m_ShaderFactory, m_Scene, m_MeshletResources,
             targets.DepthBuffer, targets.HiZTexture, randoms, m_ViewDistanceMap, pixelShader, role);
     };
     m_GBufferRenderer = makeRenderer("gbuffer_ps.hlsl", MeshletRenderRole::GBuffer);

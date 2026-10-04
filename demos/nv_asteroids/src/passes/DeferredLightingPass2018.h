@@ -40,9 +40,9 @@ public:
     // FeatureDemo: (..., RenderTargets::HdrFramebufferNoDepth, main view, deferred_lighting_ps, +680).
     DeferredLightingPass2018(
         nvrhi::IDevice* device,
-        std::shared_ptr<donut::engine::ShaderFactory> shaderFactory,
-        std::shared_ptr<donut::engine::CommonRenderPasses> commonPasses,
-        std::shared_ptr<donut::engine::FramebufferFactory> framebufferFactory,
+        nvrhi::AutoPtr<donut::engine::ShaderFactory> shaderFactory,
+        nvrhi::AutoPtr<donut::engine::CommonRenderPasses> commonPasses,
+        nvrhi::AutoPtr<donut::engine::FramebufferFactory> framebufferFactory,
         const donut::engine::ICompositeView& compositeView,
         nvrhi::IShader* pixelShader,
         nvrhi::IBindingLayout* gbufferBindingLayout);
@@ -58,7 +58,7 @@ public:
         dm::float2 randomOffset,
         const dm::float3& ambientColorTop,
         const dm::float3& ambientColorBottom,
-        const std::vector<std::shared_ptr<donut::engine::LightProbe>>& lightProbes,
+        const std::vector<nvrhi::AutoPtr<donut::engine::LightProbe>>& lightProbes,
         nvrhi::ITexture* indirectDiffuse = nullptr);
 
     void ResetBindingCache();
@@ -74,6 +74,6 @@ private:
     nvrhi::BindingLayoutHandle m_ShadowBindingLayout;                           // +56 b0, t0, s0, s1
     nvrhi::BindingLayoutHandle m_LightProbeBindingLayout;                       // +64 t1..t4, s2, s3
     std::unique_ptr<donut::engine::BindingCache> m_BindingSets;                 // +72 / +136 (per shadow map / per probe textures)
-    std::shared_ptr<donut::engine::CommonRenderPasses> m_CommonPasses;          // +200
-    std::shared_ptr<donut::engine::FramebufferFactory> m_FramebufferFactory;    // +216
+    nvrhi::AutoPtr<donut::engine::CommonRenderPasses> m_CommonPasses;          // +200
+    nvrhi::AutoPtr<donut::engine::FramebufferFactory> m_FramebufferFactory;    // +216
 };

@@ -28,7 +28,7 @@ namespace
     class Reader
     {
     public:
-        Reader(std::shared_ptr<chunk::ChunkFile const> file) : m_File(std::move(file)) { }
+        Reader(nvrhi::AutoPtr<chunk::ChunkFile> file) : m_File(std::move(file)) { }
 
         const chunk::Chunk* getChunk(ChunkId id, uint32_t expectedType)
         {
@@ -108,14 +108,14 @@ namespace
             log::error(msg.c_str(), args...);
         }
 
-        std::shared_ptr<chunk::ChunkFile const> m_File;
+        nvrhi::AutoPtr<chunk::ChunkFile> m_File;
     };
 }
 
-std::shared_ptr<MeshSet> LoadMeshSet(const std::shared_ptr<vfs::IBlob>& blob, const char* path)
+std::shared_ptr<MeshSet> LoadMeshSet(const nvrhi::AutoPtr<nvrhi::IDataBlob>& blob, const char* path)
 {
-    auto file = chunk::ChunkFile::deserialize(std::weak_ptr<vfs::IBlob const>(blob), path);
-    if (!file)
+    nvrhi::AutoPtr<chunk::ChunkFile> file;
+    if (NVRHI_FAILED(chunk::ChunkFile::deserialize(blob, path, &file)) || !file)
         return nullptr;
 
     Reader reader(file);

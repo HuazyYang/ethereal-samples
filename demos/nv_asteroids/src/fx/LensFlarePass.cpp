@@ -23,9 +23,9 @@ namespace fx
 {
     LensFlarePass::LensFlarePass(
         nvrhi::IDevice* device,
-        const std::shared_ptr<ShaderFactory>& shaderFactory,
-        const std::shared_ptr<CommonRenderPasses>& commonPasses,
-        const std::shared_ptr<FramebufferFactory>& framebufferFactory,
+        const nvrhi::AutoPtr<ShaderFactory>& shaderFactory,
+        const nvrhi::AutoPtr<CommonRenderPasses>& commonPasses,
+        const nvrhi::AutoPtr<FramebufferFactory>& framebufferFactory,
         const ICompositeView& compositeView)
         : m_Device(device)
         , m_CommonPasses(commonPasses)
@@ -35,7 +35,7 @@ namespace fx
 
         // deviation: the 2018 buffer was 768 bytes (the HLSL cbuffer is 804: 'pad[3]' spills into
         // three more registers); D3D12 needs the full size, so the C++ struct size is used.
-        m_LensFlareConstants = device->createBuffer(ConstantBufferDesc(sizeof(LensFlareConstants), "LensFlareConstants"));
+        device->createBuffer(ConstantBufferDesc(sizeof(LensFlareConstants), "LensFlareConstants"), &m_LensFlareConstants);
 
         // Shadow comparison sampler: border addressing, linear filtering, comparison reduction.
         // unresolved: the 2018 border colour constant (xmmword_140256830) was not decoded; 1.0 = lit.
@@ -45,7 +45,7 @@ namespace fx
             .setAllFilters(true)
             .setMaxAnisotropy(1.f)
             .setReductionType(nvrhi::SamplerReductionType::Comparison);
-        m_ShadowSampler = device->createSampler(samplerDesc);
+        device->createSampler(samplerDesc, &m_ShadowSampler);
 
         // b0 LensFlareConstants (VS + PS), t0 t_ShadowMapArray, s0 s_ShadowSampler (VS).
         nvrhi::BindingLayoutDesc layoutDesc;
@@ -55,7 +55,7 @@ namespace fx
             nvrhi::BindingLayoutItem::Texture_SRV(0),
             nvrhi::BindingLayoutItem::Sampler(0)
         };
-        m_BindingLayout = device->createBindingLayout(layoutDesc);
+        device->createBindingLayout(layoutDesc, &m_BindingLayout);
 
         const IView* sampleView = compositeView.GetChildView(ViewType::PLANAR, 0);
 
@@ -69,13 +69,13 @@ namespace fx
         pipelineDesc.renderState.rasterState.setCullNone();
         pipelineDesc.renderState.depthStencilState.disableDepthTest().disableDepthWrite().disableStencil();
 
-        m_Pipeline = device->createGraphicsPipeline(pipelineDesc, framebufferFactory->GetFramebuffer(*sampleView));
+        device->createGraphicsPipeline2(pipelineDesc, framebufferFactory->GetFramebuffer(*sampleView), &m_Pipeline);
     }
 
     void LensFlarePass::Render(
         nvrhi::ICommandList* commandList,
         const ICompositeView& compositeView,
-        const std::shared_ptr<FramebufferFactory>& framebufferFactory,
+        const nvrhi::AutoPtr<FramebufferFactory>& framebufferFactory,
         const SceneDirectionalLight& sun,
         const float3& cameraPosition)
     {
@@ -95,7 +95,7 @@ namespace fx
                 nvrhi::BindingSetItem::Texture_SRV(0, shadowTexture),
                 nvrhi::BindingSetItem::Sampler(0, m_ShadowSampler)
             };
-            bindingSet = m_Device->createBindingSet(setDesc, m_BindingLayout);
+            m_Device->createBindingSet(setDesc, m_BindingLayout, &bindingSet);
         }
 
         for (uint32_t viewIndex = 0; viewIndex < compositeView.GetNumChildViews(ViewType::PLANAR); viewIndex++)
@@ -116,7 +116,7 @@ namespace fx
             constants.screenScale = float2(projection.m_data[0], projection.m_data[5]);
 
             FillLightConstants2018(sun, constants.light);
-            FillShadowConstants2018(sun.shadowMap.get(), constants.light, constants.shadows, LENSFLARE_MAX_SHADOWS, true);
+            FillShadowConstants2018(sun.shadowMap.Get(), constants.light, constants.shadows, LENSFLARE_MAX_SHADOWS, true);
 
             // Project a point far along the direction towards the sun.
             float4 sunClip = float4(constants.light.direction * -1000000.f, 1.f) * view->GetViewProjectionMatrix(true);

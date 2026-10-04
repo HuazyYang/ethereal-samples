@@ -16,8 +16,8 @@ namespace fx
 {
     ShowCubemapPass::ShowCubemapPass(
         nvrhi::IDevice* device,
-        const std::shared_ptr<ShaderFactory>& shaderFactory,
-        const std::shared_ptr<CommonRenderPasses>& commonPasses,
+        const nvrhi::AutoPtr<ShaderFactory>& shaderFactory,
+        const nvrhi::AutoPtr<CommonRenderPasses>& commonPasses,
         nvrhi::IFramebuffer* framebuffer,
         nvrhi::ITexture* cubemap)
     {
@@ -25,12 +25,12 @@ namespace fx
         auto samplerDesc = nvrhi::SamplerDesc()
             .setAllAddressModes(nvrhi::SamplerAddressMode::Wrap)
             .setAllFilters(true);
-        m_Sampler = device->createSampler(samplerDesc);
+        device->createSampler(samplerDesc, &m_Sampler);
 
         m_PixelShader = shaderFactory->CreateShader("demo/show_cubemap_ps.hlsl", "main", nullptr, nvrhi::ShaderType::Pixel);
 
         // The 2018 buffer is 16 bytes although the shader's cbuffer CB is 8 bytes.
-        m_Constants = device->createBuffer(ConstantBufferDesc(16, "ShowCubemapConstants"));
+        device->createBuffer(ConstantBufferDesc(16, "ShowCubemapConstants"), &m_Constants);
 
         nvrhi::BindingSetDesc setDesc;
         setDesc.bindings = {
@@ -48,8 +48,8 @@ namespace fx
             nvrhi::BindingLayoutItem::Sampler(0),
             nvrhi::BindingLayoutItem::VolatileConstantBuffer(0)
         };
-        m_BindingLayout = device->createBindingLayout(layoutDesc);
-        m_BindingSet = device->createBindingSet(setDesc, m_BindingLayout);
+        device->createBindingLayout(layoutDesc, &m_BindingLayout);
+        device->createBindingSet(setDesc, m_BindingLayout, &m_BindingSet);
 
         nvrhi::GraphicsPipelineDesc pipelineDesc;
         pipelineDesc.primType = nvrhi::PrimitiveType::TriangleStrip;
@@ -58,7 +58,7 @@ namespace fx
         pipelineDesc.bindingLayouts = { m_BindingLayout };
         pipelineDesc.renderState.rasterState.setCullNone();
         pipelineDesc.renderState.depthStencilState.disableDepthTest().disableDepthWrite();
-        m_Pipeline = device->createGraphicsPipeline(pipelineDesc, framebuffer);
+        device->createGraphicsPipeline2(pipelineDesc, framebuffer, &m_Pipeline);
     }
 
     void ShowCubemapPass::Render(

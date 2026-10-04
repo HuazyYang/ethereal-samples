@@ -49,7 +49,9 @@ namespace
         desc.debugName = name;
         desc.initialState = nvrhi::ResourceStates::ShaderResource;
         desc.keepInitialState = true;
-        return device->createBuffer(desc);
+        nvrhi::BufferHandle result;
+        device->createBuffer(desc, &result);
+        return result;
     }
 
     void WriteRange(nvrhi::ICommandList* commandList, nvrhi::IBuffer* buffer, const void* data,
@@ -67,8 +69,8 @@ namespace
 bool AsteroidLod::Load(vfs::IFileSystem& fs, const std::filesystem::path& path)
 {
     // Asteroids.exe: 0x1400111C0
-    auto blob = fs.readFile(path);
-    if (!blob)
+    nvrhi::AutoPtr<nvrhi::IDataBlob> blob;
+    if (NVRHI_FAILED(fs.readFile(path, &blob)) || !blob)
     {
         log::error("Couldn't read file `%s`", path.generic_string().c_str());
         return false;
@@ -319,7 +321,7 @@ bool AsteroidType::CreateBuffers(nvrhi::IDevice* device)
     constantsDesc.isConstantBuffer = true;
     constantsDesc.initialState = nvrhi::ResourceStates::ConstantBuffer;
     constantsDesc.keepInitialState = true;
-    m_ObjectConstantsBuffer = device->createBuffer(constantsDesc);
+    device->createBuffer(constantsDesc, &m_ObjectConstantsBuffer);
 
     return m_PositionsBuffer && m_NormalsBuffer && m_Texcoord1Buffer && m_Texcoord2Buffer && m_TangentsBuffer
         && m_BitangentsBuffer && m_VertexIndicesBuffer && m_TriangleIndicesBuffer && m_MeshletInfoBuffer && m_LodInfoBuffer;
@@ -460,7 +462,8 @@ void AsteroidLibrary::CreateRenderResources(nvrhi::IDevice* device, engine::Comm
     nvrhi::IBindingLayout* materialBindingLayout)
 {
     // Asteroids.exe: part of SpaceScene::vfunc03 (0x14005B440) — one command list submission per type.
-    nvrhi::CommandListHandle commandList = device->createCommandList();
+    nvrhi::CommandListHandle commandList;
+    device->createCommandList(nvrhi::CommandListParameters(), &commandList);
     for (const auto& type : m_Types)
     {
         commandList->open();

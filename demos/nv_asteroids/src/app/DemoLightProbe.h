@@ -14,6 +14,9 @@
 
 struct DemoLightProbe : public donut::engine::LightProbe
 {
+    // Adds no interface and no class ID of its own.
+    NVRHI_INHERIT_INTERFACE_TABLE()
+
     dm::float3 capturePosition = 0.f;   // +176 (world space)
     float minHeight = 0.f;              // +188
     float maxHeight = 0.f;              // +192

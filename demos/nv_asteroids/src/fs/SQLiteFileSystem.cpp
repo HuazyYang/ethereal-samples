@@ -1,6 +1,7 @@
 #include "SQLiteFileSystem.h"
 
 #include <donut/core/log.h>
+#include <nvrhi/core/autoptr.h>
 #include <nvrhi/core/datablob.h>
 
 #include <windows.h>

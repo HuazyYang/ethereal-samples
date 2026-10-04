@@ -35,9 +35,9 @@ namespace fx
     public:
         ParticleSystem(
             nvrhi::IDevice* device,
-            const std::shared_ptr<donut::engine::ShaderFactory>& shaderFactory,
-            const std::shared_ptr<donut::engine::CommonRenderPasses>& commonPasses,
-            const std::shared_ptr<donut::engine::FramebufferFactory>& framebufferFactory,
+            const nvrhi::AutoPtr<donut::engine::ShaderFactory>& shaderFactory,
+            const nvrhi::AutoPtr<donut::engine::CommonRenderPasses>& commonPasses,
+            const nvrhi::AutoPtr<donut::engine::FramebufferFactory>& framebufferFactory,
             const donut::engine::ICompositeView& compositeView,
             uint32_t numParticles,
             const donut::math::float3& volumeSize,
@@ -48,7 +48,7 @@ namespace fx
         void Render(
             nvrhi::ICommandList* commandList,
             const donut::engine::ICompositeView& compositeView,
-            const std::shared_ptr<donut::engine::FramebufferFactory>& framebufferFactory,
+            const nvrhi::AutoPtr<donut::engine::FramebufferFactory>& framebufferFactory,
             const SceneLight& light,
             const donut::math::float3& cameraOffset,
             float maxDistance,
@@ -84,7 +84,7 @@ namespace fx
         bool m_NvapiMeshShader = false;                           // GetMeshShaderMode() == Nvapi at creation
         nvrhi::ComputePipelineHandle m_UpdatePipeline;
         std::map<nvrhi::ITexture*, nvrhi::BindingSetHandle> m_RenderBindingSets;   // keyed by shadow map texture
-        std::shared_ptr<donut::engine::CommonRenderPasses> m_CommonPasses;
+        nvrhi::AutoPtr<donut::engine::CommonRenderPasses> m_CommonPasses;
 
         uint32_t m_NumParticles = 0;
         donut::math::float3 m_VolumeSize = 0.f;

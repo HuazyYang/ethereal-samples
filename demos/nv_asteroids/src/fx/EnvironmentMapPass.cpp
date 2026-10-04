@@ -18,9 +18,9 @@ namespace fx
 {
     EnvironmentMapPass::EnvironmentMapPass(
         nvrhi::IDevice* device,
-        const std::shared_ptr<ShaderFactory>& shaderFactory,
-        const std::shared_ptr<CommonRenderPasses>& commonPasses,
-        const std::shared_ptr<FramebufferFactory>& framebufferFactory,
+        const nvrhi::AutoPtr<ShaderFactory>& shaderFactory,
+        const nvrhi::AutoPtr<CommonRenderPasses>& commonPasses,
+        const nvrhi::AutoPtr<FramebufferFactory>& framebufferFactory,
         const ICompositeView& compositeView,
         nvrhi::ITexture* environmentMap,
         nvrhi::ITexture* starMap)
@@ -30,7 +30,7 @@ namespace fx
         m_PixelShader = shaderFactory->CreateShader("demo/texturedstarfield_ps.hlsl", "main", nullptr, nvrhi::ShaderType::Pixel);
 
         // 2018: 96-byte volatile buffer named "DeferredLightingConstants" (sizeof(StarFieldConstants) = 92).
-        m_StarFieldCB = device->createBuffer(ConstantBufferDesc(96, "DeferredLightingConstants"));
+        device->createBuffer(ConstantBufferDesc(96, "DeferredLightingConstants"), &m_StarFieldCB);
 
         m_HasStarMap = starMap != nullptr;
 
@@ -44,7 +44,7 @@ namespace fx
             nvrhi::BindingLayoutItem::Texture_SRV(1),
             nvrhi::BindingLayoutItem::Sampler(0)
         };
-        m_BindingLayout = device->createBindingLayout(layoutDesc);
+        device->createBindingLayout(layoutDesc, &m_BindingLayout);
 
         nvrhi::BindingSetDesc setDesc;
         setDesc.bindings = {
@@ -53,7 +53,7 @@ namespace fx
             nvrhi::BindingSetItem::Texture_SRV(1, starMap ? starMap : commonPasses->m_BlackTexture.Get()), // t_StarMap
             nvrhi::BindingSetItem::Sampler(0, commonPasses->m_LinearWrapSampler)                       // s_Sampler (the star map tiles)
         };
-        m_BindingSet = device->createBindingSet(setDesc, m_BindingLayout);
+        device->createBindingSet(setDesc, m_BindingLayout, &m_BindingSet);
 
         nvrhi::GraphicsPipelineDesc pipelineDesc;
         pipelineDesc.primType = nvrhi::PrimitiveType::TriangleStrip;
@@ -63,7 +63,8 @@ namespace fx
         pipelineDesc.renderState.rasterState.setCullNone();
 
         // Depth test only when the target framebuffer has a depth attachment.
-        const nvrhi::FramebufferInfo& framebufferInfo = m_FramebufferFactory->GetFramebuffer(*sampleView)->getFramebufferInfo();
+        const nvrhi::FramebufferInfo framebufferInfo =
+            m_FramebufferFactory->GetFramebuffer(*sampleView)->getFramebufferInfo().getInfo();
         if (framebufferInfo.depthFormat != nvrhi::Format::UNKNOWN)
         {
             pipelineDesc.renderState.depthStencilState
@@ -79,7 +80,7 @@ namespace fx
         }
         pipelineDesc.renderState.depthStencilState.disableStencil();
 
-        m_Pipeline = device->createGraphicsPipeline(pipelineDesc, m_FramebufferFactory->GetFramebuffer(*sampleView));
+        device->createGraphicsPipeline2(pipelineDesc, m_FramebufferFactory->GetFramebuffer(*sampleView), &m_Pipeline);
     }
 
     void EnvironmentMapPass::Render(

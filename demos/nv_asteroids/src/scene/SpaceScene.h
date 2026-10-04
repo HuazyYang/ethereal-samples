@@ -34,7 +34,7 @@ class SpaceObject;
 class SpaceScene
 {
 public:
-    explicit SpaceScene(std::shared_ptr<donut::vfs::IFileSystem> fs);
+    explicit SpaceScene(nvrhi::AutoPtr<donut::vfs::IFileSystem> fs);
     ~SpaceScene();
     SpaceScene(const SpaceScene&) = delete;
     SpaceScene& operator=(const SpaceScene&) = delete;
@@ -42,7 +42,7 @@ public:
     // 0x14005C890: creates the scene and loads 'sceneFile'; returns null on failure.
     // Textures are only queued: the caller must let the TextureCache finish
     // (ProcessRenderingThreadCommands + LoadingFinished) before CreateRenderingResources.
-    static std::shared_ptr<SpaceScene> Load(std::shared_ptr<donut::vfs::IFileSystem> fs,
+    static std::shared_ptr<SpaceScene> Load(nvrhi::AutoPtr<donut::vfs::IFileSystem> fs,
         const std::filesystem::path& sceneFile, donut::engine::TextureCache* textureCache,
         donut::engine::ThreadPool* threadPool = nullptr);
 
@@ -56,7 +56,7 @@ public:
     const std::vector<SceneMaterial*>& GetMaterials() const { return m_Materials; }
 
     // vfunc03: GPU resources of every object (meshlet or vertex/index path) and every asteroid type.
-    void CreateRenderingResources(nvrhi::IDevice* device, std::shared_ptr<donut::engine::CommonRenderPasses> commonPasses,
+    void CreateRenderingResources(nvrhi::IDevice* device, nvrhi::AutoPtr<donut::engine::CommonRenderPasses> commonPasses,
         bool useMeshlets);
     // 0x14005B3D0: per-sector "Instances" buffers (FeatureDemo calls it whenever
     // AreRenderingResourcesCreated() is false, e.g. after LoadPlacement()).
@@ -127,7 +127,7 @@ private:
     int WrapSectorX(int x) const;
     int WrapSectorZ(int z) const;
 
-    std::shared_ptr<donut::vfs::IFileSystem> m_FS;
+    nvrhi::AutoPtr<donut::vfs::IFileSystem> m_FS;
     std::vector<std::shared_ptr<SpaceObject>> m_Objects;
     donut::math::box3 m_Bounds = donut::math::box3::empty();
     donut::math::float3 m_SunColour = 1.f;

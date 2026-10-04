@@ -24,8 +24,8 @@ namespace fx
         // cubemap: TextureCubeArray to display (bound once; the 2018 code never rebinds it).
         ShowCubemapPass(
             nvrhi::IDevice* device,
-            const std::shared_ptr<donut::engine::ShaderFactory>& shaderFactory,
-            const std::shared_ptr<donut::engine::CommonRenderPasses>& commonPasses,
+            const nvrhi::AutoPtr<donut::engine::ShaderFactory>& shaderFactory,
+            const nvrhi::AutoPtr<donut::engine::CommonRenderPasses>& commonPasses,
             nvrhi::IFramebuffer* framebuffer,
             nvrhi::ITexture* cubemap);
 

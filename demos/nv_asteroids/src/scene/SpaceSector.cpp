@@ -79,7 +79,7 @@ void SpaceSector::CreateInstanceBuffers(nvrhi::IDevice* device)
             desc.debugName = "Instances";
             desc.initialState = nvrhi::ResourceStates::ShaderResource;
             desc.keepInitialState = true;
-            m_InstanceBuffers[t] = device->createBuffer(desc);
+            device->createBuffer(desc, &m_InstanceBuffers[t]);
         }
         else
             m_InstanceBuffers[t] = nullptr;

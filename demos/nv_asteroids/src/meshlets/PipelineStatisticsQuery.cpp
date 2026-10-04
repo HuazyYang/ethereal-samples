@@ -10,7 +10,8 @@ namespace
 {
     ID3D12GraphicsCommandList* GetNativeCommandList(nvrhi::ICommandList* commandList)
     {
-        return commandList->getNativeObject(nvrhi::ObjectTypes::D3D12_GraphicsCommandList);
+        return static_cast<ID3D12GraphicsCommandList*>(
+            commandList->getNativeObject(nvrhi::ObjectTypes::D3D12_GraphicsCommandList));
     }
 }
 
@@ -19,7 +20,8 @@ PipelineStatisticsQuery::PipelineStatisticsQuery(nvrhi::IDevice* device, uint32_
     , m_NumSlots(numSlots)
 {
     // Asteroids.exe: 0x140040C10
-    ID3D12Device* d3dDevice = device->getNativeObject(nvrhi::ObjectTypes::D3D12_Device);
+    ID3D12Device* d3dDevice = static_cast<ID3D12Device*>(
+        device->getNativeObject(nvrhi::ObjectTypes::D3D12_Device));
     if (!d3dDevice)
     {
         log::warning("PipelineStatisticsQuery requires the D3D12 backend");
@@ -42,7 +44,7 @@ PipelineStatisticsQuery::PipelineStatisticsQuery(nvrhi::IDevice* device, uint32_
     bufferDesc.cpuAccess = nvrhi::CpuAccessMode::Read;
     bufferDesc.initialState = nvrhi::ResourceStates::CopyDest;
     bufferDesc.keepInitialState = true;
-    m_ReadbackBuffer = device->createBuffer(bufferDesc);
+    device->createBuffer(bufferDesc, &m_ReadbackBuffer);
 
     m_Results.resize(numSlots);
     std::memset(m_Results.data(), 0, sizeof(D3D12_QUERY_DATA_PIPELINE_STATISTICS) * numSlots);
@@ -80,7 +82,8 @@ void PipelineStatisticsQuery::Resolve(nvrhi::ICommandList* commandList) const
     commandList->commitBarriers();
 
     ID3D12GraphicsCommandList* d3dCommandList = GetNativeCommandList(commandList);
-    ID3D12Resource* d3dBuffer = m_ReadbackBuffer->getNativeObject(nvrhi::ObjectTypes::D3D12_Resource);
+    ID3D12Resource* d3dBuffer = static_cast<ID3D12Resource*>(
+        m_ReadbackBuffer->getNativeObject(nvrhi::ObjectTypes::D3D12_Resource));
     if (d3dCommandList && d3dBuffer)
         d3dCommandList->ResolveQueryData(m_QueryHeap, D3D12_QUERY_TYPE_PIPELINE_STATISTICS, 0, m_NumSlots, d3dBuffer, 0);
 }

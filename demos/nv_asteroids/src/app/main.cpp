@@ -363,7 +363,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     }
 
     // deviation: the binary created DeviceManager_DX12 directly and initialized NVAPI here (0x1400013D0).
-    DeviceManager* deviceManager = DeviceManager::Create(nvrhi::GraphicsAPI::D3D12);
+    auto deviceManager = nvrhi::TakeOver(DeviceManager::Create(nvrhi::GraphicsAPI::D3D12));
 
     // deviation: the 2018 parameters carried an adapter name substring; donut selects adapters by index,
     // so the name is matched against the enumerated adapters.
@@ -448,8 +448,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     }
 
     {
-        auto demoPass = std::make_shared<FeatureDemo>(deviceManager, &uiData, asyncLoad);
-        auto uiPass = std::make_shared<UIRenderer>(deviceManager, demoPass, uiData);
+        auto demoPass = MAKE_RC_OBJ_PTR(FeatureDemo, deviceManager.Get(), &uiData, asyncLoad);
+        auto uiPass = MAKE_RC_OBJ_PTR(UIRenderer, deviceManager.Get(), demoPass, uiData);
         if (!screenshotPath.empty())
             demoPass->RequestScreenshot(screenshotPath, screenshotFrame, screenshotCount);
 
@@ -460,8 +460,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         uiPass->LoadFont(fs, mediaPath / "GeForceFont/geforce-bold.ttf", 51.f);
         uiPass->Init(demoPass->GetShaderFactory());
 
-        deviceManager->AddRenderPassToBack(demoPass.get());
-        deviceManager->AddRenderPassToBack(uiPass.get());
+        deviceManager->AddRenderPassToBack(demoPass.Get());
+        deviceManager->AddRenderPassToBack(uiPass.Get());
 
         deviceManager->RunMessageLoop();
 
@@ -471,12 +471,11 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
         // deviation: the binary released the passes after DeviceManager::Shutdown; donut expects the
         // resources to be gone before the device is destroyed.
-        deviceManager->RemoveRenderPass(uiPass.get());
-        deviceManager->RemoveRenderPass(demoPass.get());
+        deviceManager->RemoveRenderPass(uiPass.Get());
+        deviceManager->RemoveRenderPass(demoPass.Get());
     }
 
     deviceManager->Shutdown();
-    delete deviceManager;
 
     return 0;
 }

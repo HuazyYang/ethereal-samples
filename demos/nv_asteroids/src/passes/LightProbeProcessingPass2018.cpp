@@ -19,8 +19,8 @@ namespace
 
 LightProbeProcessingPass2018::LightProbeProcessingPass2018(
     nvrhi::IDevice* device,
-    std::shared_ptr<ShaderFactory> shaderFactory,
-    std::shared_ptr<CommonRenderPasses> commonPasses,
+    nvrhi::AutoPtr<ShaderFactory> shaderFactory,
+    nvrhi::AutoPtr<CommonRenderPasses> commonPasses,
     uint32_t intermediateTextureSize,
     nvrhi::Format intermediateTextureFormat)
     : m_Device(device)
@@ -43,7 +43,7 @@ LightProbeProcessingPass2018::LightProbeProcessingPass2018(
         nvrhi::BindingLayoutItem::Sampler(0),
         nvrhi::BindingLayoutItem::Texture_SRV(0),
     };
-    m_BindingLayout = device->createBindingLayout(layoutDesc);
+    device->createBindingLayout(layoutDesc, &m_BindingLayout);
 
     nvrhi::BufferDesc constantBufferDesc;
     constantBufferDesc.byteSize = sizeof(framework2018::LightProbeConstants);
@@ -51,7 +51,7 @@ LightProbeProcessingPass2018::LightProbeProcessingPass2018(
     constantBufferDesc.isConstantBuffer = true;
     constantBufferDesc.isVolatile = true;
     constantBufferDesc.maxVersions = 64;
-    m_LightProbeCB = device->createBuffer(constantBufferDesc);
+    device->createBuffer(constantBufferDesc, &m_LightProbeCB);
 
     assert(intermediateTextureSize > 0);
 
@@ -68,7 +68,7 @@ LightProbeProcessingPass2018::LightProbeProcessingPass2018(
     cubemapDesc.clearValue = nvrhi::Color(0.f);
     cubemapDesc.useClearValue = true;
     cubemapDesc.debugName = "LightProbeIntermediate";
-    m_IntermediateTexture = device->createTexture(cubemapDesc);
+    device->createTexture(cubemapDesc, &m_IntermediateTexture);
 
     // 2018 format 30 = RG16_FLOAT in the 2018 nvrhi enumeration.
     nvrhi::TextureDesc brdfTextureDesc;
@@ -81,7 +81,7 @@ LightProbeProcessingPass2018::LightProbeProcessingPass2018(
     brdfTextureDesc.clearValue = nvrhi::Color(0.f);
     brdfTextureDesc.useClearValue = true;
     brdfTextureDesc.debugName = "EnvironmentBrdf";
-    m_EnvironmentBrdfTexture = device->createTexture(brdfTextureDesc);
+    device->createTexture(brdfTextureDesc, &m_EnvironmentBrdfTexture);
 }
 
 nvrhi::FramebufferHandle LightProbeProcessingPass2018::GetCachedFramebuffer(nvrhi::ITexture* texture,
@@ -89,7 +89,7 @@ nvrhi::FramebufferHandle LightProbeProcessingPass2018::GetCachedFramebuffer(nvrh
 {
     nvrhi::FramebufferHandle& framebuffer = m_FramebufferCache[TextureSubresourcesKey{ texture, subresources }];
     if (!framebuffer)
-        framebuffer = m_Device->createFramebuffer(nvrhi::FramebufferDesc().addColorAttachment(texture, subresources));
+        m_Device->createFramebuffer(nvrhi::FramebufferDesc().addColorAttachment(texture, subresources), &framebuffer);
     return framebuffer;
 }
 
@@ -107,7 +107,7 @@ nvrhi::BindingSetHandle LightProbeProcessingPass2018::GetCachedBindingSet(nvrhi:
             nvrhi::BindingSetItem::Texture_SRV(0, texture, nvrhi::Format::UNKNOWN, subresources,
                 nvrhi::TextureDimension::TextureCube),
         };
-        bindingSet = m_Device->createBindingSet(bindingSetDesc, m_BindingLayout);
+        m_Device->createBindingSet(bindingSetDesc, m_BindingLayout, &bindingSet);
     }
     return bindingSet;
 }
@@ -116,7 +116,7 @@ nvrhi::GraphicsPipelineHandle LightProbeProcessingPass2018::GetPipeline(
     std::unordered_map<nvrhi::FramebufferInfo, nvrhi::GraphicsPipelineHandle>& cache, nvrhi::IShader* pixelShader,
     nvrhi::IFramebuffer* framebuffer)
 {
-    nvrhi::GraphicsPipelineHandle& pso = cache[framebuffer->getFramebufferInfo()];
+    nvrhi::GraphicsPipelineHandle& pso = cache[framebuffer->getFramebufferInfo().getInfo()];
     if (!pso)
     {
         nvrhi::GraphicsPipelineDesc psoDesc;
@@ -128,7 +128,7 @@ nvrhi::GraphicsPipelineHandle LightProbeProcessingPass2018::GetPipeline(
         psoDesc.renderState.rasterState.setCullNone();
         psoDesc.renderState.depthStencilState.depthTestEnable = false;
         psoDesc.renderState.depthStencilState.stencilEnable = false;
-        pso = m_Device->createGraphicsPipeline(psoDesc, framebuffer);
+        m_Device->createGraphicsPipeline2(psoDesc, framebuffer, &pso);
     }
     return pso;
 }
@@ -270,8 +270,8 @@ void LightProbeProcessingPass2018::RenderEnvironmentBrdfTexture(nvrhi::ICommandL
     // 0x14008D020: no bindings, no geometry shader.
     demo::ProfBegin(commandList, "Environment BRDF");
 
-    nvrhi::FramebufferHandle framebuffer = m_Device->createFramebuffer(
-        nvrhi::FramebufferDesc().addColorAttachment(m_EnvironmentBrdfTexture));
+    nvrhi::FramebufferHandle framebuffer;
+    m_Device->createFramebuffer(nvrhi::FramebufferDesc().addColorAttachment(m_EnvironmentBrdfTexture), &framebuffer);
 
     nvrhi::GraphicsPipelineDesc psoDesc;
     psoDesc.VS = m_CommonPasses->m_FullscreenVS;
@@ -280,7 +280,8 @@ void LightProbeProcessingPass2018::RenderEnvironmentBrdfTexture(nvrhi::ICommandL
     psoDesc.renderState.rasterState.setCullNone();
     psoDesc.renderState.depthStencilState.depthTestEnable = false;
     psoDesc.renderState.depthStencilState.stencilEnable = false;
-    nvrhi::GraphicsPipelineHandle pso = m_Device->createGraphicsPipeline(psoDesc, framebuffer);
+    nvrhi::GraphicsPipelineHandle pso;
+    m_Device->createGraphicsPipeline2(psoDesc, framebuffer, &pso);
 
     const float size = float(m_EnvironmentBrdfTextureSize);
     nvrhi::GraphicsState state;

@@ -160,7 +160,7 @@ void FeatureDemo::RenderSplashScreen(nvrhi::IFramebuffer* framebuffer)
         {
             // Synchronous load and upload on the splash command list (sRGB).
             m_SplashTexture = m_TextureCache->LoadTextureFromFile(m_MediaPath / "splash.jpg",
-                engine::TextureLoadOptions{ engine::SRGBModeFromBool(true) }, m_CommonPasses.get(), m_CommandList);
+                engine::TextureLoadOptions{ engine::SRGBModeFromBool(true) }, m_CommonPasses.Get(), m_CommandList);
 
             if (!m_SplashTexture || !m_SplashTexture->texture)
                 log::error("Error reading splashscreen");
@@ -214,13 +214,13 @@ void FeatureDemo::SceneUnloading()
     m_ActiveCamera = &m_FirstPersonCamera;
     m_UI->cameraMode = 0;
 
-    m_OpaqueDrawStrategy.reset();
-    m_TransparentDrawStrategy.reset();
-    m_GBufferRenderer.reset();
-    m_DepthRenderer.reset();
-    m_MaterialIdRenderer.reset();
-    m_ForwardRenderer.reset();
-    m_ShipForwardRenderer.reset();
+    m_OpaqueDrawStrategy = nullptr;
+    m_TransparentDrawStrategy = nullptr;
+    m_GBufferRenderer = nullptr;
+    m_DepthRenderer = nullptr;
+    m_MaterialIdRenderer = nullptr;
+    m_ForwardRenderer = nullptr;
+    m_ShipForwardRenderer = nullptr;
 
     m_UI->pickedMaterial = nullptr;
 }
@@ -304,8 +304,8 @@ bool FeatureDemo::UpdateViews()
     bool created = false;
     if (!m_View)
     {
-        m_View = std::make_shared<engine::PlanarView>();
-        m_ViewPrevious = std::make_shared<engine::PlanarView>();
+        m_View = MAKE_RC_OBJ_PTR(engine::PlanarView);
+        m_ViewPrevious = MAKE_RC_OBJ_PTR(engine::PlanarView);
         created = true;
     }
 
@@ -323,7 +323,12 @@ bool FeatureDemo::UpdateViews()
     {
         m_ViewOriginPrevious = m_ViewOrigin;
         // deviation: the binary left the new previous view uninitialized for the first frame.
-        *m_ViewPrevious = *m_View;
+        // PlanarView is reference counted and not copy-assignable, so the three pieces of
+        // state set above are copied explicitly.
+        m_ViewPrevious->SetViewport(m_View->GetViewport());
+        m_ViewPrevious->SetPixelOffset(m_View->GetPixelOffset());
+        m_ViewPrevious->SetMatrices(m_View->GetViewMatrix(), m_View->GetProjectionMatrix(false));
+        m_ViewPrevious->UpdateCache();
     }
 
     return created;
@@ -378,7 +383,7 @@ void FeatureDemo::UpdateLights()
     }
 }
 
-void FeatureDemo::CollectLightProbes(std::vector<std::shared_ptr<engine::LightProbe>>& probes)
+void FeatureDemo::CollectLightProbes(std::vector<nvrhi::AutoPtr<engine::LightProbe>>& probes)
 {
     probes.clear();
     if (!m_UI->useLightProbeAmbient || m_LightProbes.empty())
@@ -500,7 +505,7 @@ void FeatureDemo::UpdateAsteroidRendererSettings()
         renderer->lodBias = lodAdjustment + m_UI->cameraLodBias;
         renderer->lodSlope = m_UI->lodScale;
         renderer->visualizeLods = m_UI->visualizeLods ? 1u : 0u;
-        renderer->lodView = m_View.get();
+        renderer->lodView = m_View.Get();
         renderer->preViewTranslation = m_ViewOrigin;
         renderer->preViewTranslationPrevious = m_ViewOriginPrevious;
         renderer->time = m_CurrentTime;
@@ -556,15 +561,15 @@ void FeatureDemo::RenderShadows()
 {
     if (!m_ShadowLightGraph)
     {
-        m_ShadowLightGraph = std::make_shared<engine::SceneGraph>();
-        auto node = std::make_shared<engine::SceneGraphNode>();
+        m_ShadowLightGraph = MAKE_RC_OBJ_PTR(engine::SceneGraph);
+        auto node = MAKE_RC_OBJ_PTR(engine::SceneGraphNode);
         m_ShadowLightGraph->SetRootNode(node);
-        m_ShadowLight = std::make_shared<engine::DirectionalLight>();
+        m_ShadowLight = MAKE_RC_OBJ_PTR(engine::DirectionalLight);
         node->SetLeaf(m_ShadowLight);
     }
     if (!m_ShadowFramebuffer || m_ShadowFramebuffer->DepthTarget != m_ShadowMap->GetTexture())
     {
-        m_ShadowFramebuffer = std::make_shared<engine::FramebufferFactory>(GetDevice());
+        m_ShadowFramebuffer = MAKE_RC_OBJ_PTR(engine::FramebufferFactory, GetDevice());
         m_ShadowFramebuffer->DepthTarget = m_ShadowMap->GetTexture();
     }
 
@@ -667,14 +672,14 @@ void FeatureDemo::RenderGBuffer()
 {
     const int64_t start = NowNanoseconds();
     m_PipelineStatsQuery->Begin(m_CommandList, 1);
-    m_GBufferPass->Render(m_CommandList, *m_GBufferRenderer, *m_View, m_ViewPrevious.get());
+    m_GBufferPass->Render(m_CommandList, *m_GBufferRenderer, *m_View, m_ViewPrevious.Get());
     m_PipelineStatsQuery->End(m_CommandList, 1);
     Accumulate(m_UI->gbufferTimeMs, ElapsedMs(start));
 }
 
 void FeatureDemo::RenderLightingAndEffects()
 {
-    std::vector<std::shared_ptr<engine::LightProbe>> probes;
+    std::vector<nvrhi::AutoPtr<engine::LightProbe>> probes;
     CollectLightProbes(probes);
 
     float3 ambient = 0.f;
@@ -763,8 +768,8 @@ void FeatureDemo::ResolveOrAccumulate(const nvrhi::Viewport& viewport)
     m_CommonPasses->BlitTexture(m_CommandList, blit);
 }
 
-nvrhi::ITexture* FeatureDemo::PostProcess(const std::shared_ptr<engine::FramebufferFactory>& framebufferWithDepth,
-    const std::shared_ptr<engine::FramebufferFactory>& framebuffer, nvrhi::ITexture* source)
+nvrhi::ITexture* FeatureDemo::PostProcess(const nvrhi::AutoPtr<engine::FramebufferFactory>& framebufferWithDepth,
+    const nvrhi::AutoPtr<engine::FramebufferFactory>& framebuffer, nvrhi::ITexture* source)
 {
     if (m_UI->enableParticles)
     {
@@ -884,7 +889,7 @@ void FeatureDemo::RenderScene(nvrhi::IFramebuffer* framebuffer)
     }
     else
     {
-        m_SunLight->shadowMap.reset();
+        m_SunLight->shadowMap = nullptr;
         m_UI->shadowTimeMs = 0.f;
     }
 
@@ -908,8 +913,8 @@ void FeatureDemo::RenderScene(nvrhi::IFramebuffer* framebuffer)
 
     RenderLightingAndEffects();
 
-    std::shared_ptr<engine::FramebufferFactory> postFramebuffer;
-    std::shared_ptr<engine::FramebufferFactory> postFramebufferWithDepth;
+    nvrhi::AutoPtr<engine::FramebufferFactory> postFramebuffer;
+    nvrhi::AutoPtr<engine::FramebufferFactory> postFramebufferWithDepth;
     nvrhi::ITexture* postSource = nullptr;
 
     if (m_UI->wireframe || m_UI->aaMode == AntiAliasingMode::None || int(m_UI->aaMode) > 3)
@@ -1026,7 +1031,7 @@ void FeatureDemo::SaveScreenshotIfRequested(nvrhi::IFramebuffer* framebuffer)
         outputPath = m_ScreenshotPath.parent_path() / (m_ScreenshotPath.stem().string() + "_" + std::to_string(m_RenderedFrames)
             + m_ScreenshotPath.extension().string());
     const std::string fileName = outputPath.string();
-    if (engine::SaveTextureToFile(GetDevice(), m_CommonPasses.get(), backBuffer, nvrhi::ResourceStates::Present,
+    if (engine::SaveTextureToFile(GetDevice(), m_CommonPasses.Get(), backBuffer, nvrhi::ResourceStates::Present,
         fileName.c_str(), false))
         log::info("Saved screenshot to %s (frame %u)", fileName.c_str(), m_RenderedFrames);
     else
@@ -1042,7 +1047,7 @@ void FeatureDemo::SaveScreenshotIfRequested(nvrhi::IFramebuffer* framebuffer)
         {
             const std::string path = prefix + "_gb" + std::to_string(i) + ".png";
             if (targets[i])
-                engine::SaveTextureToFile(GetDevice(), m_CommonPasses.get(), targets[i],
+                engine::SaveTextureToFile(GetDevice(), m_CommonPasses.Get(), targets[i],
                     nvrhi::ResourceStates::ShaderResource, path.c_str(), false);
         }
     }

@@ -3,6 +3,9 @@
 #include <donut/core/log.h>
 #include <donut/core/vfs/VFS.h>
 
+#include <nvrhi/core/autoptr.h>
+#include <nvrhi/core/datablob.h>
+
 #include <json/json.h>
 
 #include <memory>
@@ -13,8 +16,8 @@ namespace demo
     bool LoadJsonFile(donut::vfs::IFileSystem& fs, const std::filesystem::path& path, Json::Value& root,
         bool reportErrors)
     {
-        std::shared_ptr<donut::vfs::IBlob> data = fs.readFile(path);
-        if (!data)
+        nvrhi::AutoPtr<nvrhi::IDataBlob> data;
+        if (NVRHI_FAILED(fs.readFile(path, &data)) || !data)
         {
             if (reportErrors)
                 donut::log::error("Couldn't read file %s", path.generic_string().c_str());
@@ -25,9 +28,9 @@ namespace demo
         builder["collectComments"] = false;
         std::unique_ptr<Json::CharReader> reader(builder.newCharReader());
 
-        const char* begin = static_cast<const char*>(data->data());
+        const char* begin = static_cast<const char*>(data->GetDataPtr());
         std::string errors;
-        if (!reader->parse(begin, begin + data->size(), &root, &errors))
+        if (!reader->parse(begin, begin + data->GetSize(), &root, &errors))
         {
             if (reportErrors)
                 donut::log::error("Couldn't parse JSON file %s:\n%s", path.generic_string().c_str(), errors.c_str());

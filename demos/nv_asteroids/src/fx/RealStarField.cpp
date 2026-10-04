@@ -26,7 +26,7 @@ namespace fx
 
     RealStarFieldResources::RealStarFieldResources(
         nvrhi::IDevice* device,
-        const std::shared_ptr<donut::vfs::IFileSystem>& fs,
+        const nvrhi::AutoPtr<donut::vfs::IFileSystem>& fs,
         const std::filesystem::path& mediaPath)
     {
         LoadStars(fs, mediaPath / "SkyAndStars/Stars.buf");
@@ -41,7 +41,7 @@ namespace fx
         desc.keepInitialState = true;
         if (desc.byteSize == 0)
             desc.byteSize = sizeof(StarInstance);   // deviation: avoid creating an empty buffer when the file is missing
-        m_StarBuffer = device->createBuffer(desc);
+        device->createBuffer(desc, &m_StarBuffer);
     }
 
     uint32_t RealStarFieldResources::GetNumStars() const
@@ -51,18 +51,18 @@ namespace fx
 
     RealStarFieldResources::~RealStarFieldResources() = default;
 
-    void RealStarFieldResources::LoadStars(const std::shared_ptr<donut::vfs::IFileSystem>& fs, const std::filesystem::path& path)
+    void RealStarFieldResources::LoadStars(const nvrhi::AutoPtr<donut::vfs::IFileSystem>& fs, const std::filesystem::path& path)
     {
-        std::shared_ptr<donut::vfs::IBlob> blob = fs->readFile(path);
-        if (!blob)
+        nvrhi::AutoPtr<nvrhi::IDataBlob> blob;
+        if (NVRHI_FAILED(fs->readFile(path, &blob)) || !blob)
         {
             // deviation: the 2018 code silently left the star list empty.
             donut::log::warning("Couldn't load the star catalogue '%s'", path.generic_string().c_str());
             return;
         }
 
-        m_Stars.resize(blob->size() / sizeof(StarInstance));
-        memcpy(m_Stars.data(), blob->data(), m_Stars.size() * sizeof(StarInstance));
+        m_Stars.resize(blob->GetSize() / sizeof(StarInstance));
+        memcpy(m_Stars.data(), blob->GetDataPtr(), m_Stars.size() * sizeof(StarInstance));
         m_NeedsUpload = true;
     }
 
@@ -129,9 +129,9 @@ namespace fx
 
     RealStarFieldPass::RealStarFieldPass(
         nvrhi::IDevice* device,
-        const std::shared_ptr<ShaderFactory>& shaderFactory,
-        const std::shared_ptr<CommonRenderPasses>& commonPasses,
-        const std::shared_ptr<FramebufferFactory>& framebufferFactory,
+        const nvrhi::AutoPtr<ShaderFactory>& shaderFactory,
+        const nvrhi::AutoPtr<CommonRenderPasses>& commonPasses,
+        const nvrhi::AutoPtr<FramebufferFactory>& framebufferFactory,
         const ICompositeView& compositeView,
         const std::shared_ptr<RealStarFieldResources>& resources)
         : m_Resources(resources)
@@ -141,7 +141,7 @@ namespace fx
         m_PixelShader = shaderFactory->CreateShader("demo/real_stars_ps.hlsl", "PS", nullptr, nvrhi::ShaderType::Pixel);
         m_VertexShader = shaderFactory->CreateShader("demo/real_stars_vs.hlsl", "VS", nullptr, nvrhi::ShaderType::Vertex);
 
-        m_CelestialConstants = device->createBuffer(ConstantBufferDesc(sizeof(CelestialConstants), "CelestialConstants"));
+        device->createBuffer(ConstantBufferDesc(sizeof(CelestialConstants), "CelestialConstants"), &m_CelestialConstants);
 
         const IView* sampleView = compositeView.GetChildView(ViewType::PLANAR, 0);
 
@@ -151,14 +151,14 @@ namespace fx
             nvrhi::BindingLayoutItem::VolatileConstantBuffer(0),
             nvrhi::BindingLayoutItem::StructuredBuffer_SRV(0)
         };
-        m_BindingLayout = device->createBindingLayout(layoutDesc);
+        device->createBindingLayout(layoutDesc, &m_BindingLayout);
 
         nvrhi::BindingSetDesc setDesc;
         setDesc.bindings = {
             nvrhi::BindingSetItem::ConstantBuffer(0, m_CelestialConstants),
             nvrhi::BindingSetItem::StructuredBuffer_SRV(0, m_Resources->GetBuffer())   // t_StarInstances
         };
-        m_BindingSet = device->createBindingSet(setDesc, m_BindingLayout);
+        device->createBindingSet(setDesc, m_BindingLayout, &m_BindingSet);
 
         nvrhi::GraphicsPipelineDesc pipelineDesc;
         pipelineDesc.primType = nvrhi::PrimitiveType::TriangleList;
@@ -176,7 +176,7 @@ namespace fx
         // Additive (2018 blend helper with One, One).
         pipelineDesc.renderState.blendState.targets[0] = BlendStateRT(nvrhi::BlendFactor::One, nvrhi::BlendFactor::One);
 
-        m_Pipeline = device->createGraphicsPipeline(pipelineDesc, m_FramebufferFactory->GetFramebuffer(*sampleView));
+        device->createGraphicsPipeline2(pipelineDesc, m_FramebufferFactory->GetFramebuffer(*sampleView), &m_Pipeline);
     }
 
     void RealStarFieldPass::Render(

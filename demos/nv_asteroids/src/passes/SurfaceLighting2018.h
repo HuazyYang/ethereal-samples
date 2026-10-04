@@ -27,7 +27,7 @@ namespace light2018   // 2018 layouts (shaders/demo/include/light_cb.h), not don
 namespace surface_lighting
 {
     using LightList = std::vector<std::shared_ptr<SceneLight>>;
-    using LightProbeList = std::vector<std::shared_ptr<donut::engine::LightProbe>>;
+    using LightProbeList = std::vector<nvrhi::AutoPtr<donut::engine::LightProbe>>;
 
     struct ShadowMapInfo
     {

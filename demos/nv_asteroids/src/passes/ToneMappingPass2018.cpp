@@ -29,9 +29,9 @@ namespace
 
 ToneMappingPass2018::ToneMappingPass2018(
     nvrhi::IDevice* device,
-    std::shared_ptr<ShaderFactory> shaderFactory,
-    std::shared_ptr<CommonRenderPasses> commonPasses,
-    std::shared_ptr<FramebufferFactory> framebufferFactory,
+    nvrhi::AutoPtr<ShaderFactory> shaderFactory,
+    nvrhi::AutoPtr<CommonRenderPasses> commonPasses,
+    nvrhi::AutoPtr<FramebufferFactory> framebufferFactory,
     const ICompositeView& compositeView,
     const CreateParameters& params)
     : m_Device(device)
@@ -64,7 +64,7 @@ ToneMappingPass2018::ToneMappingPass2018(
     constantBufferDesc.isConstantBuffer = true;
     constantBufferDesc.isVolatile = true;
     constantBufferDesc.maxVersions = std::max(params.numConstantBufferVersions, 16u);
-    m_ToneMappingCB = device->createBuffer(constantBufferDesc);
+    device->createBuffer(constantBufferDesc, &m_ToneMappingCB);
 
     nvrhi::BufferDesc storageBufferDesc;
     storageBufferDesc.byteSize = sizeof(uint32_t) * m_HistogramBins;
@@ -74,7 +74,7 @@ ToneMappingPass2018::ToneMappingPass2018(
     storageBufferDesc.debugName = "HistogramBuffer";
     storageBufferDesc.initialState = nvrhi::ResourceStates::UnorderedAccess;
     storageBufferDesc.keepInitialState = true;
-    m_HistogramBuffer = device->createBuffer(storageBufferDesc);
+    device->createBuffer(storageBufferDesc, &m_HistogramBuffer);
 
     if (params.exposureBufferOverride)
     {
@@ -84,7 +84,7 @@ ToneMappingPass2018::ToneMappingPass2018(
     {
         storageBufferDesc.byteSize = sizeof(uint32_t);
         storageBufferDesc.debugName = "ExposureBuffer";
-        m_ExposureBuffer = device->createBuffer(storageBufferDesc);
+        device->createBuffer(storageBufferDesc, &m_ExposureBuffer);
     }
 
     m_ColorLUT = m_CommonPasses->m_BlackTexture;
@@ -112,12 +112,12 @@ ToneMappingPass2018::ToneMappingPass2018(
             nvrhi::BindingLayoutItem::Texture_SRV(0),
             nvrhi::BindingLayoutItem::TypedBuffer_UAV(0),
         };
-        m_HistogramBindingLayout = device->createBindingLayout(layoutDesc);
+        device->createBindingLayout(layoutDesc, &m_HistogramBindingLayout);
 
         nvrhi::ComputePipelineDesc pipelineDesc;
         pipelineDesc.CS = m_HistogramComputeShader;
         pipelineDesc.bindingLayouts = { m_HistogramBindingLayout };
-        m_HistogramPso = device->createComputePipeline(pipelineDesc);
+        device->createComputePipeline(pipelineDesc, &m_HistogramPso);
     }
 
     {
@@ -128,7 +128,7 @@ ToneMappingPass2018::ToneMappingPass2018(
             nvrhi::BindingLayoutItem::TypedBuffer_SRV(0),
             nvrhi::BindingLayoutItem::TypedBuffer_UAV(0),
         };
-        m_ExposureBindingLayout = device->createBindingLayout(layoutDesc);
+        device->createBindingLayout(layoutDesc, &m_ExposureBindingLayout);
 
         nvrhi::BindingSetDesc setDesc;
         setDesc.bindings = {
@@ -136,12 +136,12 @@ ToneMappingPass2018::ToneMappingPass2018(
             nvrhi::BindingSetItem::TypedBuffer_SRV(0, m_HistogramBuffer),
             nvrhi::BindingSetItem::TypedBuffer_UAV(0, m_ExposureBuffer),
         };
-        m_ExposureBindingSet = device->createBindingSet(setDesc, m_ExposureBindingLayout);
+        device->createBindingSet(setDesc, m_ExposureBindingLayout, &m_ExposureBindingSet);
 
         nvrhi::ComputePipelineDesc pipelineDesc;
         pipelineDesc.CS = m_ExposureComputeShader;
         pipelineDesc.bindingLayouts = { m_ExposureBindingLayout };
-        m_ExposurePso = device->createComputePipeline(pipelineDesc);
+        device->createComputePipeline(pipelineDesc, &m_ExposurePso);
     }
 
     {
@@ -154,7 +154,7 @@ ToneMappingPass2018::ToneMappingPass2018(
             nvrhi::BindingLayoutItem::Texture_SRV(2),
             nvrhi::BindingLayoutItem::Sampler(0),
         };
-        m_RenderBindingLayout = device->createBindingLayout(layoutDesc);
+        device->createBindingLayout(layoutDesc, &m_RenderBindingLayout);
 
         nvrhi::GraphicsPipelineDesc pipelineDesc;
         pipelineDesc.primType = nvrhi::PrimitiveType::TriangleStrip;
@@ -164,7 +164,7 @@ ToneMappingPass2018::ToneMappingPass2018(
         pipelineDesc.renderState.rasterState.setCullNone();
         pipelineDesc.renderState.depthStencilState.depthTestEnable = false;
         pipelineDesc.renderState.depthStencilState.stencilEnable = false;
-        m_RenderPso = device->createGraphicsPipeline(pipelineDesc, sampleFramebuffer);
+        device->createGraphicsPipeline2(pipelineDesc, sampleFramebuffer, &m_RenderPso);
     }
 }
 
@@ -183,7 +183,7 @@ void ToneMappingPass2018::Render(nvrhi::ICommandList* commandList, const render:
             nvrhi::BindingSetItem::Texture_SRV(2, m_ColorLUT),
             nvrhi::BindingSetItem::Sampler(0, m_CommonPasses->m_LinearClampSampler),
         };
-        bindingSet = m_Device->createBindingSet(setDesc, m_RenderBindingLayout);
+        m_Device->createBindingSet(setDesc, m_RenderBindingLayout, &bindingSet);
     }
 
     for (uint32_t viewIndex = 0; viewIndex < compositeView.GetNumChildViews(ViewType::PLANAR); viewIndex++)
@@ -266,7 +266,7 @@ void ToneMappingPass2018::AddFrameToHistogram(nvrhi::ICommandList* commandList, 
             nvrhi::BindingSetItem::Texture_SRV(0, sourceTexture),
             nvrhi::BindingSetItem::TypedBuffer_UAV(0, m_HistogramBuffer),
         };
-        bindingSet = m_Device->createBindingSet(setDesc, m_HistogramBindingLayout);
+        m_Device->createBindingSet(setDesc, m_HistogramBindingLayout, &bindingSet);
     }
 
     for (uint32_t viewIndex = 0; viewIndex < compositeView.GetNumChildViews(ViewType::PLANAR); viewIndex++)

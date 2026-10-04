@@ -88,7 +88,8 @@ void HbaoPlusPass::CreateContext()
     heaps.RTV.pDescHeap = static_cast<ID3D12DescriptorHeap*>(m_RtvHeap);
     heaps.RTV.BaseIndex = m_RtvBaseIndex;
 
-    ID3D12Device* nativeDevice = m_Device->getNativeObject(nvrhi::ObjectTypes::D3D12_Device);
+    ID3D12Device* nativeDevice = static_cast<ID3D12Device*>(
+        m_Device->getNativeObject(nvrhi::ObjectTypes::D3D12_Device));
     const GFSDK_SSAO_Status status = GFSDK_SSAO_CreateContext_D3D12(nativeDevice, 1, heaps, &m_Context, nullptr,
         GetHbaoVersion2018());
     if (status != GFSDK_SSAO_OK)
@@ -162,8 +163,10 @@ void HbaoPlusPass::Render(nvrhi::ICommandList* commandList, const HbaoParameters
     commandList->setTextureState(output, nvrhi::AllSubresources, nvrhi::ResourceStates::RenderTarget);
     commandList->commitBarriers();
 
-    ID3D12GraphicsCommandList* nativeCommandList = commandList->getNativeObject(nvrhi::ObjectTypes::D3D12_GraphicsCommandList);
-    ID3D12CommandQueue* nativeQueue = m_Device->getNativeQueue(nvrhi::ObjectTypes::D3D12_CommandQueue, nvrhi::CommandQueue::Graphics);
+    ID3D12GraphicsCommandList* nativeCommandList = static_cast<ID3D12GraphicsCommandList*>(
+        commandList->getNativeObject(nvrhi::ObjectTypes::D3D12_GraphicsCommandList));
+    ID3D12CommandQueue* nativeQueue = static_cast<ID3D12CommandQueue*>(
+        m_Device->getNativeQueue(nvrhi::ObjectTypes::D3D12_CommandQueue, nvrhi::CommandQueue::Graphics));
 
     for (uint32_t viewIndex = 0; viewIndex < compositeView.GetNumChildViews(engine::ViewType::PLANAR); viewIndex++)
     {
@@ -193,9 +196,10 @@ void HbaoPlusPass::Render(nvrhi::ICommandList* commandList, const HbaoParameters
         input.DepthData.Viewport.Height = uint32_t(viewport.maxY - viewport.minY);
         input.DepthData.Viewport.MinDepth = viewport.minZ;
         input.DepthData.Viewport.MaxDepth = viewport.maxZ;
-        input.DepthData.FullResDepthTextureSRV.pResource = depth->getNativeObject(nvrhi::ObjectTypes::D3D12_Resource);
-        input.DepthData.FullResDepthTextureSRV.GpuHandle = depth->getNativeView(
-            nvrhi::ObjectTypes::D3D12_ShaderResourceViewGpuDescriptor, nvrhi::Format::UNKNOWN, subresources).integer;
+        input.DepthData.FullResDepthTextureSRV.pResource = static_cast<ID3D12Resource*>(
+            depth->getNativeObject(nvrhi::ObjectTypes::D3D12_Resource));
+        input.DepthData.FullResDepthTextureSRV.GpuHandle = reinterpret_cast<uint64_t>(depth->getNativeView(
+            nvrhi::ObjectTypes::D3D12_ShaderResourceViewGpuDescriptor, nvrhi::Format::UNKNOWN, subresources));
 
         if (normals)
         {
@@ -204,15 +208,17 @@ void HbaoPlusPass::Render(nvrhi::ICommandList* commandList, const HbaoParameters
             input.NormalData.WorldToViewMatrix.Layout = GFSDK_SSAO_ROW_MAJOR_ORDER;
             input.NormalData.DecodeScale = 1.f;
             input.NormalData.DecodeBias = 0.f;
-            input.NormalData.FullResNormalTextureSRV.pResource = normals->getNativeObject(nvrhi::ObjectTypes::D3D12_Resource);
-            input.NormalData.FullResNormalTextureSRV.GpuHandle = normals->getNativeView(
-                nvrhi::ObjectTypes::D3D12_ShaderResourceViewGpuDescriptor, nvrhi::Format::UNKNOWN, subresources).integer;
+            input.NormalData.FullResNormalTextureSRV.pResource = static_cast<ID3D12Resource*>(
+                normals->getNativeObject(nvrhi::ObjectTypes::D3D12_Resource));
+            input.NormalData.FullResNormalTextureSRV.GpuHandle = reinterpret_cast<uint64_t>(normals->getNativeView(
+                nvrhi::ObjectTypes::D3D12_ShaderResourceViewGpuDescriptor, nvrhi::Format::UNKNOWN, subresources));
         }
 
         GFSDK_SSAO_RenderTargetView_D3D12 outputView;
-        outputView.pResource = output->getNativeObject(nvrhi::ObjectTypes::D3D12_Resource);
-        outputView.CpuHandle = output->getNativeView(nvrhi::ObjectTypes::D3D12_RenderTargetViewDescriptor,
-            nvrhi::Format::UNKNOWN, subresources).integer;
+        outputView.pResource = static_cast<ID3D12Resource*>(
+            output->getNativeObject(nvrhi::ObjectTypes::D3D12_Resource));
+        outputView.CpuHandle = reinterpret_cast<size_t>(output->getNativeView(
+            nvrhi::ObjectTypes::D3D12_RenderTargetViewDescriptor, nvrhi::Format::UNKNOWN, subresources));
 
         GFSDK_SSAO_Output_D3D12 aoOutput;
         aoOutput.pRenderTargetView = &outputView;

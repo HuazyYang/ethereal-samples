@@ -46,7 +46,7 @@ void PlayerShip::LoadControls(const Json::Value& controls)
     m_PlayVolumeMax = json::Read<float3>(controls["play_volume_max"], m_PlayVolumeMax);
 }
 
-void PlayerShip::LoadSounds(const Json::Value& playerShipArray, std::shared_ptr<vfs::IFileSystem> fs,
+void PlayerShip::LoadSounds(const Json::Value& playerShipArray, nvrhi::AutoPtr<vfs::IFileSystem> fs,
     const std::filesystem::path& mediaPath)
 {
     // Asteroids.exe: 0x140045EF0

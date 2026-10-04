@@ -40,9 +40,9 @@ namespace fx
 
     ParticleSystem::ParticleSystem(
         nvrhi::IDevice* device,
-        const std::shared_ptr<ShaderFactory>& shaderFactory,
-        const std::shared_ptr<CommonRenderPasses>& commonPasses,
-        const std::shared_ptr<FramebufferFactory>& framebufferFactory,
+        const nvrhi::AutoPtr<ShaderFactory>& shaderFactory,
+        const nvrhi::AutoPtr<CommonRenderPasses>& commonPasses,
+        const nvrhi::AutoPtr<FramebufferFactory>& framebufferFactory,
         const ICompositeView& compositeView,
         uint32_t numParticles,
         const float3& volumeSize,
@@ -64,7 +64,7 @@ namespace fx
             m_MeshShader = shaderFactory->CreateShader("demo/particles_ms.hlsl", "ms_main", nullptr, nvrhi::ShaderType::Mesh);
         m_UpdateShader = shaderFactory->CreateShader("demo/particles.hlsl", "update_cs_main", nullptr, nvrhi::ShaderType::Compute);
 
-        m_ParticleConstants = device->createBuffer(ConstantBufferDesc(sizeof(ParticleConstants), "ParticleConstants"));
+        device->createBuffer(ConstantBufferDesc(sizeof(ParticleConstants), "ParticleConstants"), &m_ParticleConstants);
 
         nvrhi::SamplerDesc shadowSamplerDesc;
         shadowSamplerDesc
@@ -72,7 +72,7 @@ namespace fx
             .setAllAddressModes(nvrhi::SamplerAddressMode::Border)
             .setBorderColor(nvrhi::Color(1.f))
             .setReductionType(nvrhi::SamplerReductionType::Comparison);
-        m_ShadowSampler = device->createSampler(shadowSamplerDesc);
+        device->createSampler(shadowSamplerDesc, &m_ShadowSampler);
 
         if (existingParticleBuffer)
         {
@@ -88,7 +88,7 @@ namespace fx
             bufferDesc.debugName = "Particles";
             bufferDesc.initialState = nvrhi::ResourceStates::ShaderResource;
             bufferDesc.keepInitialState = true;
-            m_ParticleBuffer = device->createBuffer(bufferDesc);
+            device->createBuffer(bufferDesc, &m_ParticleBuffer);
             m_Initialized = false;
         }
 
@@ -114,12 +114,13 @@ namespace fx
             extensionDesc.debugName = "NvShaderExtnUAV";
             extensionDesc.initialState = nvrhi::ResourceStates::UnorderedAccess;
             extensionDesc.keepInitialState = true;
-            m_NvExtensionBuffer = device->createBuffer(extensionDesc);
+            device->createBuffer(extensionDesc, &m_NvExtensionBuffer);
         }
-        m_RenderBindingLayout = device->createBindingLayout(renderLayoutDesc);
+        device->createBindingLayout(renderLayoutDesc, &m_RenderBindingLayout);
 
         const IView* sampleView = compositeView.GetChildView(ViewType::PLANAR, 0);
-        const nvrhi::FramebufferInfo framebufferInfo = framebufferFactory->GetFramebuffer(*sampleView)->getFramebufferInfo();
+        const nvrhi::FramebufferInfo framebufferInfo =
+            framebufferFactory->GetFramebuffer(*sampleView)->getFramebufferInfo().getInfo();
 
         nvrhi::RenderState renderState;
         renderState.blendState.targets[0] = BlendStateRT(nvrhi::BlendFactor::SrcAlpha, nvrhi::BlendFactor::InvSrcAlpha);
@@ -138,7 +139,7 @@ namespace fx
         pipelineDesc.PS = m_PixelShader;
         pipelineDesc.bindingLayouts = { m_RenderBindingLayout };
         pipelineDesc.renderState = renderState;
-        m_VertexShaderPipeline = device->createGraphicsPipeline(pipelineDesc, framebufferInfo);
+        device->createGraphicsPipeline1(pipelineDesc, framebufferInfo, &m_VertexShaderPipeline);
 
         // The 2018 code built this PSO through NVAPI (NvAPI_D3D12_CreateGraphicsPipelineState with the
         // shader extension slot u0 and the mesh-shader extension, 96 vertices / 32 primitives per group); the
@@ -165,7 +166,7 @@ namespace fx
             meshletDesc.PS = m_PixelShader;
             meshletDesc.bindingLayouts = { m_RenderBindingLayout };
             meshletDesc.renderState = renderState;
-            m_MeshShaderPipeline = device->createMeshletPipeline(meshletDesc, framebufferInfo);
+            device->createMeshletPipeline1(meshletDesc, framebufferInfo, &m_MeshShaderPipeline);
         }
         if (!m_MeshShaderPipeline && !m_NvapiMeshShaderPipeline)
             donut::log::error("Failed to create a meshlet PSO for particles");
@@ -182,7 +183,7 @@ namespace fx
         nvrhi::ComputePipelineDesc computeDesc;
         computeDesc.CS = m_UpdateShader;
         computeDesc.bindingLayouts = { m_UpdateBindingLayout };
-        m_UpdatePipeline = device->createComputePipeline(computeDesc);
+        device->createComputePipeline(computeDesc, &m_UpdatePipeline);
     }
 
     nvrhi::BindingSetHandle ParticleSystem::GetRenderBindingSet(nvrhi::ITexture* shadowMapTexture)
@@ -199,7 +200,7 @@ namespace fx
             };
             if (m_NvExtensionBuffer)
                 setDesc.bindings.push_back(nvrhi::BindingSetItem::StructuredBuffer_UAV(c_NvParticleExtensionSlot, m_NvExtensionBuffer));
-            bindingSet = m_Device->createBindingSet(setDesc, m_RenderBindingLayout);
+            m_Device->createBindingSet(setDesc, m_RenderBindingLayout, &bindingSet);
         }
         return bindingSet;
     }
@@ -207,7 +208,7 @@ namespace fx
     void ParticleSystem::Render(
         nvrhi::ICommandList* commandList,
         const ICompositeView& compositeView,
-        const std::shared_ptr<FramebufferFactory>& framebufferFactory,
+        const nvrhi::AutoPtr<FramebufferFactory>& framebufferFactory,
         const SceneLight& light,
         const float3& cameraOffset,
         float maxDistance,
@@ -264,7 +265,7 @@ namespace fx
             constants.maxDistance = maxDistance;
             constants.particlesPerBatch = batchSize;
             FillLightConstants2018(light, constants.light);
-            FillShadowConstants2018(light.shadowMap.get(), constants.light, constants.shadows, PARTICLES_MAX_SHADOWS, false);
+            FillShadowConstants2018(light.shadowMap.Get(), constants.light, constants.shadows, PARTICLES_MAX_SHADOWS, false);
 
             nvrhi::IFramebuffer* framebuffer = framebufferFactory->GetFramebuffer(*view);
             bool stateSet = false;
@@ -293,7 +294,8 @@ namespace fx
                             commandList->setGraphicsState(state);
                             stateSet = true;
                         }
-                        nvrhi::d3d12::ICommandList* d3d12CommandList = commandList->getNativeObject(nvrhi::ObjectTypes::Nvrhi_D3D12_CommandList);
+                        nvrhi::d3d12::ICommandList* d3d12CommandList = static_cast<nvrhi::d3d12::ICommandList*>(
+                            commandList->getNativeObject(nvrhi::ObjectTypes::Nvrhi_D3D12_CommandList));
                         if (d3d12CommandList)
                             d3d12CommandList->updateGraphicsVolatileBuffers();
                         NvDispatchMeshTasks(commandList, m_NumParticles >> 5);

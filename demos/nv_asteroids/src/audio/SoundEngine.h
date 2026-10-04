@@ -8,6 +8,8 @@
 // voice per loaded .wav (ambience music, ship jets, shield). It is reconstructed here as-is
 // instead of mapping it onto donut's engine, which would change the voice lifetime model.
 
+#include <nvrhi/core/autoptr.h>
+
 #include <filesystem>
 #include <memory>
 #include <string>
@@ -87,7 +89,7 @@ namespace audio
         // Loads 'path' (PCM .wav) from 'fs' and creates a source voice routed to the mastering voice.
         // When 'loop' is set the buffer loops forever (XAUDIO2_LOOP_INFINITE).
         // The voice is created stopped; call Play(). Returns null on failure (see Engine::GetErrors()).
-        static std::unique_ptr<Sound> Create(std::shared_ptr<donut::vfs::IFileSystem> fs,
+        static std::unique_ptr<Sound> Create(nvrhi::AutoPtr<donut::vfs::IFileSystem> fs,
             const std::filesystem::path& path, bool loop);
 
         void Play();                        // IXAudio2SourceVoice::Start

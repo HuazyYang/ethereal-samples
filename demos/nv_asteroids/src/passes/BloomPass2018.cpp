@@ -17,9 +17,9 @@ using namespace donut::engine;
 
 BloomPass2018::BloomPass2018(
     nvrhi::IDevice* device,
-    const std::shared_ptr<ShaderFactory>& shaderFactory,
-    std::shared_ptr<CommonRenderPasses> commonPasses,
-    std::shared_ptr<FramebufferFactory> framebufferFactory,
+    const nvrhi::AutoPtr<ShaderFactory>& shaderFactory,
+    nvrhi::AutoPtr<CommonRenderPasses> commonPasses,
+    nvrhi::AutoPtr<FramebufferFactory> framebufferFactory,
     const ICompositeView& compositeView)
     : m_CommonPasses(std::move(commonPasses))
     , m_FramebufferFactory(std::move(framebufferFactory))
@@ -35,9 +35,9 @@ BloomPass2018::BloomPass2018(
     constantBufferDesc.isVolatile = true;
     constantBufferDesc.maxVersions = c_MaxRenderPassConstantBufferVersions;
     constantBufferDesc.debugName = "BloomConstantsH";
-    m_BloomHBlurCB = device->createBuffer(constantBufferDesc);
+    device->createBuffer(constantBufferDesc, &m_BloomHBlurCB);
     constantBufferDesc.debugName = "BloomConstantsV";
-    m_BloomVBlurCB = device->createBuffer(constantBufferDesc);
+    device->createBuffer(constantBufferDesc, &m_BloomVBlurCB);
 
     nvrhi::BindingLayoutDesc layoutDesc;
     layoutDesc.visibility = nvrhi::ShaderType::Pixel;
@@ -46,7 +46,7 @@ BloomPass2018::BloomPass2018(
         nvrhi::BindingLayoutItem::Sampler(0),
         nvrhi::BindingLayoutItem::Texture_SRV(0),
     };
-    m_BloomBlurBindingLayout = device->createBindingLayout(layoutDesc);
+    device->createBindingLayout(layoutDesc, &m_BloomBlurBindingLayout);
 
     m_PerViewData.resize(compositeView.GetNumChildViews(ViewType::PLANAR));
     for (uint32_t viewIndex = 0; viewIndex < compositeView.GetNumChildViews(ViewType::PLANAR); viewIndex++)
@@ -68,27 +68,23 @@ BloomPass2018::BloomPass2018(
         downscaleDesc.initialState = nvrhi::ResourceStates::ShaderResource;
         downscaleDesc.keepInitialState = true;
         downscaleDesc.debugName = "bloom src mip1";
-        perView.textureDownscale1 = device->createTexture(downscaleDesc);
-        perView.framebufferDownscale1 = device->createFramebuffer(
-            nvrhi::FramebufferDesc().addColorAttachment(perView.textureDownscale1));
+        device->createTexture(downscaleDesc, &perView.textureDownscale1);
+        device->createFramebuffer(nvrhi::FramebufferDesc().addColorAttachment(perView.textureDownscale1), &perView.framebufferDownscale1);
 
         downscaleDesc.debugName = "bloom src mip2";
         downscaleDesc.width = uint32_t(std::ceil(float(downscaleDesc.width) * 0.5f));
         downscaleDesc.height = uint32_t(std::ceil(float(downscaleDesc.height) * 0.5f));
-        perView.textureDownscale2 = device->createTexture(downscaleDesc);
-        perView.framebufferDownscale2 = device->createFramebuffer(
-            nvrhi::FramebufferDesc().addColorAttachment(perView.textureDownscale2));
+        device->createTexture(downscaleDesc, &perView.textureDownscale2);
+        device->createFramebuffer(nvrhi::FramebufferDesc().addColorAttachment(perView.textureDownscale2), &perView.framebufferDownscale2);
 
         nvrhi::TextureDesc blurDesc = downscaleDesc;
         blurDesc.debugName = "bloom accumulation pass1";
-        perView.texturePass1Blur = device->createTexture(blurDesc);
-        perView.framebufferPass1Blur = device->createFramebuffer(
-            nvrhi::FramebufferDesc().addColorAttachment(perView.texturePass1Blur));
+        device->createTexture(blurDesc, &perView.texturePass1Blur);
+        device->createFramebuffer(nvrhi::FramebufferDesc().addColorAttachment(perView.texturePass1Blur), &perView.framebufferPass1Blur);
 
         blurDesc.debugName = "bloom accumulation pass2";
-        perView.texturePass2Blur = device->createTexture(blurDesc);
-        perView.framebufferPass2Blur = device->createFramebuffer(
-            nvrhi::FramebufferDesc().addColorAttachment(perView.texturePass2Blur));
+        device->createTexture(blurDesc, &perView.texturePass2Blur);
+        device->createFramebuffer(nvrhi::FramebufferDesc().addColorAttachment(perView.texturePass2Blur), &perView.framebufferPass2Blur);
 
         nvrhi::GraphicsPipelineDesc pipelineDesc;
         pipelineDesc.primType = nvrhi::PrimitiveType::TriangleStrip;
@@ -98,7 +94,7 @@ BloomPass2018::BloomPass2018(
         pipelineDesc.renderState.rasterState.setCullNone();
         pipelineDesc.renderState.depthStencilState.depthTestEnable = false;
         pipelineDesc.renderState.depthStencilState.stencilEnable = false;
-        perView.bloomBlurPso = device->createGraphicsPipeline(pipelineDesc, perView.framebufferPass1Blur);
+        device->createGraphicsPipeline2(pipelineDesc, perView.framebufferPass1Blur, &perView.bloomBlurPso);
 
         // CommonRenderPasses+296: linear clamp sampler.
         nvrhi::BindingSetDesc setDesc;
@@ -107,20 +103,20 @@ BloomPass2018::BloomPass2018(
             nvrhi::BindingSetItem::Sampler(0, m_CommonPasses->m_LinearClampSampler),
             nvrhi::BindingSetItem::Texture_SRV(0, perView.textureDownscale2),
         };
-        perView.bloomBlurBindingSetPass1 = device->createBindingSet(setDesc, m_BloomBlurBindingLayout);
+        device->createBindingSet(setDesc, m_BloomBlurBindingLayout, &perView.bloomBlurBindingSetPass1);
 
         setDesc.bindings = {
             nvrhi::BindingSetItem::ConstantBuffer(0, m_BloomVBlurCB),
             nvrhi::BindingSetItem::Sampler(0, m_CommonPasses->m_LinearClampSampler),
             nvrhi::BindingSetItem::Texture_SRV(0, perView.texturePass1Blur),
         };
-        perView.bloomBlurBindingSetPass2 = device->createBindingSet(setDesc, m_BloomBlurBindingLayout);
+        device->createBindingSet(setDesc, m_BloomBlurBindingLayout, &perView.bloomBlurBindingSetPass2);
     }
 }
 
 void BloomPass2018::Render(
     nvrhi::ICommandList* commandList,
-    const std::shared_ptr<FramebufferFactory>& framebufferFactory,
+    const nvrhi::AutoPtr<FramebufferFactory>& framebufferFactory,
     const ICompositeView& compositeView,
     nvrhi::ITexture* sourceDestTexture,
     float sigmaInPixels)

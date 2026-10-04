@@ -41,7 +41,8 @@ int main(int argc, char** argv)
         for (const auto& lod : asteroid["lods"])
         {
             const std::string path = "media/" + lod["model"].asString();
-            auto blob = fs.readFile(path);
+            nvrhi::AutoPtr<nvrhi::IDataBlob> blob;
+            fs.readFile(path, &blob);
             auto mset = blob ? chunk2018::LoadMeshSet(blob, path.c_str()) : nullptr;
             ++files;
             if (!mset || mset->type != chunk2018::MeshSetType::Meshlet ||

@@ -22,9 +22,9 @@ using namespace donut::engine;
 
 ForwardShadingPass2018::ForwardShadingPass2018(
     nvrhi::IDevice* device,
-    std::shared_ptr<ShaderFactory> shaderFactory,
-    std::shared_ptr<CommonRenderPasses> commonPasses,
-    std::shared_ptr<FramebufferFactory> framebufferFactory,
+    nvrhi::AutoPtr<ShaderFactory> shaderFactory,
+    nvrhi::AutoPtr<CommonRenderPasses> commonPasses,
+    nvrhi::AutoPtr<FramebufferFactory> framebufferFactory,
     const ICompositeView& compositeView,
     nvrhi::IBindingLayout* materialBindingLayout,
     bool singlePassStereo,
@@ -54,7 +54,7 @@ ForwardShadingPass2018::ForwardShadingPass2018(
         .setAllFilters(true)
         .setAllAddressModes(nvrhi::SamplerAddressMode::Border)
         .setBorderColor(nvrhi::Color(1.f));
-    m_ShadowSampler = m_Device->createSampler(samplerDesc);
+    m_Device->createSampler(samplerDesc, &m_ShadowSampler);
 
     // Binding layouts (+48 PS section, +56).
     nvrhi::BindingLayoutDesc forwardLayoutDesc;
@@ -64,7 +64,7 @@ ForwardShadingPass2018::ForwardShadingPass2018(
         nvrhi::BindingLayoutItem::Texture_SRV(4),               // t_ShadowMapArray
         nvrhi::BindingLayoutItem::Sampler(1),                   // s_ShadowSampler
     };
-    m_ForwardBindingLayout = m_Device->createBindingLayout(forwardLayoutDesc);
+    m_Device->createBindingLayout(forwardLayoutDesc, &m_ForwardBindingLayout);
 
     nvrhi::BindingLayoutDesc probeLayoutDesc;
     probeLayoutDesc.visibility = nvrhi::ShaderType::Pixel;
@@ -75,11 +75,11 @@ ForwardShadingPass2018::ForwardShadingPass2018(
         nvrhi::BindingLayoutItem::Sampler(2),                   // s_LightProbeSampler
         nvrhi::BindingLayoutItem::Sampler(3),                   // s_BrdfSampler
     };
-    m_LightProbeBindingLayout = m_Device->createBindingLayout(probeLayoutDesc);
+    m_Device->createBindingLayout(probeLayoutDesc, &m_LightProbeBindingLayout);
 
     // "ForwardShadingConstants" (+72)
-    m_ForwardCB = m_Device->createBuffer(nvrhi::utils::CreateVolatileConstantBufferDesc(
-        sizeof(surface2018::ForwardShadingConstants), "ForwardShadingConstants", c_MaxRenderPassConstantBufferVersions));
+    m_Device->createBuffer(nvrhi::utils::CreateVolatileConstantBufferDesc(
+        sizeof(surface2018::ForwardShadingConstants), "ForwardShadingConstants", c_MaxRenderPassConstantBufferVersions), &m_ForwardCB);
 
     // Render states of the opaque (+80), alpha-tested (+88) and transparent (+96) pipelines.
     m_OpaqueRenderState = nvrhi::RenderState();
@@ -156,7 +156,7 @@ void ForwardShadingPass2018::Render(
     const std::vector<std::shared_ptr<SceneLight>>& lights,
     const float3& ambientColorTop,
     const float3& ambientColorBottom,
-    const std::vector<std::shared_ptr<LightProbe>>& lightProbes)
+    const std::vector<nvrhi::AutoPtr<LightProbe>>& lightProbes)
 {
     demo::ProfBegin(commandList, "ForwardShading");
 

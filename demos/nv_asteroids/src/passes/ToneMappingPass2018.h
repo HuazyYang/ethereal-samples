@@ -48,9 +48,9 @@ public:
 
     ToneMappingPass2018(
         nvrhi::IDevice* device,
-        std::shared_ptr<donut::engine::ShaderFactory> shaderFactory,
-        std::shared_ptr<donut::engine::CommonRenderPasses> commonPasses,
-        std::shared_ptr<donut::engine::FramebufferFactory> framebufferFactory,
+        nvrhi::AutoPtr<donut::engine::ShaderFactory> shaderFactory,
+        nvrhi::AutoPtr<donut::engine::CommonRenderPasses> commonPasses,
+        nvrhi::AutoPtr<donut::engine::FramebufferFactory> framebufferFactory,
         const donut::engine::ICompositeView& compositeView,
         const CreateParameters& params);
 
@@ -92,8 +92,8 @@ private:
     nvrhi::BindingLayoutHandle m_RenderBindingLayout;
     nvrhi::GraphicsPipelineHandle m_RenderPso;
 
-    std::shared_ptr<donut::engine::CommonRenderPasses> m_CommonPasses;
-    std::shared_ptr<donut::engine::FramebufferFactory> m_FramebufferFactory;
+    nvrhi::AutoPtr<donut::engine::CommonRenderPasses> m_CommonPasses;
+    nvrhi::AutoPtr<donut::engine::FramebufferFactory> m_FramebufferFactory;
 
     std::unordered_map<nvrhi::ITexture*, nvrhi::BindingSetHandle> m_HistogramBindingSets;
     std::unordered_map<nvrhi::ITexture*, nvrhi::BindingSetHandle> m_RenderBindingSets;

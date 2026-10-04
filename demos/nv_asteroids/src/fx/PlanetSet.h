@@ -38,9 +38,9 @@ namespace fx
     // Angles are in degrees. Keys that are absent read as 0 (jsoncpp null -> asFloat).
     struct Planet
     {
-        std::shared_ptr<donut::engine::LoadedTexture> surfaceMap;     // +0   "SurfaceMap" (sRGB)
-        std::shared_ptr<donut::engine::LoadedTexture> normalMap;      // +16  "NormalMap"
-        std::shared_ptr<donut::engine::LoadedTexture> ringsPattern;   // +32  "RingsPattern"
+        nvrhi::AutoPtr<donut::engine::LoadedTexture> surfaceMap;     // +0   "SurfaceMap" (sRGB)
+        nvrhi::AutoPtr<donut::engine::LoadedTexture> normalMap;      // +16  "NormalMap"
+        nvrhi::AutoPtr<donut::engine::LoadedTexture> ringsPattern;   // +32  "RingsPattern"
         nvrhi::BindingSetHandle bindingSet;                           // +48  for PlanetFx_on_ps
         nvrhi::BindingSetHandle ringsBindingSet;                      // +56  for PlanetWithRingsFx_on_ps
 
@@ -91,10 +91,10 @@ namespace fx
         // Creates both pipelines and the per-planet binding sets (textures must have been loaded).
         void CreateRenderPasses(
             nvrhi::IDevice* device,
-            const std::shared_ptr<donut::engine::ShaderFactory>& shaderFactory,
-            const std::shared_ptr<donut::engine::FramebufferFactory>& framebufferFactory,
+            const nvrhi::AutoPtr<donut::engine::ShaderFactory>& shaderFactory,
+            const nvrhi::AutoPtr<donut::engine::FramebufferFactory>& framebufferFactory,
             const donut::engine::ICompositeView& compositeView,
-            const std::shared_ptr<donut::engine::CommonRenderPasses>& commonPasses);
+            const nvrhi::AutoPtr<donut::engine::CommonRenderPasses>& commonPasses);
 
         // FeatureDemo::RenderLightingAndEffects: (commandList (+696), view (+608), sun (+984),
         // g_MaxSceneDistance, 1.0f, UIData+368 (draw rings)).

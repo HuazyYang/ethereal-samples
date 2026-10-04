@@ -61,7 +61,8 @@ namespace
         desc.debugName = name;
         desc.initialState = nvrhi::ResourceStates::ShaderResource;
         desc.keepInitialState = true;
-        nvrhi::BufferHandle buffer = device->createBuffer(desc);
+        nvrhi::BufferHandle buffer;
+        device->createBuffer(desc, &buffer);
         if (buffer)
             commandList->writeBuffer(buffer, data, byteSize);
         return buffer;
@@ -81,14 +82,15 @@ namespace
         desc.isVertexBuffer = true;
         desc.initialState = nvrhi::ResourceStates::VertexBuffer;
         desc.keepInitialState = true;
-        nvrhi::BufferHandle buffer = device->createBuffer(desc);
+        nvrhi::BufferHandle buffer;
+        device->createBuffer(desc, &buffer);
         buffers.vertexBuffers[int(attribute)] = buffer;
         commandList->writeBuffer(buffer, data.data(), desc.byteSize);
         std::vector<T>().swap(data);
     }
 }
 
-SpaceObject::SpaceObject(std::shared_ptr<vfs::IFileSystem> fs)
+SpaceObject::SpaceObject(nvrhi::AutoPtr<vfs::IFileSystem> fs)
     : m_FS(std::move(fs))
 {
     // Asteroids.exe: 0x140050520
@@ -144,16 +146,16 @@ bool SpaceObject::LoadAssimp(const std::filesystem::path& file, bool hasMaterial
     if (loadFlags & LoadFlag_GenNormals) postProcess |= aiProcess_GenNormals;
     if (loadFlags & LoadFlag_FlipUVs) postProcess |= aiProcess_FlipUVs;
 
-    auto blob = m_FS->readFile(file);
-    if (!blob)
+    nvrhi::AutoPtr<nvrhi::IDataBlob> blob;
+    if (NVRHI_FAILED(m_FS->readFile(file, &blob)) || !blob)
     {
         log::error("Couldn't read file `%s`", file.generic_string().c_str());
         return false;
     }
 
     const std::string hint = file.extension().string();
-    const aiScene* scene = aiImportFileFromMemory(static_cast<const char*>(blob->data()), unsigned(blob->size()),
-        postProcess, hint.c_str());
+    const aiScene* scene = aiImportFileFromMemory(static_cast<const char*>(blob->GetDataPtr()),
+        unsigned(blob->GetSize()), postProcess, hint.c_str());
     if (!scene)
     {
         log::error("Unable to load scene file `%s`: %s", file.generic_string().c_str(), aiGetErrorString());
@@ -176,7 +178,7 @@ bool SpaceObject::LoadAssimp(const std::filesystem::path& file, bool hasMaterial
 void SpaceObject::ImportAssimpMaterials(const aiScene* scene, const SpaceObjectLoadContext& context)
 {
     // Asteroids.exe: 0x140056480
-    auto loadTexture = [this, &context](const aiString& name, bool sRGB) -> std::shared_ptr<engine::LoadedTexture>
+    auto loadTexture = [this, &context](const aiString& name, bool sRGB) -> nvrhi::AutoPtr<engine::LoadedTexture>
     {
         if (!context.textureCache)
             return nullptr;
@@ -408,8 +410,8 @@ void SpaceObject::ProcessNode(const aiScene* scene, const aiNode* node, const st
 bool SpaceObject::LoadChunkFile(const std::filesystem::path& file, bool hasMaterialsJson)
 {
     // Asteroids.exe: 0x140055730
-    auto blob = m_FS->readFile(file);
-    if (!blob)
+    nvrhi::AutoPtr<nvrhi::IDataBlob> blob;
+    if (NVRHI_FAILED(m_FS->readFile(file, &blob)) || !blob)
     {
         log::error("Couldn't read file `%s`", file.generic_string().c_str());
         return false;
@@ -543,7 +545,7 @@ void SpaceObject::CreateGeometryBuffers(nvrhi::IDevice* device, nvrhi::ICommandL
         desc.isIndexBuffer = true;
         desc.initialState = nvrhi::ResourceStates::IndexBuffer;
         desc.keepInitialState = true;
-        m_Buffers.indexBuffer = device->createBuffer(desc);
+        device->createBuffer(desc, &m_Buffers.indexBuffer);
         commandList->writeBuffer(m_Buffers.indexBuffer, m_Indices.data(), desc.byteSize);
         std::vector<uint32_t>().swap(m_Indices);
     }
@@ -568,7 +570,7 @@ void SpaceObject::CreateTransformsBuffer(nvrhi::IDevice* device, nvrhi::ICommand
     desc.isVertexBuffer = true;
     desc.initialState = nvrhi::ResourceStates::VertexBuffer;
     desc.keepInitialState = true;
-    m_TransformsBuffer = device->createBuffer(desc);
+    device->createBuffer(desc, &m_TransformsBuffer);
     m_Buffers.vertexBuffers[VertexAttr_Transform] = m_TransformsBuffer;
 
     UpdateTransformsBuffer(commandList);

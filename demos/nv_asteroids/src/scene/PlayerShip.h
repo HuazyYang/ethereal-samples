@@ -8,6 +8,7 @@
 // 0x140045CA0, sounds 0x140045EF0, Move 0x1400465F0, Update 0x140046820). No RTTI exists for it.
 
 #include <donut/core/math/math.h>
+#include <nvrhi/core/autoptr.h>
 
 #include <cfloat>
 #include <filesystem>
@@ -29,7 +30,7 @@ public:
     // roll_sensitivity, time_to_stop, play_volume_min, play_volume_max.
     void LoadControls(const Json::Value& controls);
     // fscene "player_ship"[0]: jetSound (looping), jetSoundVolume, shieldSound (one-shot), shieldSoundVolume.
-    void LoadSounds(const Json::Value& playerShipArray, std::shared_ptr<donut::vfs::IFileSystem> fs,
+    void LoadSounds(const Json::Value& playerShipArray, nvrhi::AutoPtr<donut::vfs::IFileSystem> fs,
         const std::filesystem::path& mediaPath);
 
     // 0x140046450. Euler angles are in radians (the fscene "yaw"/"pitch" values are passed unconverted).
