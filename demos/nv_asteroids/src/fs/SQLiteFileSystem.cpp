@@ -1,6 +1,7 @@
 #include "SQLiteFileSystem.h"
 
 #include <donut/core/log.h>
+#include <nvrhi/core/datablob.h>
 
 #include <windows.h>
 #include <bcrypt.h>
@@ -73,8 +74,12 @@ std::string SQLiteFileSystem::normalizeName(const std::filesystem::path& name)
     return std::filesystem::path(wide).string();
 }
 
-std::shared_ptr<vfs::IBlob> SQLiteFileSystem::readFile(const std::filesystem::path& name)
+nvrhi::FRESULT SQLiteFileSystem::readFile(const std::filesystem::path& name, nvrhi::IDataBlob** ppBlob)
 {
+    if (!ppBlob)
+        return nvrhi::FE_INVALID_ARGS;
+    *ppBlob = nullptr;
+
     const std::string key = normalizeName(name);
 
     uint8_t* data = nullptr;
@@ -85,16 +90,16 @@ std::shared_ptr<vfs::IBlob> SQLiteFileSystem::readFile(const std::filesystem::pa
         std::lock_guard<std::mutex> lock(m_Mutex);
 
         if (!m_Statement || sqlite3_reset(m_Statement) != SQLITE_OK)
-            return nullptr;
+            return nvrhi::FE_INVALID_ARGS;
         if (sqlite3_bind_text(m_Statement, 1, key.c_str(), -1, SQLITE_TRANSIENT) != SQLITE_OK)
-            return nullptr;
+            return nvrhi::FE_INVALID_ARGS;
         if (sqlite3_step(m_Statement) != SQLITE_ROW)
-            return nullptr;
+            return nvrhi::FE_INVALID_ARGS;
 
         dataSize = sqlite3_column_bytes(m_Statement, 0);
         const void* blob = sqlite3_column_blob(m_Statement, 0);
         if (dataSize <= 0 || !blob)
-            return nullptr;
+            return nvrhi::FE_INVALID_ARGS;
 
         compressedSize = sqlite3_column_int(m_Statement, 1);
         originalSize = sqlite3_column_int(m_Statement, 2);
@@ -129,7 +134,7 @@ std::shared_ptr<vfs::IBlob> SQLiteFileSystem::readFile(const std::filesystem::pa
             if (aesKey)
                 BCryptDestroyKey(aesKey);
             free(data);
-            return nullptr;
+            return nvrhi::FE_GENERIC_ERROR;
         }
 
         uint8_t* plain = (uint8_t*)malloc(plainSize);
@@ -139,7 +144,7 @@ std::shared_ptr<vfs::IBlob> SQLiteFileSystem::readFile(const std::filesystem::pa
             BCryptDestroyKey(aesKey);
             free(plain);
             free(data);
-            return nullptr;
+            return nvrhi::FE_GENERIC_ERROR;
         }
         BCryptDestroyKey(aesKey);
         free(data);
@@ -147,23 +152,36 @@ std::shared_ptr<vfs::IBlob> SQLiteFileSystem::readFile(const std::filesystem::pa
         dataSize = (int)plainSize;
     }
 
-    size_t resultSize = (size_t)originalSize;
-    if (compressedSize > 0)
+    const size_t resultSize = (size_t)originalSize;
+
+    // The result is handed out as an nvrhi::IDataBlob, which owns its memory: LZ4
+    // decompresses straight into it, so the compressed path copies no more than the
+    // vfs::Blob of donut main did.
+    nvrhi::AutoPtr<nvrhi::IDataBlob> blob;
+    nvrhi::FRESULT fr = nvrhi::CreateBlob(resultSize, &blob);
+    if (NVRHI_FAILED(fr))
     {
-        uint8_t* uncompressed = (uint8_t*)malloc(originalSize);
-        const int inputSize = compressedSize < dataSize ? compressedSize : dataSize;
-        const int written = LZ4_decompress_safe((const char*)data, (char*)uncompressed, inputSize, originalSize);
         free(data);
-        if (written <= 0)
-        {
-            free(uncompressed);
-            return nullptr;
-        }
-        data = uncompressed;
+        return fr;
     }
 
-    // vfs::Blob takes ownership and releases the memory with free().
-    return std::make_shared<vfs::Blob>(data, resultSize);
+    if (compressedSize > 0)
+    {
+        const int inputSize = compressedSize < dataSize ? compressedSize : dataSize;
+        const int written = LZ4_decompress_safe((const char*)data, (char*)blob->GetDataPtr(),
+            inputSize, originalSize);
+        free(data);
+        if (written <= 0)
+            return nvrhi::FE_GENERIC_ERROR;
+    }
+    else
+    {
+        memcpy(blob->GetDataPtr(), data, resultSize < (size_t)dataSize ? resultSize : (size_t)dataSize);
+        free(data);
+    }
+
+    *ppBlob = blob.Detach();
+    return nvrhi::FS_OK;
 }
 
 // The 2018 implementation only supported readFile; the other entry points returned false.

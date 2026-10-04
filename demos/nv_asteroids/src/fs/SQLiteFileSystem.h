@@ -8,7 +8,6 @@
 #include <donut/core/vfs/VFS.h>
 
 #include <filesystem>
-#include <memory>
 #include <mutex>
 #include <string>
 
@@ -17,6 +16,9 @@ struct sqlite3_stmt;
 
 class SQLiteFileSystem : public donut::vfs::IFileSystem
 {
+    // Adds no interface and no class ID of its own: IFileSystem's table is correct for it.
+    NVRHI_INHERIT_INTERFACE_TABLE()
+
 public:
     // Opens 'databasePath' (media.db). A non-empty 'password' enables per-file
     // AES-128-CBC decryption with PBKDF2-SHA1(password, salt = file name, 1000 iterations).
@@ -27,7 +29,7 @@ public:
 
     bool folderExists(const std::filesystem::path& name) override;
     bool fileExists(const std::filesystem::path& name) override;
-    std::shared_ptr<donut::vfs::IBlob> readFile(const std::filesystem::path& name) override;
+    nvrhi::FRESULT readFile(const std::filesystem::path& name, nvrhi::IDataBlob** ppBlob) override;
     bool writeFile(const std::filesystem::path& name, const void* data, size_t size) override;
     int enumerateFiles(const std::filesystem::path& path, const std::vector<std::string>& extensions,
         donut::vfs::enumerate_callback_t callback, bool allowDuplicates = false) override;

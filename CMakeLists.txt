@@ -5,6 +5,7 @@
 # donut_* / nvrhi targets, ShaderTool and the ethereal_compile_shaders() helper.
 #
 #   src/         Donut-based samples (DDGI, VXGI, GVDB and the Donut examples)
+#   demos/       complete application reconstructions (nv_asteroids)
 #   benchmark/   CPU-overhead benchmarks (Asteroids)
 #   assets/      scenes and textures used by the samples
 
@@ -23,4 +24,10 @@ endif()
 
 if (ETHEREAL_BUILD_BENCHMARKS)
 	add_subdirectory(benchmark)
+endif()
+
+# Opt-in: nv_asteroids needs the original 2018 demo's media.db and shipped DLLs
+# (NV_ASTEROIDS_ORIGINAL_DIR), so it cannot be part of a default configure.
+if (ETHEREAL_BUILD_NV_ASTEROIDS)
+	add_subdirectory(demos)
 endif()
