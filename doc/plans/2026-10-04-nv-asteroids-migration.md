@@ -85,15 +85,16 @@ shares a submodule's git directory between worktrees and a plain `submodule upda
 | | ethereal | `008f850` | `ETHEREAL_BUILD_NV_ASTEROIDS`, the NVAPI wiring, and the Donut submodule moved to the `ethereal-dev` tip. |
 | 3. Port | ethereal-samples | `2384318` | 79 files. Deviation from the plan: the port landed as one commit rather than one per module. The modules are mutually dependent, so a per-module commit would not have compiled. |
 | 5a. Framework fix | donut | `9873536` | `ChunkFile::deserialize` stored the caller's blob without taking a reference while `~ChunkFile` released it. Both callers pass a blob they do not hand over, so every chunk asset was a use-after-free. Found because the asteroid collision meshes reached PhysX cooking as freed memory. |
-| 5b. Camera basis | ethereal-samples | `d7ff317` | Donut `ethereal-dev` builds the camera basis as `right = cross(up, dir)` where donut `main` uses `right = cross(dir, up)`. See *Known issues* below. |
+| 5b. Rendering handedness | ethereal-samples | `d7ff317`, this commit | The 2018 view space is mirrored against Donut's left-handed camera basis; the demo converts once, where the camera's matrix enters `engine::IView`. See *Rendering handedness* below. `d7ff317` first did this by rebuilding the camera basis by hand, framed as a Donut divergence; this commit keeps Donut's camera matrix and applies the conversion explicitly. |
 | 6. Docs | ethereal-samples | this commit | Demo `README.md`, ADR 0001, this record. |
 
 ### Deviations from the plan
 
 - **Step 3 is one commit, not one per module** (see above).
-- **Two framework defects had to be fixed before the demo ran**, neither of which the plan
-  anticipated. One was fixed in Donut (`ChunkFile::deserialize`); the other, the camera basis, was
-  compensated for demo-side so that Donut keeps the convention its other samples use.
+- **A framework defect had to be fixed before the demo ran** (`ChunkFile::deserialize`, fixed in
+  Donut), which the plan did not anticipate.
+- **The rendering handedness had to be swapped**, which the plan did not list as a porting step
+  although it is one. See below.
 - **Donut's `render/SsaoPass.h` and `render/TemporalAntiAliasingPass.h` hold an
   `AutoPtr<FramebufferFactory>` behind a forward declaration**, which `AutoPtr`'s destructor cannot
   instantiate. Worked around by including `engine/FramebufferFactory.h` first in `FeatureDemo.h`; the
@@ -102,6 +103,29 @@ shares a submodule's git directory between worktrees and a plain `submodule upda
   and the switchable-graphics profile keys on the executable name, so `nv_asteroids.exe` lands on the
   integrated GPU by default where `Asteroids.exe` does not. Every verification run passes
   `-adapter NVIDIA`.
+
+### Rendering handedness
+
+Donut's camera builds a left-handed (D3D) basis: `right = cross(up, dir)`, so that
+`cross(right, up) = dir` with +Z forward. The donut `main` the reconstruction was written against
+built `right = cross(dir, up)` — the same basis with the right vector negated, a historical slip
+that `ethereal-dev` corrected. The 2018 demo's content, shaders and lighting constants were authored
+and verified in that older, mirrored view space, so moving to Donut's camera is a handedness swap
+and part of the port, not a framework difference to work around.
+
+The camera keeps Donut's convention. `FeatureDemo::UpdateViews` converts the camera's
+translated-world-to-view matrix into the 2018 view space with one X mirror
+(`c_ViewSpace2018 = scaling(-1, 1, 1)`), at the single place a camera matrix enters `engine::IView`;
+every pass reads its view back from `IView`. The camera's mirror and the conversion cancel, so the
+net world-to-clip transform, and with it the triangle winding, is the 2018 one: no rasterizer state
+changes, and the projection stays the canonical D3D projection that HBAO+ and the TAA jitter
+expect. The demo reads only position, direction and up from its cameras, which the two conventions
+agree on, so nothing else depends on the basis.
+
+Taking the camera matrix without the conversion is what the first port did: the asteroids rendered
+inside-out (10.9 dB against recon at frame 60) and inverted backface culling cost about 2 ms of frame
+time. With it, view 0 (AA off, frame 6000) is 43.89 dB against the 2018 original, the same as recon,
+and 99.4 dB against recon.
 
 ## Verification results
 
@@ -199,13 +223,11 @@ that defect was found, and the replay figures above are the result that stands.)
    `engine/FramebufferFactory.h`.** They hold an `AutoPtr<FramebufferFactory>` behind a forward
    declaration, which `AutoPtr`'s destructor cannot instantiate; any translation unit that destroys
    one of those passes without the definition fails to compile. Worked around demo-side.
-2. **Donut: the camera basis convention diverged from upstream.** `ethereal-dev` builds
-   `right = cross(up, dir)` where donut `main` builds `right = cross(dir, up)`, so the right vector
-   is negated and the view — and with it the triangle winding — is mirrored against code written for
-   upstream. This is not a defect on its own (the fork is self-consistent and its other samples
-   follow it), but it is an undocumented, silent incompatibility for ported code: here it produced an
-   image that still looked plausible while rendering the asteroids inside-out. It deserves a note in
-   Donut's own documentation, and ideally an ADR in that repository.
+2. **Other code ported from donut `main` needs the same handedness review.** Donut's camera builds
+   the left-handed basis; code written against `main`'s camera inherits a mirrored view space, and
+   taking Donut's camera matrix unchanged renders it inside-out while still looking plausible.
+   A short note in Donut's documentation on the camera convention, and on what it means for code
+   ported from upstream, would save the next port the investigation.
 3. **The `ChunkFile::deserialize` fix is a commit on donut's `nv_asteroids` branch**, not on
    `ethereal-dev`. It should be cherry-picked into `ethereal-dev`: without it every chunk asset is a
    use-after-free for any caller.

@@ -23,6 +23,7 @@ difference is not a version bump but an object model:
 | `NativeObject` union with `.integer` | `void*` |
 | ShaderMake, `donut_compile_shaders()` | ShaderTool, `ethereal_compile_shaders()` |
 | `app::ImGui_Renderer` with a font registry | `app::ImGuiRenderPass`, no font registry |
+| camera basis `right = cross(dir, up)` (mirrored) | left-handed basis `right = cross(up, dir)` |
 
 A demo cannot straddle both: each Donut defines the same `donut_core` / `nvrhi` CMake targets, so one
 configure can only contain one of them.
@@ -58,6 +59,13 @@ configure can only contain one of them.
    names: they are private to the target and renaming them would churn the reconstructed sources for
    nothing.
 
+7. **Honour Donut's camera convention and swap the rendering handedness in the port.** Donut's
+   camera builds the left-handed basis (`right = cross(up, dir)`); donut `main` built the mirrored
+   one, and the 2018 view space follows it. The camera is used unchanged, and `UpdateViews` converts
+   its view matrix into the 2018 view space with a single X mirror where it enters `engine::IView`.
+   The net world-to-clip transform is then the 2018 one, so winding, rasterizer state and the
+   canonical projection stay as they were.
+
 ## Consequences
 
 ### Positive
@@ -66,7 +74,7 @@ configure can only contain one of them.
 - The port is a measurable regression test for the fork: the demo renders a 264 k-object meshlet
   scene through 20-odd passes, so an image or timing difference against the `recon` build points at
   the object model or the shader build, not at the demo.
-- It found two real defects in the framework, both of which would have bitten the next user:
+- It found two defects in the framework, both of which would have bitten the next user:
   `ChunkFile::deserialize` released a blob it never referenced (a use-after-free on every chunk
   asset), and `render/SsaoPass.h` / `render/TemporalAntiAliasingPass.h` hold an
   `AutoPtr<FramebufferFactory>` behind a forward declaration, which `AutoPtr`'s destructor cannot

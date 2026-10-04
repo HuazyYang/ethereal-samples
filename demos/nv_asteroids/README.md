@@ -95,6 +95,11 @@ base path points.
 - **Mesh shaders**: the 2018 NVAPI path is reconstructed and is the default when the 2018 NVAPI
   check passes; `-meshShaders d3d12` uses D3D12 SM 6.5 amplification/mesh shaders on nvrhi meshlet
   pipelines instead.
+- **Rendering handedness**: Donut's camera builds the left-handed basis (`right = cross(up, dir)`);
+  the 2018 demo was written against an older donut whose camera built the mirrored one, and its
+  content and shaders live in that view space. The camera keeps Donut's convention and
+  `FeatureDemo::UpdateViews` mirrors X once where the camera's matrix enters `engine::IView`, so the
+  net world-to-clip transform, winding and projection are the 2018 ones.
 - **Fonts**: `app::ImGuiRenderPass` has no font registry (donut main's `ImGui_Renderer` did), so
   `UIRenderer` registers the three demo fonts against the ImGui atlas itself.
 - Shaders are compiled from the reconstructed HLSL with current DXC. Non-mesh stages stay at SM 6.0,
