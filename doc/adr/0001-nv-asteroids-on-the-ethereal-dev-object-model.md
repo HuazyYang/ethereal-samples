@@ -140,7 +140,7 @@ Rejected.
 
 ## References
 
-- Plan: [`../plans/2026-10-04-nv-asteroids-migration.md`](../plans/2026-10-04-nv-asteroids-migration.md)
+- Plan: [`docs/plans/2026-10-04-nv-asteroids-migration.md`](../../../docs/plans/2026-10-04-nv-asteroids-migration.md) in the ethereal aggregate
 - `demos/nv_asteroids/README.md` — verification results and the developer options
 - `demos/nv_asteroids/CONVENTIONS.md` — the reconstruction conventions, which still apply
 - donut `nv_asteroids`: `core/chunk: ChunkFile::deserialize must AddRef the blob it keeps`

@@ -123,4 +123,5 @@ base path points.
   the original's own PSNR between two captures of the same view, and it is reported next to ours.
 
 The image and performance results of the port are in
-[`../../doc/plans/2026-10-04-nv-asteroids-migration.md`](../../doc/plans/2026-10-04-nv-asteroids-migration.md).
+the ethereal aggregate's
+[`docs/plans/2026-10-04-nv-asteroids-migration.md`](../../../docs/plans/2026-10-04-nv-asteroids-migration.md).

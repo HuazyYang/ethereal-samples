@@ -57,4 +57,4 @@ Keep local user paths, machine names and credentials out of plans. Use repositor
 
 | Plan | Status | ADRs |
 | --- | --- | --- |
-| [2026-10-04-nv-asteroids-migration.md](2026-10-04-nv-asteroids-migration.md) | Approved | [0001](../adr/0001-nv-asteroids-on-the-ethereal-dev-object-model.md) |
+| [2026-10-04-nv-asteroids-migration.md](../../../docs/plans/2026-10-04-nv-asteroids-migration.md) (in the aggregate's `docs/plans`: it spans three repositories) | Done | [0001](../adr/0001-nv-asteroids-on-the-ethereal-dev-object-model.md) |
