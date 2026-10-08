@@ -15,7 +15,6 @@ import libraries from the DLLs it shipped.
 | `shaders/demo`, `shaders/framework` | Reconstructed HLSL, the two ShaderTool configs and the `*.NOTES.md` verification notes |
 | `shaders/shaders_sm60.cfg`, `shaders/shaders_sm65.cfg` | Shader build, split by shader model (see *Shaders* below) |
 | `nv_volumetric_lighting/` | Reconstructed D3D11 volumetric-lighting DLL (C++, HLSL with permutation tables, smoke test). Independent of the demo, which never calls it; it is kept here because it comes from the same title |
-| `external/nvapi` | NVAPI SDK (submodule) |
 | `cmake/third_party_dlls.cmake` | PhysX 3.4.2 / assimp 4.1 / HBAO+ 4.0: upstream headers plus import libraries generated from the shipped DLLs |
 | `tools/` | `extract_media.py` (decrypt and unpack media.db), `split_nvsp.py` (shader permutation blobs), `chk2gltf.py` (meshlet `.chk` → glTF/OBJ), `nvsp2shadermake.py`, `dll2def.py`, `asset_check.cpp` |
 | `docs/` | `formats.md` (media.db, NVSP, NVDACHNK, Stars.buf), `class_map.md` (2018 classes → donut), `featuredemo_map.md` |

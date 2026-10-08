@@ -221,7 +221,7 @@ Bindings: `s_Sampler s0`, `t_ZBuffer t0` (Texture2D<float>), `u_ZFar[5] u0` (RWT
 ## NVAPI originals (`demo/nvapi/`)
 
 These reproduce the 2018 binaries, NVAPI calls included, and are compiled exactly as shipped (`vs_6_0`, entry
-`ts_main` / `ms_main`, same permutations). `nvHLSLExtns.h` comes from `external/nvapi`, which is added to the
+`ts_main` / `ms_main`, same permutations). `nvHLSLExtns.h` comes from the NVAPI SDK (found or fetched by nvrhi through EPM), which is added to the
 ShaderMake include paths in `asteroids/CMakeLists.txt`.
 - **Opcode helpers.** `nv_meshlet_extns.hlsli` defines `NV_EXTN_OP_MESH_*` 34..48 and the helpers
   (`__NvMeshGetGroupId`, `__NvMeshGetThreadId`, `__NvMeshSetTaskCount`, `__NvMeshSetPrimitiveCount`,

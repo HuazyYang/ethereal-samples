@@ -22,31 +22,8 @@ if (NOT _nv_asteroids_lib_exe MATCHES "lib[.]exe$")
 endif()
 
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
-find_package(Git REQUIRED)
 
 set(_nv_asteroids_deps_dir "${CMAKE_BINARY_DIR}/_nv_asteroids_deps")
-
-# nv_asteroids_fetch_sparse(<name> <repo-url> <ref> <path>...)
-function(nv_asteroids_fetch_sparse name url ref)
-    set(dir "${_nv_asteroids_deps_dir}/${name}")
-    set(${name}_SOURCE_DIR "${dir}" PARENT_SCOPE)
-    if (EXISTS "${dir}/.fetched-${ref}")
-        return()
-    endif()
-    file(REMOVE_RECURSE "${dir}")
-    message(STATUS "Fetching ${name} (${ref}) headers from ${url}")
-    execute_process(COMMAND ${GIT_EXECUTABLE} clone --filter=blob:none --no-checkout --depth 1 --branch ${ref} ${url} "${dir}"
-        RESULT_VARIABLE res)
-    if (NOT res EQUAL 0)
-        message(FATAL_ERROR "Failed to clone ${url}")
-    endif()
-    execute_process(COMMAND ${GIT_EXECUTABLE} -C "${dir}" sparse-checkout set --no-cone ${ARGN} RESULT_VARIABLE res)
-    execute_process(COMMAND ${GIT_EXECUTABLE} -C "${dir}" checkout RESULT_VARIABLE res2)
-    if (NOT res EQUAL 0 OR NOT res2 EQUAL 0)
-        message(FATAL_ERROR "Failed to check out ${name}")
-    endif()
-    file(TOUCH "${dir}/.fetched-${ref}")
-endfunction()
 
 # nv_asteroids_import_dll(<target> <dll-name-without-extension> <include-dirs>...)
 # Creates an IMPORTED SHARED target backed by an import library generated from the DLL.
@@ -75,9 +52,12 @@ function(nv_asteroids_import_dll target dllname)
 endfunction()
 
 # --- PhysX 3.4.2 (CHECKED DLLs) ---
-nv_asteroids_fetch_sparse(physx34 https://github.com/NVIDIAGameWorks/PhysX-3.4.git v3.4.2
-    /PhysX_3.4/Include/ /PxShared/include/)
-set(_physx_inc "${physx34_SOURCE_DIR}/PhysX_3.4/Include;${physx34_SOURCE_DIR}/PxShared/include")
+epm_add_asset(
+    NAME physx34
+    GITHUB_REPOSITORY NVIDIAGameWorks/PhysX-3.4
+    GIT_TAG v3.4.2
+    SPARSE_PATHS /PhysX_3.4/Include/ /PxShared/include/)
+set(_physx_inc "${physx34_DIR}/PhysX_3.4/Include;${physx34_DIR}/PxShared/include")
 nv_asteroids_import_dll(PxFoundation PxFoundationCHECKED_x64 ${_physx_inc})
 nv_asteroids_import_dll(PxPvdSDK PxPvdSDKCHECKED_x64 ${_physx_inc})
 nv_asteroids_import_dll(PhysX3Common PhysX3CommonCHECKED_x64 ${_physx_inc})
@@ -90,16 +70,24 @@ target_link_libraries(nv_asteroids_physx INTERFACE
 target_compile_definitions(nv_asteroids_physx INTERFACE PX_CHECKED=1 PX_PHYSX_STATIC_LIB=0)
 
 # --- assimp (C API only) ---
-nv_asteroids_fetch_sparse(assimp41 https://github.com/assimp/assimp.git v4.1.0 /include/)
-if (EXISTS "${assimp41_SOURCE_DIR}/include/assimp/config.h.in")
+epm_add_asset(
+    NAME assimp41
+    GITHUB_REPOSITORY assimp/assimp
+    GIT_TAG v4.1.0
+    SPARSE_PATHS /include/)
+if (EXISTS "${assimp41_DIR}/include/assimp/config.h.in")
     # single precision (ASSIMP_DOUBLE_PRECISION unset), as in the shipped DLL
-    configure_file("${assimp41_SOURCE_DIR}/include/assimp/config.h.in" "${assimp41_SOURCE_DIR}/include/assimp/config.h")
+    configure_file("${assimp41_DIR}/include/assimp/config.h.in" "${assimp41_DIR}/include/assimp/config.h")
 endif()
-nv_asteroids_import_dll(assimp assimp-vc140-mt "${assimp41_SOURCE_DIR}/include")
+nv_asteroids_import_dll(assimp assimp-vc140-mt "${assimp41_DIR}/include")
 
 # --- HBAO+ 4.0 (D3D12) ---
-nv_asteroids_fetch_sparse(hbaoplus https://github.com/NVIDIAGameWorks/HBAOPlus.git master /include/)
-nv_asteroids_import_dll(GFSDK_SSAO_D3D12 GFSDK_SSAO_D3D12.win64 "${hbaoplus_SOURCE_DIR}/include")
+epm_add_asset(
+    NAME hbaoplus
+    GITHUB_REPOSITORY NVIDIAGameWorks/HBAOPlus
+    GIT_TAG master
+    SPARSE_PATHS /include/)
+nv_asteroids_import_dll(GFSDK_SSAO_D3D12 GFSDK_SSAO_D3D12.win64 "${hbaoplus_DIR}/include")
 
 # DLLs to copy next to the reconstructed executable
 set(NV_ASTEROIDS_RUNTIME_DLLS

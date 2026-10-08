@@ -14,8 +14,6 @@
 #   nv_asteroids_asset_check   loads every .chk LOD out of media.db, no device
 #   NvVolumetricLighting.d3d11 the companion D3D11 DLL reconstruction
 
-include(FetchContent)
-
 set(NV_ASTEROIDS_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 
 # ---------------------------------------------------------------------------
@@ -23,22 +21,22 @@ set(NV_ASTEROIDS_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 # SQLite version string in Asteroids.exe: "3.24.0", source id
 # "2018-06-04 19:24:41 c7ee0833...".
 # ---------------------------------------------------------------------------
-FetchContent_Declare(nv_asteroids_sqlite3_src
+epm_add_asset(
+    NAME nv_asteroids_sqlite3_src
     URL https://www.sqlite.org/2018/sqlite-amalgamation-3240000.zip
-    DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
-FetchContent_Declare(nv_asteroids_lz4_src
-    GIT_REPOSITORY https://github.com/lz4/lz4.git
-    GIT_TAG v1.8.3
-    SOURCE_SUBDIR build/cmake/__none__)   # only lib/lz4.c is used
-FetchContent_MakeAvailable(nv_asteroids_sqlite3_src nv_asteroids_lz4_src)
+    URL_HASH SHA256=ad68c1216c3a474cf360c7581a4001e952515b3649342100f2d7ca7c8e313da6)
+epm_add_asset(                    # only lib/lz4.c is used
+    NAME nv_asteroids_lz4_src
+    GITHUB_REPOSITORY lz4/lz4
+    GIT_TAG v1.8.3)
 
-add_library(nv_asteroids_sqlite3 STATIC "${nv_asteroids_sqlite3_src_SOURCE_DIR}/sqlite3.c")
-target_include_directories(nv_asteroids_sqlite3 PUBLIC "${nv_asteroids_sqlite3_src_SOURCE_DIR}")
+add_library(nv_asteroids_sqlite3 STATIC "${nv_asteroids_sqlite3_src_DIR}/sqlite3.c")
+target_include_directories(nv_asteroids_sqlite3 PUBLIC "${nv_asteroids_sqlite3_src_DIR}")
 target_compile_definitions(nv_asteroids_sqlite3 PRIVATE SQLITE_THREADSAFE=1 SQLITE_OMIT_LOAD_EXTENSION)
 set_target_properties(nv_asteroids_sqlite3 PROPERTIES FOLDER "Demos/nv_asteroids/thirdparty")
 
-add_library(nv_asteroids_lz4 STATIC "${nv_asteroids_lz4_src_SOURCE_DIR}/lib/lz4.c")
-target_include_directories(nv_asteroids_lz4 PUBLIC "${nv_asteroids_lz4_src_SOURCE_DIR}/lib")
+add_library(nv_asteroids_lz4 STATIC "${nv_asteroids_lz4_src_DIR}/lib/lz4.c")
+target_include_directories(nv_asteroids_lz4 PUBLIC "${nv_asteroids_lz4_src_DIR}/lib")
 set_target_properties(nv_asteroids_lz4 PROPERTIES FOLDER "Demos/nv_asteroids/thirdparty")
 
 # PhysX / assimp / HBAO+ import libraries generated from the shipped DLLs.
@@ -60,12 +58,12 @@ file(GLOB_RECURSE nv_asteroids_shader_sources CONFIGURE_DEPENDS
     "${nv_asteroids_shader_dir}/*.hlsl" "${nv_asteroids_shader_dir}/*.hlsli"
     "${nv_asteroids_shader_dir}/*.h")
 
-# external/nvapi is on the include path for nvHLSLExtns.h, used by the 2018
-# NVAPI mesh shaders in shaders/demo/nvapi.
+# The NVAPI SDK (found or fetched by nvrhi) is on the include path for nvHLSLExtns.h, used by
+# the 2018 NVAPI mesh shaders in shaders/demo/nvapi.
 set(nv_asteroids_shader_includes
     "${nv_asteroids_shader_dir}"
     "${nv_asteroids_shader_dir}/demo/include"
-    "${NV_ASTEROIDS_DIR}/external/nvapi")
+    "${NVAPI_INCLUDE_DIR}")
 
 ethereal_compile_shaders(
     TARGET nv_asteroids_shaders

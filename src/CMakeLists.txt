@@ -5,6 +5,12 @@ if (NVRHI_WITH_DX12)
 	# ("Preview releases of D3D12Core require Developer Mode"). Override for a preview, e.g. 1.717.1-preview.
 	set(ETHEREAL_AGILITY_SDK_VERSION "1.619.6" CACHE STRING "Microsoft.Direct3D.D3D12 NuGet package version")
 	set(DONUT_D3D_AGILITY_SDK_URL "https://www.nuget.org/api/v2/package/Microsoft.Direct3D.D3D12/${ETHEREAL_AGILITY_SDK_VERSION}")
+	# EPM verifies the download when the hash of the version is known; other versions are fetched unverified.
+	if (ETHEREAL_AGILITY_SDK_VERSION STREQUAL "1.619.6")
+		set(DONUT_D3D_AGILITY_SDK_URL_HASH "SHA256=08f0489281401aa430fc37322d6c3fc98a8025175aacd714c10d562f4963f1e9")
+	else()
+		set(DONUT_D3D_AGILITY_SDK_URL_HASH "")
+	endif()
 	set(DONUT_D3D_AGILITY_SDK_FETCH_DIR "" CACHE STRING "" FORCE)
 	include("${ETHEREAL_DONUT_DIR}/cmake/FetchAgilitySDK.cmake")
 
