@@ -30,6 +30,14 @@ function(ethereal_use_agility_sdk target)
 	endif()
 endfunction()
 
+# nvrhi's own test executables create ray tracing acceleration structures too (nvrhi is a standalone project and
+# does not know about the Agility SDK, so the aggregate opts them in).
+foreach (_nvrhi_test nvrhi_memory_queries nvrhi_qi_device)
+	if (TARGET ${_nvrhi_test})
+		ethereal_use_agility_sdk(${_nvrhi_test})
+	endif()
+endforeach()
+
 # --- ethereal samples -----------------------------------------------------------
 add_subdirectory(ddgi_samples)
 add_subdirectory(vxgi_samples)

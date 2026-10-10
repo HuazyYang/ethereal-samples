@@ -29,7 +29,8 @@ enum class AOMethod {
 struct Config {
 
     // { RHI Flags
-    int adapterIndex = 0;
+    // -1: let the device manager choose (Vulkan: first discrete GPU that satisfies the requirements; D3D: adapter 0)
+    int adapterIndex = -1;
     // --debug: graphics API debug runtime plus the nvrhi validation layer
     bool enableDebug = false;
 
@@ -114,7 +115,7 @@ class VXGISample : public donut::app::ApplicationBase {
         m_Camera.SetRotateSpeed(0.005f);
 
         auto lights = m_Scene->GetSceneGraph()->GetLights();
-        m_SunLight = dynamic_cast<donut::engine::DirectionalLight *>(lights[0].Get());
+        m_SunLight = donut::query_cast<donut::engine::DirectionalLight>(lights[0].Get());
 
         m_OpaqueDrawStrategy = MAKE_RC_OBJ_PTR(donut::render::InstancedOpaqueDrawStrategy);
         m_TransparentDrawStrategy = MAKE_RC_OBJ_PTR(donut::render::TransparentDrawStrategy);
@@ -577,7 +578,7 @@ protected:
 
 int ParseArgs(int argc, char **argv, Config *config) {
     cag_option options[] = {
-        {0x01, NULL, "adapter", "0", "GPU adapter index"},
+        {0x01, NULL, "adapter", "<index>", "GPU adapter index (default: automatic)"},
         {0x02, NULL, "diffuse-factor", "<Diffuse scaling factor>", "VXGI diffuse scaling factor"},
         {0x03, NULL, "specular-factor", "<Specular scaling factor>", "VXGI specular scaling factor"},
         {0x11, NULL, "debug-mode", "<disabled|allocation-map|opacity-texture|emittance-texture>",

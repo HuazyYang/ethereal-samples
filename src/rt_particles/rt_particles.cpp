@@ -782,8 +782,16 @@ public:
     UserInterface(app::DeviceManager* deviceManager, UIData* ui)
         : ImGuiRenderPass(deviceManager)
         , m_ui(ui)
+    { }
+
+    // The ImGui context is created by ImGuiRenderPass::Init(), so ImGui::GetIO() is only valid after it.
+    bool Init(engine::ShaderFactory* shaderFactory)
     {
+        if (!ImGuiRenderPass::Init(shaderFactory))
+            return false;
+
         ImGui::GetIO().IniFilename = nullptr;
+        return true;
     }
 
     void BuildUI() override
