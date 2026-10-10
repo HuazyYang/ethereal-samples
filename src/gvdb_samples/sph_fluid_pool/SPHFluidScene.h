@@ -26,9 +26,16 @@ struct SPHRenderAttributes {
     bool visible = true;
 };
 
+NVRHI_CLASS_CLSID(SPHFluidInstance, "942d1de1-42fa-49e1-95ad-1167378ef570")
 class SPHFluidInstance : public donut::engine::SceneGraphLeaf {
-    NVRHI_INHERIT_INTERFACE_TABLE()
  public:
+    NVRHI_DECLARE_UUID_TRAITS(SPHFluidInstance)
+    NVRHI_BEGIN_INTERFACE_TABLE_INLINE(SPHFluidInstance)
+    NVRHI_IMPLEMENTS_INTERFACE(nvrhi::IWeakReferenceSource)
+    NVRHI_IMPLEMENTS_CLASS(SPHFluidInstance)
+    NVRHI_IMPLEMENTS_ROUTE_PARENT(donut::engine::SceneGraphLeaf)
+    NVRHI_END_INTERFACE_TABLE()
+
     explicit SPHFluidInstance(ISPHParticles *particles) : m_particles(particles) {}
 
     [[nodiscard]] ISPHParticles *GetParticles() const { return m_particles.Get(); }

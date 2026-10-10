@@ -744,7 +744,7 @@ void VoxelizationInstancedDrawStrategy::FillChunk() {
             nodeVisible = TestClipSceneGraphNode(m_Walker->GetGlobalBoundingBox());
 
             if (nodeVisible && nodeContentsRelevant) {
-                auto meshInstance = dynamic_cast<MeshInstance*>(m_Walker->GetLeaf());
+                auto meshInstance = donut::query_cast<MeshInstance>(m_Walker->GetLeaf());
                 if (meshInstance) {
                     const donut::engine::MeshInfo* mesh = meshInstance->GetMesh();
 

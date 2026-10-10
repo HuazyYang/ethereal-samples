@@ -71,7 +71,7 @@ void GVDBSceneGraph::RegisterLeaf(engine::SceneGraphLeaf *leaf) {
     SceneGraph::RegisterLeaf(leaf);
     if (!leaf) return;
 
-    auto instance = dynamic_cast<GVDBVolumeInstance *>(leaf);
+    auto instance = donut::query_cast<GVDBVolumeInstance>(leaf);
     if (!instance) return;
 
     IGVDBVolume *volume = instance->GetVolume();
@@ -83,7 +83,7 @@ void GVDBSceneGraph::UnregisterLeaf(engine::SceneGraphLeaf *leaf) {
     SceneGraph::UnregisterLeaf(leaf);
     if (!leaf) return;
 
-    auto instance = dynamic_cast<GVDBVolumeInstance *>(leaf);
+    auto instance = donut::query_cast<GVDBVolumeInstance>(leaf);
     if (!instance) return;
 
     IGVDBVolume *volume = instance->GetVolume();

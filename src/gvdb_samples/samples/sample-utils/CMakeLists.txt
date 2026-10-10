@@ -63,7 +63,7 @@ target_include_directories(gvdb_sample_utils
 # PUBLIC gvdb: the headers include <gvdb/GVDB.h> / <gvdb/GVDBScene.h>.
 target_link_libraries(gvdb_sample_utils PUBLIC gvdb gpdevice donut_core donut_engine donut_app)
 target_compile_definitions(gvdb_sample_utils PUBLIC "GVDB_SAMPLES_ASSETS_DIR=\"${GVDB_SAMPLES_ASSETS_DIR}\"")
-target_include_directories(gvdb_sample_utils PRIVATE "${ETHEREAL_DONUT_DIR}/thirdparty/stb")
+target_link_libraries(gvdb_sample_utils PRIVATE stb)
 add_dependencies(gvdb_sample_utils gvdb_sample_utils_ptx gvdb_sample_utils_shaders)
 if (TARGET gvdb_sample_utils_optix_ptx)
     add_dependencies(gvdb_sample_utils gvdb_sample_utils_optix_ptx)

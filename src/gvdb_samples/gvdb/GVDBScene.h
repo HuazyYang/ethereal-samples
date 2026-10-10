@@ -73,9 +73,16 @@ struct VolumeRenderAttributes {
     nvrhi::AutoPtr<VolumeTransferFunction> transferFunction;
 };
 
+NVRHI_CLASS_CLSID(GVDBVolumeInstance, "bcc94df8-5e6e-40dc-ac4c-334a6736420e")
 class GVDBVolumeInstance : public donut::engine::SceneGraphLeaf {
-    NVRHI_INHERIT_INTERFACE_TABLE()
  public:
+    NVRHI_DECLARE_UUID_TRAITS(GVDBVolumeInstance)
+    NVRHI_BEGIN_INTERFACE_TABLE_INLINE(GVDBVolumeInstance)
+    NVRHI_IMPLEMENTS_INTERFACE(nvrhi::IWeakReferenceSource)
+    NVRHI_IMPLEMENTS_CLASS(GVDBVolumeInstance)
+    NVRHI_IMPLEMENTS_ROUTE_PARENT(donut::engine::SceneGraphLeaf)
+    NVRHI_END_INTERFACE_TABLE()
+
     explicit GVDBVolumeInstance(IGVDBVolume *volume) : m_volume(volume) {}
 
     [[nodiscard]] IGVDBVolume *GetVolume() const { return m_volume.Get(); }

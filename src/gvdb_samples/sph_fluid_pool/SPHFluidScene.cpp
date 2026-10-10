@@ -35,7 +35,7 @@ void collectFluidInstances(engine::SceneGraphNode *root, std::vector<SPHFluidIns
         const bool relevant = (walker->GetSubgraphContentFlags() & SceneContentFlags_Particles) != engine::SceneContentFlags(0) ||
                               (walker->GetLeafContentFlags() & SceneContentFlags_Particles) != engine::SceneContentFlags(0);
         if (relevant) {
-            if (auto instance = dynamic_cast<SPHFluidInstance *>(walker->GetLeaf())) outInstances.push_back(instance);
+            if (auto instance = donut::query_cast<SPHFluidInstance>(walker->GetLeaf())) outInstances.push_back(instance);
         }
         walker.Next(relevant);
     }

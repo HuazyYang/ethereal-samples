@@ -144,7 +144,7 @@ class DDGISample : public donut::app::ApplicationBase {
         auto cameras = m_Scene->GetSceneGraph()->GetCameras();
         if (!cameras.empty()) {
             auto perspectiveCamera =
-                dynamic_cast<engine::PerspectiveCamera*>(cameras[0].Get());
+                donut::query_cast<engine::PerspectiveCamera>(cameras[0].Get());
             auto viewToWorld = perspectiveCamera->GetViewToWorldMatrix();
             m_PerspectiveFOV = dm::radians(perspectiveCamera->verticalFov);
             m_Camera.LookAt(viewToWorld.m_translation, viewToWorld.m_translation + viewToWorld.m_linear[2]);
