@@ -681,7 +681,7 @@ int main(int __argc, const char **__argv)
 {
     Config config;
 
-    if(ParseArgs(__argc, __argv, &config))
+    if(ParseArgs(__argc, const_cast<char **>(__argv), &config))
         return -1;
 
     donut::log::EnableOutputToMessageBox(false);

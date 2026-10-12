@@ -3,13 +3,12 @@
 #include "VXGITypes.h"
 #include "shaders/Common/VXGIPreset.hlsli"
 #include <vector>
+#include <cmath>
 
-#ifdef ANDROID
-#define VXGI_ALIGN(B) __attribute__((aligned(B)))
-#else
-#ifdef _WIN32
+#ifdef _MSC_VER
 #define VXGI_ALIGN(B) __declspec(align(B))
-#endif
+#else
+#define VXGI_ALIGN(B) __attribute__((aligned(B)))
 #endif
 
 #define VXGI_ENUM_CLASS_FLAG_OPERATORS(T)                                 \
@@ -126,7 +125,7 @@ inline float GetConeFactor(float coneAngleDegrees) {
     if(coneAngleDegrees >= 140.f)
         coneAngleDegrees = 140.f;
 
-    float basicFactor = 2.f * std::tanf(dm::radians(coneAngleDegrees) / 2.f);
+    float basicFactor = 2.f * tanf(dm::radians(coneAngleDegrees) / 2.f);
     return basicFactor / (basicFactor * 0.25f + 1.f);
 }
 

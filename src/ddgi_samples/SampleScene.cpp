@@ -90,15 +90,17 @@ void SampleScene::UpdateLightsBuffer(nvrhi::ICommandList *cmdList) {
 
     // Create light structured buffer
     nvrhi::BufferDesc bufDesc;
-    bufDesc.byteSize = sizeof(Graphics::LightConstants) * lights.size();
+    // A scene without lights (furnace) still needs a valid buffer: nvrhi rejects an empty one.
+    bufDesc.byteSize = sizeof(Graphics::LightConstants) * std::max<size_t>(lights.size(), 1);
     bufDesc.structStride = sizeof(Graphics::LightConstants);
     bufDesc.initialState = nvrhi::ResourceStates::ShaderResource;
     bufDesc.keepInitialState = true;
     bufDesc.debugName = "Light Buffer";
     m_Device->createBuffer(bufDesc, &m_LightConstantsBuffer);
 
-    cmdList->writeBuffer(m_LightConstantsBuffer, lightConstants.data(),
-                         sizeof(Graphics::LightConstants) * lightConstants.size());
+    if (!lightConstants.empty())
+        cmdList->writeBuffer(m_LightConstantsBuffer, lightConstants.data(),
+                             sizeof(Graphics::LightConstants) * lightConstants.size());
 
     m_NumDirectionalLights = 0;
     m_NumSpotLights = 0;

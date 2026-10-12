@@ -596,7 +596,7 @@ void AllocationMap::SnapAndInvalidateRegions(nvrhi::ICommandList* comandList, co
             else {
                 cb.gridParams[level] = uint4(
                     0, 0,
-                    Params->allocationMapLod - level - log2<uint>(PageProcessingGroupSize), 0);
+                    Params->allocationMapLod - level - std::log2<uint>(PageProcessingGroupSize), 0);
             }
         }
     }
