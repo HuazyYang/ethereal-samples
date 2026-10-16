@@ -63,6 +63,11 @@ if (NVRHI_WITH_VULKAN OR NVRHI_WITH_DX12)
 	add_subdirectory(async_compute)
 endif()
 
+# --- ports from D3D12-Trial ------------------------------------------------------
+if (NVRHI_WITH_VULKAN OR NVRHI_WITH_DX12)
+	add_subdirectory(hello_dxr)
+endif()
+
 if (NVRHI_WITH_DX12)
 	# Work Graphs use a DX12-specific API
 	add_subdirectory(work_graphs)

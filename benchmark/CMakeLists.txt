@@ -11,3 +11,5 @@ if (NOT WIN32)
 endif()
 
 add_subdirectory(Asteroids)
+# MultithreadedRendering (ported from D3D12-Trial): nvrhi vs. native D3D12 on multithreaded command recording.
+add_subdirectory(MultithreadedRendering)

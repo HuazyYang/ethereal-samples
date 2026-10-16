@@ -9,8 +9,10 @@ This repository is a sub-project of the `ethereal` aggregate and is configured b
 | `src/DDGISample`, `src/VXGISample` | Dynamic diffuse GI (RTXGI DDGI) and voxel GI (VXGI) samples |
 | `src/gvdb_samples` | GVDB sparse-voxel library (COM-style interfaces, Donut scene graph), the ported GVDB samples and the SPH fluid port `sph_fluid_pool`, CUDA + optional OptiX 9 (`-DETHEREAL_BUILD_GVDB=ON`, `-DETHEREAL_WITH_OPTIX=ON`; see `src/gvdb_samples/README.md`) |
 | `src/<example>` | The Donut examples from `Donut-Samples/examples` (`basic_triangle`, `rt_shadows`, `meshlets`, ...) |
+| `src/hello_dxr` | Port of `D3D12-Trial/HelloDXR` (ray traced tetrahedra, plane and Menger sponge with shadow rays, TLAS refitted every frame), D3D12 and Vulkan |
 | `assets/` | Scenes, configs and textures of the DDGI / VXGI samples |
 | `benchmark/Asteroids` | nvrhi vs. native D3D11/D3D12 CPU-overhead benchmark, see its README |
+| `benchmark/MultithreadedRendering` | Port of `D3D12-Trial/MultithreadedRendering` as a benchmark: nvrhi (D3D12, Vulkan) vs. native D3D12 on single-threaded, per-scene and per-chunk command recording of the SquidRoom scene, see its README |
 
 ## Build
 
@@ -59,6 +61,16 @@ Donut is the `ethereal-dev` fork, whose object model and shader build differ, so
 - `rt_bindless`: the compute entry point is `main_cs`, because ShaderTool names its output by source and entry point.
 - All of them compile and link in Release, but none of the ported examples has been run on a GPU yet. `aftermath` needs
   `-DDONUT_WITH_AFTERMATH=ON` and was ported but not compiled.
+
+## Ports from D3D12-Trial
+
+- `src/hello_dxr`: the original bound each instance's vertex/index buffers and normal matrix through DXR local
+  root signatures. nvrhi has local bindings on D3D12 only, so every mesh lives in one vertex and one index buffer,
+  a `StructuredBuffer<InstanceData>` holds the per-instance offsets and normal matrix, and the closest-hit shader
+  indexes it with `InstanceIndex()`; one global binding layout, the same shader library on D3D12 and Vulkan.
+  Structured-buffer structs use 16-byte members only (std430 pads `float3` on Vulkan). `--debug` turns on the
+  debug runtime and validation layers and writes their messages to `hello_dxr.log` next to the executable.
+- `benchmark/MultithreadedRendering`: see its README. The SquidRoom media (43 MB) lives in `media/SquidRoom`.
 
 ## Shader permutations
 

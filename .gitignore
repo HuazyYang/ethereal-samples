@@ -6,6 +6,7 @@
 # Asteroids benchmark: raw run output and the analysis virtual environment
 /benchmark/Asteroids/results/
 /benchmark/Asteroids/.venv/
+/benchmark/MultithreadedRendering/results/
 __pycache__/
 *.pyc
 
