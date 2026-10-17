@@ -8,4 +8,10 @@ if (NOT WIN32)
 	return()
 endif()
 
-add_subdirectory(nv_asteroids)
+if (ETHEREAL_BUILD_NV_ASTEROIDS)
+    add_subdirectory(nv_asteroids)
+endif()
+
+if (ETHEREAL_BUILD_WAVEWORKS)
+    add_subdirectory(waveworks)
+endif()

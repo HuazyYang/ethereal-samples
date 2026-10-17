@@ -1,0 +1,212 @@
+[
+  {
+    "name": "grass_bermuda_01_dead_a",
+    "vertices": 12,
+    "triangles": 12,
+    "dimensions_m": [
+      0.06773801147937775,
+      0.024741128087043762,
+      0.0843101441860199
+    ]
+  },
+  {
+    "name": "grass_bermuda_01_dead_b",
+    "vertices": 12,
+    "triangles": 12,
+    "dimensions_m": [
+      0.07010027766227722,
+      0.04334356263279915,
+      0.05502614378929138
+    ]
+  },
+  {
+    "name": "grass_bermuda_01_flattened_a",
+    "vertices": 18,
+    "triangles": 19,
+    "dimensions_m": [
+      0.043938048183918,
+      0.043633755296468735,
+      0.06925326585769653
+    ]
+  },
+  {
+    "name": "grass_bermuda_01_medium_a",
+    "vertices": 16,
+    "triangles": 17,
+    "dimensions_m": [
+      0.03851224482059479,
+      0.09775002300739288,
+      0.02856733277440071
+    ]
+  },
+  {
+    "name": "grass_bermuda_01_medium_b",
+    "vertices": 9,
+    "triangles": 8,
+    "dimensions_m": [
+      0.051163725554943085,
+      0.0745726078748703,
+      0.021864350885152817
+    ]
+  },
+  {
+    "name": "grass_bermuda_01_medium_c",
+    "vertices": 21,
+    "triangles": 20,
+    "dimensions_m": [
+      0.05698142200708389,
+      0.06667336076498032,
+      0.09161889553070068
+    ]
+  },
+  {
+    "name": "grass_bermuda_01_medium_d",
+    "vertices": 13,
+    "triangles": 14,
+    "dimensions_m": [
+      0.05497361719608307,
+      0.10206569731235504,
+      0.016299284994602203
+    ]
+  },
+  {
+    "name": "grass_bermuda_01_medium_e",
+    "vertices": 24,
+    "triangles": 24,
+    "dimensions_m": [
+      0.06603643298149109,
+      0.082661472260952,
+      0.03687525540590286
+    ]
+  },
+  {
+    "name": "grass_bermuda_01_medium_f",
+    "vertices": 28,
+    "triangles": 30,
+    "dimensions_m": [
+      0.04070085287094116,
+      0.11300424486398697,
+      0.02610260248184204
+    ]
+  },
+  {
+    "name": "grass_bermuda_01_seedling_a",
+    "vertices": 125,
+    "triangles": 147,
+    "dimensions_m": [
+      0.06783504039049149,
+      0.1508864462375641,
+      0.04558120667934418
+    ]
+  },
+  {
+    "name": "grass_bermuda_01_seedling_b",
+    "vertices": 118,
+    "triangles": 140,
+    "dimensions_m": [
+      0.076595239341259,
+      0.127205029129982,
+      0.049266546964645386
+    ]
+  },
+  {
+    "name": "grass_bermuda_01_seedling_c",
+    "vertices": 108,
+    "triangles": 128,
+    "dimensions_m": [
+      0.037162233144044876,
+      0.09225825220346451,
+      0.04451197385787964
+    ]
+  },
+  {
+    "name": "grass_bermuda_01_seedling_d",
+    "vertices": 226,
+    "triangles": 268,
+    "dimensions_m": [
+      0.06964705884456635,
+      0.1521890014410019,
+      0.08313377946615219
+    ]
+  },
+  {
+    "name": "grass_bermuda_01_single_a",
+    "vertices": 17,
+    "triangles": 15,
+    "dimensions_m": [
+      0.0035752211697399616,
+      0.14941483736038208,
+      0.013696599751710892
+    ]
+  },
+  {
+    "name": "grass_bermuda_01_single_b",
+    "vertices": 17,
+    "triangles": 15,
+    "dimensions_m": [
+      0.0035752211697399616,
+      0.14941483736038208,
+      0.013696597889065742
+    ]
+  },
+  {
+    "name": "grass_bermuda_01_small_a",
+    "vertices": 12,
+    "triangles": 12,
+    "dimensions_m": [
+      0.07986544072628021,
+      0.03223959356546402,
+      0.02775387465953827
+    ]
+  },
+  {
+    "name": "grass_bermuda_01_small_b",
+    "vertices": 12,
+    "triangles": 12,
+    "dimensions_m": [
+      0.08268746733665466,
+      0.04585026204586029,
+      0.03603371977806091
+    ]
+  },
+  {
+    "name": "grass_bermuda_01_small_c",
+    "vertices": 20,
+    "triangles": 18,
+    "dimensions_m": [
+      0.053999610245227814,
+      0.055165212601423264,
+      0.041465919464826584
+    ]
+  },
+  {
+    "name": "grass_bermuda_01_small_d",
+    "vertices": 11,
+    "triangles": 10,
+    "dimensions_m": [
+      0.05821169912815094,
+      0.05464456230401993,
+      0.03346908837556839
+    ]
+  },
+  {
+    "name": "grass_bermuda_01_small_e",
+    "vertices": 11,
+    "triangles": 10,
+    "dimensions_m": [
+      0.028711911290884018,
+      0.09073731303215027,
+      0.017662715166807175
+    ]
+  },
+  {
+    "name": "grass_bermuda_01_small_f",
+    "vertices": 11,
+    "triangles": 10,
+    "dimensions_m": [
+      0.035537708550691605,
+      0.06905271857976913,
+      0.02461286261677742
+    ]
+  }
+]

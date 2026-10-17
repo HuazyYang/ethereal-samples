@@ -1,0 +1,549 @@
+{
+  "captured_on": "2026-10-17",
+  "platform": "Windows x64",
+  "gpu": "NVIDIA GeForce RTX 4050 Laptop GPU",
+  "purpose": "Documentation gallery of real rendered application output; not a performance comparison or equivalence test.",
+  "build": "Existing local build/bin executables; aftermath_sample was built in Release in a separate build/gallery-aftermath directory.",
+  "notes": [
+    "PNG files are original client-area captures or lossless PNG conversions of application backbuffer exports. No scene content was generated or composited.",
+    "Aftermath was captured in normal operation; its crash-trigger controls were not activated.",
+    "DDGI uses the shipped Cornell configuration with the ImGui demo window collapsed through imgui.ini.",
+    "Both benchmark gallery images use NVRHI D3D12. The existing native Asteroids executable failed with structured exception 0xe06d7363 during initialization on D3D12 and D3D11; no native Asteroids image is presented.",
+    "Both SquidRoom renderers reported missing default-normalmap.dds and default.dds and used their fallback textures. The NVRHI image is shown.",
+    "WaveWorks reported missing DDS mipmap-count metadata and assumed zero mipmaps; both Beach terrains completed their shallow-water spin-up and rendered.",
+    "Some captured executables enable the D3D debug runtime in their existing build. These captures do not establish a complete API validation or backend support matrix."
+  ],
+  "non_visual": [
+    {
+      "sample": "headless",
+      "command": "build/bin/headless.exe -d3d12",
+      "result": "Expected result: 32896, computed result: 32896; Test PASSED",
+      "exit_code": 0,
+      "reason_no_image": "Compute reduction and buffer readback; no framebuffer."
+    }
+  ],
+  "images": [
+    {
+      "file": "nv_asteroids.png",
+      "size": [
+        1920,
+        1080
+      ],
+      "sha256": "4f29416bd7371f3367117640c48039e41a5ee8f3da36c387b5068997f9267c65",
+      "executable_sha256": "09e46f0f65eb3ca5301c8cc10ac24a4c89652bd72f230749887ae6e2373ec5b7",
+      "working_directory": "ethereal",
+      "command": "build/bin/nv_asteroids.exe -nodialog -adapter NVIDIA -view 0 -screenshot ethereal-samples/doc/images/nv_asteroids.png 400",
+      "backend": "D3D12",
+      "method": "Application PNG export",
+      "exit_code": 0
+    },
+    {
+      "file": "waveworks_ocean.png",
+      "size": [
+        1280,
+        800
+      ],
+      "sha256": "95d062c3681a98f4d5de641ba2c9ff930298755488ca55e3f8eb6715a46ba506",
+      "executable_sha256": "93eb13637d58164090a0e35fbf4e8822077e9d9cdf9558e53d09a83995d985b3",
+      "working_directory": "ethereal",
+      "command": "build/bin/waveworks_ocean.exe --rhi=d3d12 --simulation-dev=gpu",
+      "backend": "D3D12",
+      "method": "Win32 PrintWindow capture of the application client area",
+      "exit_code": 0
+    },
+    {
+      "file": "waveworks_beach.png",
+      "size": [
+        1280,
+        522
+      ],
+      "sha256": "90c1954ba9bfaa86325b9630fc8ee18699fb8075b5b30cc2c0e91d639b67756d",
+      "executable_sha256": "4262ae1265d1a4ca3f89e3f34635c28a9801451681b94c5e9d27b1a616cc27c3",
+      "working_directory": "ethereal",
+      "command": "build/bin/waveworks_beach.exe --rhi=d3d12 --simulation-dev=gpu",
+      "backend": "D3D12",
+      "method": "Application frame export to PPM, converted losslessly to PNG",
+      "exit_code": 0,
+      "environment": {
+        "WAVEWORKS_CAPTURE_FRAME": "ethereal-samples/doc/images/waveworks_beach.ppm",
+        "WAVEWORKS_CAPTURE_FRAME_NUMBER": "30"
+      }
+    },
+    {
+      "file": "waveworks_cove.png",
+      "size": [
+        1280,
+        522
+      ],
+      "sha256": "67a68b8fada826e33647860e8e48e1ca63aee52830bd400cb88076f86e1476e8",
+      "executable_sha256": "4262ae1265d1a4ca3f89e3f34635c28a9801451681b94c5e9d27b1a616cc27c3",
+      "working_directory": "ethereal",
+      "command": "build/bin/waveworks_beach.exe --rhi=d3d12 --simulation-dev=gpu --beach-terrain=cove",
+      "backend": "D3D12",
+      "method": "Application frame export to PPM, converted losslessly to PNG",
+      "exit_code": 0,
+      "environment": {
+        "WAVEWORKS_CAPTURE_FRAME": "ethereal-samples/doc/images/waveworks_cove.ppm",
+        "WAVEWORKS_CAPTURE_FRAME_NUMBER": "30"
+      }
+    },
+    {
+      "file": "DDGISample.png",
+      "size": [
+        1536,
+        864
+      ],
+      "sha256": "4c2b5f369ee8daf33d1f54cedd5ef1f7d7ed7143da4b1124e84233ff4c9b38d1",
+      "executable_sha256": "c100b5f0d0c3f18e70f88772395b7098126d2373336611c2cf11b8bc1b2fd597",
+      "working_directory": "ethereal",
+      "command": "build/bin/DDGISample.exe --config ethereal-samples/assets/config/cornell.cfg.json",
+      "backend": "D3D12",
+      "method": "Win32 PrintWindow capture of the application client area",
+      "exit_code": 0
+    },
+    {
+      "file": "VXGISample.png",
+      "size": [
+        1280,
+        800
+      ],
+      "sha256": "699efa316e20b0d991ad3176c21185b05c51ed45bc39c6d96096d0378efccfd7",
+      "executable_sha256": "6f78835d78f273903f99187118a2229867f418dd7312d27110f54cdf6b4e766b",
+      "working_directory": "ethereal",
+      "command": "build/bin/VXGISample.exe",
+      "backend": "D3D12",
+      "method": "Win32 PrintWindow capture of the application client area",
+      "exit_code": 0
+    },
+    {
+      "file": "basic_triangle.png",
+      "size": [
+        1280,
+        720
+      ],
+      "sha256": "eb40eef587d5af160f35279f156c299a5763f8a64c95c3d6dabe100a92159d86",
+      "executable_sha256": "7b48c187acbec3d243efd6854156f4cb7ad3014b031dbefc4419113ab8ee1e0b",
+      "working_directory": "ethereal",
+      "command": "build/bin/basic_triangle.exe -d3d12",
+      "backend": "D3D12",
+      "method": "Win32 PrintWindow capture of the application client area",
+      "exit_code": 0
+    },
+    {
+      "file": "vertex_buffer.png",
+      "size": [
+        1280,
+        720
+      ],
+      "sha256": "3bc2ca6146393200c5321640286920cd5bd377733161fa8c1337f880f2d9d601",
+      "executable_sha256": "1cdf4c8ad850f5e0d5ace9ad68f4be96668c0e9483f7550bccd7bda62e43af1e",
+      "working_directory": "ethereal",
+      "command": "build/bin/vertex_buffer.exe -d3d12",
+      "backend": "D3D12",
+      "method": "Win32 PrintWindow capture of the application client area",
+      "exit_code": 0
+    },
+    {
+      "file": "deferred_shading.png",
+      "size": [
+        1280,
+        720
+      ],
+      "sha256": "2478efb1c9d140b091aa95a025b438bbc3338044a0592f4016119172608baa7e",
+      "executable_sha256": "7f20371461b86bd0396d7f95260068b09af59abb28edc3a51f3f4a451680c3e3",
+      "working_directory": "ethereal",
+      "command": "build/bin/deferred_shading.exe -d3d12",
+      "backend": "D3D12",
+      "method": "Win32 PrintWindow capture of the application client area",
+      "exit_code": 0
+    },
+    {
+      "file": "bindless_rendering.png",
+      "size": [
+        1280,
+        720
+      ],
+      "sha256": "ddcf7f4f1fcbb7ddeffd6e7992bfb589c2e3ae9f7f07cbb7e16778748639378c",
+      "executable_sha256": "8c3c60d5ae2cd263d85d80d9f62b036abcb458bc59d96e3940d0ffcd40186a58",
+      "working_directory": "ethereal",
+      "command": "build/bin/bindless_rendering.exe -d3d12",
+      "backend": "D3D12",
+      "method": "Win32 PrintWindow capture of the application client area",
+      "exit_code": 0
+    },
+    {
+      "file": "async_compute.png",
+      "size": [
+        1280,
+        720
+      ],
+      "sha256": "a96a1ed3278f7359761b7ab58fa948e172b6903e26b7baee43a394146ba55e8d",
+      "executable_sha256": "e4be65ee0db9e4e2234ce09db58e21e391901e4369d95d957dd02fa4d916fb59",
+      "working_directory": "ethereal",
+      "command": "build/bin/async_compute.exe -d3d12",
+      "backend": "D3D12",
+      "method": "Win32 PrintWindow capture of the application client area",
+      "exit_code": 0
+    },
+    {
+      "file": "threaded_rendering.png",
+      "size": [
+        1024,
+        768
+      ],
+      "sha256": "1732f30576a133656c68882ec3efe2572999d0556c2569f2460079b2b0cde043",
+      "executable_sha256": "8c1e5d8dd832ddd6f1e4edb41e0572c0729157170838f4c9e3f2fcb7c09c5f44",
+      "working_directory": "ethereal",
+      "command": "build/bin/threaded_rendering.exe -d3d12",
+      "backend": "D3D12",
+      "method": "Win32 PrintWindow capture of the application client area",
+      "exit_code": 0
+    },
+    {
+      "file": "meshlets.png",
+      "size": [
+        1280,
+        720
+      ],
+      "sha256": "eb40eef587d5af160f35279f156c299a5763f8a64c95c3d6dabe100a92159d86",
+      "executable_sha256": "d1c841e34d1831c5a5f70676cf747db084c7561f41ecb87cd29fc1b088e27e41",
+      "working_directory": "ethereal",
+      "command": "build/bin/meshlets.exe -d3d12",
+      "backend": "D3D12",
+      "method": "Win32 PrintWindow capture of the application client area",
+      "exit_code": 0
+    },
+    {
+      "file": "variable_shading.png",
+      "size": [
+        1280,
+        720
+      ],
+      "sha256": "ab3beba677632a614ffef3ce80d18a1aa38f66df7d4742acbf6e012acbb029d7",
+      "executable_sha256": "ff0478398e3b82ec42f3497cfc71500c5df0e6d534d75583a6d7484c94d52d9e",
+      "working_directory": "ethereal",
+      "command": "build/bin/variable_shading.exe -d3d12",
+      "backend": "D3D12",
+      "method": "Win32 PrintWindow capture of the application client area",
+      "exit_code": 0
+    },
+    {
+      "file": "shader_specializations.png",
+      "size": [
+        1280,
+        720
+      ],
+      "sha256": "84ff2123c687791d6b47f4687b610f957d5f7d1c6e4e228833e951e9806c6d0f",
+      "executable_sha256": "c0d6b5bb2f9029c62ce2102b9b20e22f150d6cb54f5c83f771e3a97b64d88d51",
+      "working_directory": "ethereal",
+      "command": "build/bin/shader_specializations.exe -vk",
+      "backend": "Vulkan",
+      "method": "Win32 PrintWindow capture of the application client area",
+      "exit_code": 0
+    },
+    {
+      "file": "work_graphs_d3d12.png",
+      "size": [
+        1920,
+        1080
+      ],
+      "sha256": "e636d1cf630f9a14267e58cdc4fce663abdb5d4a5a75a111982521c85c93f205",
+      "executable_sha256": "9b552ac1594149410520ecc6caef338d84f84ed8e94c8ac1112c70c032b1287a",
+      "working_directory": "ethereal",
+      "command": "build/bin/work_graphs_d3d12.exe -d3d12",
+      "backend": "D3D12",
+      "method": "Win32 PrintWindow capture of the application client area",
+      "exit_code": 0
+    },
+    {
+      "file": "rt_triangle.png",
+      "size": [
+        1280,
+        720
+      ],
+      "sha256": "dd789b05c2e2bcaa430fffbc153042573fdb788c670c48ad4c991e9f999f9aca",
+      "executable_sha256": "e67304a8ec0d7664bc44a51eff9c88f888c3222bc55821226488d67d8a29c8c0",
+      "working_directory": "ethereal",
+      "command": "build/bin/rt_triangle.exe -d3d12",
+      "backend": "D3D12",
+      "method": "Win32 PrintWindow capture of the application client area",
+      "exit_code": 0
+    },
+    {
+      "file": "rt_shadows.png",
+      "size": [
+        1280,
+        720
+      ],
+      "sha256": "1ef3c287d09ad2caa740112aec287a3a05d5a61986f8898574b9dde68a2889cd",
+      "executable_sha256": "6f45972b1811ed02ea20c1a4bdb8b5ba0090c33580d96f31b429f7b90b6bba48",
+      "working_directory": "ethereal",
+      "command": "build/bin/rt_shadows.exe -d3d12",
+      "backend": "D3D12",
+      "method": "Win32 PrintWindow capture of the application client area",
+      "exit_code": 0
+    },
+    {
+      "file": "rt_bindless.png",
+      "size": [
+        1280,
+        720
+      ],
+      "sha256": "67c36aedce8b74c61d169451f7db653ac6ddee3ef3134584b9c6923eab384c31",
+      "executable_sha256": "b471bca36d9ad2ca872b7123be7312a3b034fb8823a672acd26e8671934472e8",
+      "working_directory": "ethereal",
+      "command": "build/bin/rt_bindless.exe -d3d12",
+      "backend": "D3D12",
+      "method": "Win32 PrintWindow capture of the application client area",
+      "exit_code": 0
+    },
+    {
+      "file": "rt_reflections.png",
+      "size": [
+        1280,
+        720
+      ],
+      "sha256": "4328f09432153bd1f90383fcb0c22010db16761f3839133409eac10aba8dfe9d",
+      "executable_sha256": "470cd391fee7ed73e5f1062b5e034d1d1b396e69faa869dc52950d54dd40a381",
+      "working_directory": "ethereal",
+      "command": "build/bin/rt_reflections.exe -d3d12",
+      "backend": "D3D12",
+      "method": "Win32 PrintWindow capture of the application client area",
+      "exit_code": 0
+    },
+    {
+      "file": "rt_particles.png",
+      "size": [
+        1280,
+        720
+      ],
+      "sha256": "b19e9638b61ea05b1339662fabea4b3b6e0c53fc0e6706e85c98653dd54a9d31",
+      "executable_sha256": "8731115019e44a6cc63bc1e7b01f80327bb195355506dcbbc42a6469803cdf36",
+      "working_directory": "ethereal",
+      "command": "build/bin/rt_particles.exe -d3d12",
+      "backend": "D3D12",
+      "method": "Win32 PrintWindow capture of the application client area",
+      "exit_code": 0
+    },
+    {
+      "file": "hello_dxr.png",
+      "size": [
+        800,
+        600
+      ],
+      "sha256": "4f9eed881086102c0e8f3d76ccf33d69511a54d45092bd07817734685638d8d0",
+      "executable_sha256": "60a76797d68b899eb117820b1803e47979d7759212999d8214e6e04762248e13",
+      "working_directory": "ethereal",
+      "command": "build/bin/hello_dxr.exe -d3d12",
+      "backend": "D3D12",
+      "method": "Win32 PrintWindow capture of the application client area",
+      "exit_code": 0
+    },
+    {
+      "file": "aftermath_sample.png",
+      "size": [
+        1280,
+        720
+      ],
+      "sha256": "c24cf2bc630475b46df6f76889c6cbd72e307ef05e21f6ad2180ffc1c4ed631d",
+      "executable_sha256": "5bd8124caae58c63819dce3d936774ed704548aee50a0b4a01a5573a55c552f5",
+      "working_directory": "ethereal",
+      "command": "build/gallery-aftermath/bin/aftermath_sample.exe -d3d12",
+      "backend": "D3D12",
+      "method": "Win32 PrintWindow capture of the application client area",
+      "exit_code": 0
+    },
+    {
+      "file": "render-to-file.png",
+      "size": [
+        1024,
+        768
+      ],
+      "sha256": "ead95858e4747a2b935d5d91d3a4ddfd1ba1955c69b744d86c30d69c02e386ba",
+      "executable_sha256": "532040e1a9ceb0876fb3c115f5d627d2aa1ac6c89c53154dd51378e31f620003",
+      "working_directory": "ethereal/ethereal-samples/doc/images",
+      "command": "../../../build/bin/render-to-file.exe",
+      "backend": "CUDA",
+      "method": "Application PNG export",
+      "exit_code": 0,
+      "output_rename": "out_rendtofile.png -> render-to-file.png"
+    },
+    {
+      "file": "render-kernel.png",
+      "size": [
+        1024,
+        768
+      ],
+      "sha256": "980482018719bb4d14e5b59df973e0ecd6d41834660908a17c3b82ed42c592e6",
+      "executable_sha256": "a8a15b7188b4cd0d8c10a65edd28275a0a25a774fd87dfe7b4ebe84bab811444",
+      "working_directory": "ethereal/ethereal-samples/doc/images",
+      "command": "../../../build/bin/render-kernel.exe",
+      "backend": "CUDA",
+      "method": "Application PNG export",
+      "exit_code": 0,
+      "output_rename": "out_rendkernel.png -> render-kernel.png"
+    },
+    {
+      "file": "3d-print.png",
+      "size": [
+        1024,
+        768
+      ],
+      "sha256": "023dfcef2b63be0bbcb841f8466bdf0b17249750c06a286a64ce93e35dcd0c0e",
+      "executable_sha256": "189c428bf7424ce0d54cff3127dc1e3411cde1b56380bfe5994a506a71a5e588",
+      "working_directory": "ethereal",
+      "command": "build/bin/3d-print.exe -d3d12 --screenshot ethereal-samples/doc/images/3d-print.png --frames 16",
+      "backend": "D3D12",
+      "method": "Application PNG export",
+      "exit_code": 0
+    },
+    {
+      "file": "depth-map.png",
+      "size": [
+        1024,
+        768
+      ],
+      "sha256": "8d612cd86986437c96331edb4bcc8cc3ec3bd25eb411c81051955861114cc3f4",
+      "executable_sha256": "72daf5b3d37ff21f7418569bbca99c084a9ed79bf6f6b2dc85f7094d69def141",
+      "working_directory": "ethereal",
+      "command": "build/bin/depth-map.exe -d3d12 --screenshot ethereal-samples/doc/images/depth-map.png --frames 16",
+      "backend": "D3D12",
+      "method": "Application PNG export",
+      "exit_code": 0
+    },
+    {
+      "file": "resample.png",
+      "size": [
+        1024,
+        768
+      ],
+      "sha256": "0dc3cc76694b707777021abafc8909e70d6479e23d499fe598f11685af6be1f6",
+      "executable_sha256": "2494cb7851aebb97207c88a4ab898f0286dc2170a16c9b43c4d6c0cd8d2c6efa",
+      "working_directory": "ethereal",
+      "command": "build/bin/resample.exe -d3d12 --screenshot ethereal-samples/doc/images/resample.png --frames 16",
+      "backend": "D3D12",
+      "method": "Application PNG export",
+      "exit_code": 0
+    },
+    {
+      "file": "spray-deposit.png",
+      "size": [
+        1024,
+        768
+      ],
+      "sha256": "e53f944ee7ff8ecd5acdd3cceda3fbf32d9d29ce78bfb730b08a177a2491d982",
+      "executable_sha256": "9cfd5ea557e4c72a86d8ac6ebbc4540c3a18842fc4c2bebb1fc63e5b0b73b3c6",
+      "working_directory": "ethereal",
+      "command": "build/bin/spray-deposit.exe -d3d12 --screenshot ethereal-samples/doc/images/spray-deposit.png --frames 100",
+      "backend": "D3D12",
+      "method": "Application PNG export",
+      "exit_code": 0
+    },
+    {
+      "file": "point-fusion.png",
+      "size": [
+        1024,
+        768
+      ],
+      "sha256": "644a22e0f84ff48e1b6886ec7f45f0dfcf9faaf391c83de80c18079d872446c4",
+      "executable_sha256": "fc5e4bd8235d7f5d41a0e2b5ad0ccae69673030edde93e54516d9a5b82b8e033",
+      "working_directory": "ethereal",
+      "command": "build/bin/point-fusion.exe -d3d12 --screenshot ethereal-samples/doc/images/point-fusion.png --frames 40",
+      "backend": "D3D12",
+      "method": "Application PNG export",
+      "exit_code": 0
+    },
+    {
+      "file": "point-cloud.png",
+      "size": [
+        800,
+        600
+      ],
+      "sha256": "8028949da15964c89f89c39c722b984990423997f215c73821586217a544fe96",
+      "executable_sha256": "08581c7c7780a6a5ce24339c2fe731963e383dcb5b6aded6444c0f03be3edae2",
+      "working_directory": "ethereal",
+      "command": "build/bin/point-cloud.exe -d3d12 --screenshot ethereal-samples/doc/images/point-cloud.png --samples 128",
+      "backend": "D3D12",
+      "method": "Application PNG export",
+      "exit_code": 0,
+      "optix_samples": 128
+    },
+    {
+      "file": "fluid-surface.png",
+      "size": [
+        1024,
+        768
+      ],
+      "sha256": "6a6c26aaf2d2945636d54c96f670a0f21689012011a8fb534a5232b9aee234a0",
+      "executable_sha256": "47abe53341474a09c68ae1676f9fb8811014ee81d7ace0654a1df8f8e23cd25c",
+      "working_directory": "ethereal",
+      "command": "build/bin/fluid-surface.exe -d3d12 --screenshot ethereal-samples/doc/images/fluid-surface.png --samples 128 --frames 100",
+      "backend": "D3D12",
+      "method": "Application PNG export",
+      "exit_code": 0,
+      "optix_samples": 128,
+      "simulation_frames": 100
+    },
+    {
+      "file": "interactive-optix.png",
+      "size": [
+        1024,
+        768
+      ],
+      "sha256": "bf5294301bd059b3d702da4c1d1c5b7890c69974a0e16d3787b8e3a503f011a6",
+      "executable_sha256": "b35f56659d86918c84fd85f743cec1a29910f9cd4647f77677bd9058d67a7634",
+      "working_directory": "ethereal",
+      "command": "build/bin/interactive-optix.exe -d3d12 --screenshot ethereal-samples/doc/images/interactive-optix.png --samples 64 --frames 128",
+      "backend": "D3D12",
+      "method": "Application PNG export",
+      "exit_code": 0,
+      "optix_samples": 64
+    },
+    {
+      "file": "sph_fluid_pool.png",
+      "size": [
+        1270,
+        800
+      ],
+      "sha256": "eeabe89572a7488bda77fc37aff3a153748b1e0b0fcdcb0c9eea215b95280d35",
+      "executable_sha256": "4bb25e8b3f191088bc433b3b4989f6b5637c861d2237793a182e9d2c3fd7beb7",
+      "working_directory": "ethereal",
+      "command": "build/bin/sph_fluid_pool.exe -d3d12 --particles 262144 --screenshot ethereal-samples/doc/images/sph_fluid_pool.png --frames 60",
+      "backend": "D3D12",
+      "method": "Application PNG export",
+      "exit_code": 0,
+      "particles": 262144
+    },
+    {
+      "file": "asteroids_nvrhi.png",
+      "size": [
+        1080,
+        720
+      ],
+      "sha256": "34913704bc6211540d1f90cac8789313568529c216c6a08e4260f18a72c073d1",
+      "executable_sha256": "fb0c68575f93af2c2912f16185e0ef49bc48eb7fe0241d4c844e8fdc8b006f82",
+      "working_directory": "ethereal",
+      "command": "build/bin/asteroids_nvrhi.exe -benchmark -renderer nvrhi -api d3d12 -binding tex_mut -threads 4 -warmup 0 -duration 8 -capture_frame 30 -output ethereal-samples/doc/images/asteroids_nvrhi",
+      "backend": "D3D12",
+      "method": "Application backbuffer BMP export, converted losslessly to PNG",
+      "exit_code": 0,
+      "frame": 30
+    },
+    {
+      "file": "mt_rendering_nvrhi.png",
+      "size": [
+        1280,
+        720
+      ],
+      "sha256": "44ec6af7694dad2bfe334e7a1bc9b3366efbd1ae9cbbbcb6e97ba7ee487b0062",
+      "executable_sha256": "162aaef5804e27ee28d69c6f7a0c9b638a44e5125aecd9548e0dc30997be8ff9",
+      "working_directory": "ethereal",
+      "command": "build/bin/mt_rendering_nvrhi.exe -renderer nvrhi -api d3d12 -mode mt_chunk -threads 4 -freeze 2 -screenshot ethereal-samples/doc/images/mt_rendering_nvrhi.bmp",
+      "backend": "D3D12",
+      "method": "Application backbuffer BMP export, converted losslessly to PNG",
+      "exit_code": 0,
+      "frame": 30,
+      "frozen_scene_time_seconds": 2
+    }
+  ]
+}

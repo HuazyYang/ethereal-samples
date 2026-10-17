@@ -1,0 +1,170 @@
+[
+  {
+    "asset": "grass_bermuda_01",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/grass_bermuda_01/grass_bermuda_01_1k.gltf",
+    "md5": "a1bdd74118d2387a42dba4f605226f87",
+    "size": 32912
+  },
+  {
+    "asset": "rock_moss_set_01",
+    "size": 9987,
+    "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/rock_moss_set_01/rock_moss_set_01_1k.gltf",
+    "md5": "75113cc1c21806cca5d8badad4737af7"
+  },
+  {
+    "asset": "shrub_sorrel_01",
+    "size": 17428,
+    "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/shrub_sorrel_01/shrub_sorrel_01_1k.gltf",
+    "md5": "d56d50a8492bd7d7c7a0a571f42239c6"
+  },
+  {
+    "asset": "grass_bermuda_01",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/grass_bermuda_01/grass_bermuda_01.bin",
+    "md5": "2940aa3405004b62983fd70bede8e47f",
+    "size": 32260
+  },
+  {
+    "asset": "rock_moss_set_01",
+    "size": 1466380,
+    "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/rock_moss_set_01/rock_moss_set_01.bin",
+    "md5": "207a51c9f56d34732e9814bbf9cc07b1"
+  },
+  {
+    "asset": "shrub_sorrel_01",
+    "size": 110936,
+    "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/shrub_sorrel_01/shrub_sorrel_01.bin",
+    "md5": "5b6481fc43f4dc36ab4e80d79a19119f"
+  },
+  {
+    "asset": "grass_bermuda_01",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/grass_bermuda_01/grass_bermuda_01_arm_1k.jpg",
+    "md5": "87c58d5d3345d579eab570f7eb446313",
+    "size": 500088
+  },
+  {
+    "asset": "grass_bermuda_01",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/grass_bermuda_01/grass_bermuda_01_diff_1k.jpg",
+    "md5": "234be9f52cfcd3380c7f782baaa841c3",
+    "size": 175425
+  },
+  {
+    "asset": "grass_bermuda_01",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/grass_bermuda_01/grass_bermuda_01_nor_gl_1k.jpg",
+    "md5": "73a585e0963ff6bf3cefa845cbee0645",
+    "size": 709845
+  },
+  {
+    "asset": "rock_moss_set_01",
+    "size": 168099,
+    "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/rock_moss_set_01/rock_moss_set_01_diff_1k.jpg",
+    "md5": "b8742301e6b4bc5683d2de712e83f772"
+  },
+  {
+    "asset": "rock_moss_set_01",
+    "size": 209975,
+    "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/rock_moss_set_01/rock_moss_set_01_nor_gl_1k.jpg",
+    "md5": "eb7ebd31ad08e78d0497900652ff1568"
+  },
+  {
+    "asset": "rock_moss_set_01",
+    "size": 82624,
+    "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/rock_moss_set_01/rock_moss_set_01_rough_1k.jpg",
+    "md5": "ed9d8a2c863262f76f881346e8047c6a"
+  },
+  {
+    "asset": "shrub_sorrel_01",
+    "size": 201949,
+    "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/shrub_sorrel_01/shrub_sorrel_01_arm_1k.jpg",
+    "md5": "6230445a48867ef8196ee1ab052d346d"
+  },
+  {
+    "asset": "shrub_sorrel_01",
+    "size": 385129,
+    "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/shrub_sorrel_01/shrub_sorrel_01_diff_1k.jpg",
+    "md5": "bef299def81bd55c2b378d53dad803b5"
+  },
+  {
+    "asset": "shrub_sorrel_01",
+    "size": 470891,
+    "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/shrub_sorrel_01/shrub_sorrel_01_nor_gl_1k.jpg",
+    "md5": "71c6c432b91a8d64f2c480366fd61dfb"
+  },
+  {
+    "asset": "grass_bermuda_01",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Models/png/1k/grass_bermuda_01/grass_bermuda_01_alpha_1k.png",
+    "md5": "274285abb11b3b7a0fd277b9923d1074",
+    "size": 59564
+  },
+  {
+    "asset": "shrub_sorrel_01",
+    "size": 64408,
+    "url": "https://dl.polyhaven.org/file/ph-assets/Models/png/1k/shrub_sorrel_01/shrub_sorrel_01_alpha_1k.png",
+    "md5": "d73e433a4b041bb19e4dfb4266598e9a"
+  },
+  {
+    "asset": "aerial_beach_02",
+    "size": 86301,
+    "md5": "aafb629ac0812a7c5e36dae7b9ed0ea0",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/aerial_beach_02/aerial_beach_02_arm_1k.jpg"
+  },
+  {
+    "asset": "aerial_beach_02",
+    "size": 309954,
+    "md5": "8add95ec469c7b776d3289e774927f28",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/aerial_beach_02/aerial_beach_02_diff_1k.jpg"
+  },
+  {
+    "asset": "aerial_beach_02",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/aerial_beach_02/aerial_beach_02_nor_dx_1k.jpg",
+    "size": 157136,
+    "md5": "2230d310cb34c7ebdb275555ee9ebbba"
+  },
+  {
+    "asset": "coast_land_rocks_01",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/coast_land_rocks_01/coast_land_rocks_01_arm_2k.jpg",
+    "size": 3429431,
+    "md5": "a52a353e24f47d616ff7ae961d62fec1"
+  },
+  {
+    "asset": "coast_land_rocks_01",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/coast_land_rocks_01/coast_land_rocks_01_diff_2k.jpg",
+    "size": 3567190,
+    "md5": "2a403a10fc0b12830881f5f9cc0279d1"
+  },
+  {
+    "asset": "coast_land_rocks_01",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/coast_land_rocks_01/coast_land_rocks_01_nor_dx_2k.jpg",
+    "size": 4942557,
+    "md5": "02050bbb0a5bf30b30beb88dcec925ca"
+  },
+  {
+    "asset": "leafy_grass",
+    "size": 4116600,
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/leafy_grass/leafy_grass_arm_2k.jpg",
+    "md5": "64f2eb364e806301df19edc7a67d65bb"
+  },
+  {
+    "asset": "leafy_grass",
+    "size": 4766204,
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/leafy_grass/leafy_grass_diff_2k.jpg",
+    "md5": "8014f4dace676a62ed71b3dd76119dae"
+  },
+  {
+    "asset": "leafy_grass",
+    "size": 6049495,
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/leafy_grass/leafy_grass_nor_dx_2k.jpg",
+    "md5": "82936efe4dd20543414cb55d47a9f53c"
+  },
+  {
+    "asset": "aerial_beach_02",
+    "size": 1881339,
+    "md5": "f191c60692acb4418f0166f68630cd9f",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/png/1k/aerial_beach_02/aerial_beach_02_disp_1k.png"
+  },
+  {
+    "asset": "coast_land_rocks_01",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/png/2k/coast_land_rocks_01/coast_land_rocks_01_disp_2k.png",
+    "size": 6349788,
+    "md5": "7f9acfaee5370594b0e29269b9d00daa"
+  }
+]

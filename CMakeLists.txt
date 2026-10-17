@@ -51,6 +51,6 @@ endif()
 
 # Opt-in: nv_asteroids needs the original 2018 demo's media.db and shipped DLLs
 # (NV_ASTEROIDS_ORIGINAL_DIR), so it cannot be part of a default configure.
-if (ETHEREAL_BUILD_NV_ASTEROIDS)
+if (ETHEREAL_BUILD_NV_ASTEROIDS OR ETHEREAL_BUILD_WAVEWORKS)
 	add_subdirectory(demos)
 endif()
