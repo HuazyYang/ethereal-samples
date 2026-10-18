@@ -143,3 +143,13 @@ endif()
 if(NOT TARGET 3d-print)
     add_subdirectory(../gvdb_samples/samples/3d-print gvdb-3d-print)
 endif()
+
+if(NOT TARGET depth-map)
+    add_subdirectory(../gvdb_samples/samples/depth-map gvdb-depth-map)
+endif()
+
+include(../gvdb_samples/samples/point-fusion/PointFusionTests.cmake)
+
+if(NOT TARGET point-fusion)
+    add_subdirectory(../gvdb_samples/samples/point-fusion gvdb-point-fusion)
+endif()

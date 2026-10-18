@@ -26,6 +26,10 @@ class Fixture : public v::VolumeScene {
     std::unique_ptr<g::SlangVolume> m_volume;
 
  public:
+    std::vector<v::VolumeOverlayLine> lines;
+    std::vector<v::VolumeOverlayPoint> points;
+    std::vector<v::VolumeOverlayLine> overlayLines() const override { return lines; }
+    std::vector<v::VolumeOverlayPoint> overlayPoints() const override { return points; }
     explicit Fixture(es::ComputeRuntime& runtime) {
         std::vector<float> values(64);
         for (unsigned z = 0; z < 4; ++z)
@@ -171,6 +175,82 @@ int main(int argc, const char** argv) {
                 }
             }
         }
+        options.mode = v::VolumeViewMode::Voxel;
+        options.explicitCamera = true;
+        options.cameraEye = {2, 2, 10, 0};
+        options.cameraForward = {0, 0, -2, 0};  // Non-unit bases are accepted and normalized.
+        options.cameraUp = {0, 3, 0, 0};
+        options.horizontalFov = 90;
+        options.cameraNear = 1;
+        options.cameraFar = 20;
+        output = v::renderVolumeView(runtime, scene, options);
+        runtime.read(output.depth, depth.data(), depth.size() * 4);
+        expectNear(depth[center], 6, 1e-5f, "explicit camera center depth");
+        const auto unadorned = colors(runtime, output);
+        scene.lines = {
+            {{0, 2, 2, 0}, {4, 2, 2, 0}, {1, 0, 0, 1}}
+        };
+        scene.points = {
+            {{2, 3, 2, 0},    {0, 1, 0, 1}},
+            {{2, 2, 9.5f, 0}, {1, 1, 0, 1}}, // Before near plane.
+            {{2, 2, -20, 0},  {1, 0, 1, 1}}
+        };  // Beyond far plane.
+        image = colors(runtime, v::renderVolumeView(runtime, scene, options));
+        for (unsigned y = 0; y < options.height; ++y)
+            for (unsigned x = 0; x < options.width; ++x) {
+                const auto& got = image[y * options.width + x];
+                const g::Float4 expected = y == 6 && x >= 6 && x <= 10 ? g::Float4{1, 0, 0, 1}
+                                           : y == 5 && x == 8          ? g::Float4{0, 1, 0, 1}
+                                                                       : unadorned[y * options.width + x];
+                expectNear(got.x, expected.x, 1e-6f, "world overlay horizontal projection");
+                expectNear(got.y, expected.y, 1e-6f, "world point projection and clipping");
+                expectNear(got.z, expected.z, 1e-6f, "world overlay preserves other pixels");
+            }
+        scene.lines.clear();
+        scene.points.clear();
+        options.cameraFar = 5;
+        output = v::renderVolumeView(runtime, scene, options);
+        runtime.read(output.depth, depth.data(), depth.size() * 4);
+        require(std::isinf(depth[center]), "explicit camera far clip failed");
+        options.cameraFar = 20;
+        options.cameraEye = {-2, 2, 10, 0};
+        options.cameraFar = 7;
+        output = v::renderVolumeView(runtime, scene, options);
+        runtime.read(output.depth, depth.data(), depth.size() * 4);
+        // Pixel14 points .70588 units right per forward unit. It enters the
+        // front Z face at view depth6 but ray distance7.345; far7 must retain it.
+        const float slope = 12.f / 17;
+        expectNear(depth[6 * options.width + 14], 6 * std::sqrt(1 + slope * slope), 1e-4f,
+                   "off-axis view-Z far plane");
+        options.cameraEye = {2, 2, 10, 0};
+        options.cameraFar = 20;
+        // Very large, finite projected endpoints must never reach float-to-int
+        // conversion as infinity or NaN during tile binning.
+        scene.lines = {
+            {{-1e38f, 2, 2, 0}, {1e38f, 2, 2, 0}, {1, 0, 0, 1}}
+        };
+        (void)colors(runtime, v::renderVolumeView(runtime, scene, options));
+        scene.lines.clear();
+        options.mode = v::VolumeViewMode::Section2D;
+        const auto sectionBase = colors(runtime, v::renderVolumeView(runtime, scene, options));
+        scene.points = {
+            {{2, 123, 2, 0}, {0, 1, 0, 1}}
+        };
+        image = colors(runtime, v::renderVolumeView(runtime, scene, options));
+        for (size_t i = 0; i < image.size(); ++i) {
+            const auto expected = i == center ? g::Float4{0, 1, 0, 1} : sectionBase[i];
+            expectNear(image[i].x, expected.x, 1e-6f, "orthographic section overlay X");
+            expectNear(image[i].y, expected.y, 1e-6f, "orthographic section overlay Z");
+        }
+        scene.points.clear();
+        options.cameraUp = {0, 0, 1, 0};
+        bool rejected = false;
+        try {
+            (void)v::renderVolumeView(runtime, scene, options);
+        } catch (const std::invalid_argument&) {
+            rejected = true;
+        }
+        require(rejected, "Parallel explicit camera basis was accepted");
         std::puts(
             "Volume view: section interpolation/composition, voxel DDA, odd inset, topology, surface and "
             "graphics presentation PASS");

@@ -24,30 +24,9 @@ void finite(float value)
 }
 void validate(const RaycastParameters &p, const std::vector<Float4> &transfer, const rt::AffineTransform &transform)
 {
-    if (!p.image.x || !p.image.y || uint64_t(p.image.x) * p.image.y > UINT32_MAX || !p.image.w || transfer.empty() ||
-        transfer.size() > UINT32_MAX)
-        throw std::invalid_argument("GVDB RT image or transfer dimensions are invalid");
-    const Float4 vectors[] = {p.rayOrigin, p.direction00, p.directionDx, p.directionDy,
-                              p.march,     p.valueRange,  p.background,  p.light};
-    for (const auto &v : vectors)
-    {
-        finite(v.x);
-        finite(v.y);
-        finite(v.z);
-        finite(v.w);
-    }
-    for (const auto &v : transfer)
-    {
-        finite(v.x);
-        finite(v.y);
-        finite(v.z);
-        finite(v.w);
-        if (v.w < 0)
-            throw std::invalid_argument("Negative extinction");
-    }
-    if (p.march.x <= 0 || p.march.y < 0 || p.march.y >= p.march.z || p.march.w < 0 ||
-        p.valueRange.x == p.valueRange.y || p.valueRange.w <= 0 || p.valueRange.w > 1)
-        throw std::invalid_argument("GVDB RT march or transfer range is invalid");
+    validateRaycastParameters(p, transfer);
+    if (p.march.y < 0 || p.march.y >= p.march.z)
+        throw std::invalid_argument("GVDB RT requires a nonnegative, nonempty ray interval");
     for (float value : transform)
         finite(value);
     const float determinant = transform[0] * (transform[5] * transform[10] - transform[6] * transform[9]) -

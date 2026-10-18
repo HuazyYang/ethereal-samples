@@ -16,12 +16,25 @@ enum class VolumeViewMode : uint32_t {
 };
 struct VolumeViewOptions {
     uint32_t width = 1024, height = 768;
+    uint32_t frameLimit = 0;           // Zero keeps an interactive window open.
+    std::filesystem::path screenshot;  // Optional final compute image at frameLimit.
     float step = .5f, extinction = 1.5f, isovalue = .1f, valueMin = 0, valueMax = 1;
     float yaw = .52f, pitch = .52f, distanceScale = 2.8f, sectionHeight = .5f;
     VolumeViewMode mode = VolumeViewMode::Volume;
     bool topology = false, sectionInset = false;
+    bool explicitCamera = false;
+    // Explicit perspective near/far are view-space Z planes, in index units.
+    float horizontalFov = 50, cameraNear = 1, cameraFar = 100000;
+    float scalarBackground = 0;
+    slang::Float4 cameraEye{0, 0, 1, 0}, cameraForward{0, 0, -1, 0}, cameraUp{0, 1, 0, 0};
     slang::Float4 background{.1f, .2f, .4f, 1};
     slang::Float4 targetOffset{0, 0, 0, 0}, lightDirection{-1, 2, -1, 0};
+};
+struct VolumeOverlayLine {
+    slang::Float4 start, end, color;
+};
+struct VolumeOverlayPoint {
+    slang::Float4 position, color;
 };
 class VolumeScene {
  public:
@@ -29,6 +42,14 @@ class VolumeScene {
     virtual slang::SlangVolume& volume() = 0;
     virtual const slang::PackedVolume& packed() const = 0;
     virtual std::vector<slang::Float4> transfer() const = 0;
+    virtual void animate(float, VolumeViewOptions&) {}
+    virtual nvrhi::IBuffer* colorAtlas() const { return nullptr; }
+    // Section2D projects these debug primitives orthographically onto X/Z.
+    virtual std::vector<VolumeOverlayLine> overlayLines() const { return {}; }
+    virtual std::vector<VolumeOverlayPoint> overlayPoints() const { return {}; }
+    // Return true when a scene consumes an input before the viewer defaults.
+    virtual bool mouseDrag(int, float, float, int, VolumeViewOptions&) { return false; }
+    virtual bool mouseScroll(float, VolumeViewOptions&) { return false; }
     virtual bool key(int) { return false; }
     virtual bool key(int value, VolumeViewOptions&) { return key(value); }
     virtual std::string describe() const { return {}; }

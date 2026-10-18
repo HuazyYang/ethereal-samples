@@ -12,8 +12,10 @@ file(CONFIGURE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/volume-present.cfg"
 ethereal_compile_shaders(TARGET gvdb_volume_present_shaders SLANG ALL_PLATFORMS
     CONFIG "${CMAKE_CURRENT_BINARY_DIR}/volume-present.cfg"
     OUTPUT_DIRECTORY "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/shaders/gvdb_volume_view")
+include(VolumeSurface.cmake)
+
 add_library(gvdb_volume_viewer STATIC VolumeViewer.cpp)
-target_link_libraries(gvdb_volume_viewer PUBLIC gvdb_slang_runtime donut_app)
+target_link_libraries(gvdb_volume_viewer PUBLIC gvdb_slang_runtime gvdb_volume_surface donut_app)
 target_include_directories(gvdb_volume_viewer PUBLIC "${CMAKE_CURRENT_LIST_DIR}")
 add_dependencies(gvdb_volume_viewer gvdb_volume_view_shaders gvdb_volume_present_shaders gvdb_slang_shaders)
 

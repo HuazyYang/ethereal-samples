@@ -80,7 +80,8 @@ void renderSection(uint3 id:SV_DispatchThreadID) {
     float3 origin=g_Parameters.rayOrigin.xyz,direction=pixelDirection(id.xy);
     float planeT=direction.y!=0?(g_View.section.y-origin.y)/direction.y:-1;
     float enter,leave,depth=asfloat(0x7f800000u);float4 base=g_Parameters.background,section=float4(0);
-    if(planeT>0) {
+    float2 clip=rayClipInterval(direction);
+    if(planeT>0&&planeT>=clip.x&&planeT<=clip.y) {
         float3 point=origin+direction*planeT;VDBNode leaf;uint index;
         if(findLeaf(g_Nodes,g_Children,g_Levels,g_Parameters.volume,point,leaf,index)) {
             section=transferValue(sampleVolume(point));section.w=saturate(section.w);

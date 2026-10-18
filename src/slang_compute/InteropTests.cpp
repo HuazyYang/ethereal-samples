@@ -68,11 +68,12 @@ int run(IDevice *graphics)
             "unsupported graphics-to-graphics route rejected");
     check(exporter->queryRoute(GraphicsAPI::CUDA, importer->getAdapterIdentity(), route), "restore route");
     TextureDesc td;
-    td.width = 8;
-    td.height = 4;
+    td.width = 65;
+    td.height = 33;
+    const uint32_t count = td.width * td.height;
     td.format = Format::R32_UINT;
     td.isUAV = true;
-    td.sharedResourceFlags = SharedResourceFlags::Shared;
+    td.sharedResourceFlags = route.textureSharingFlags;
     td.initialState = ResourceStates::Common;
     td.keepInitialState = false;
     TextureHandle texture;
@@ -91,8 +92,17 @@ int run(IDevice *graphics)
     require((foreignStatus == FE_INVALID_ARGS || foreignStatus == FE_UNSUPPORTED) && !rejected,
             "foreign API resource rejected");
     require(exporter->exportTexture(texture, nullptr) == FE_INVALID_ARGS, "null export result rejected");
+    if (graphics->getGraphicsAPI() == GraphicsAPI::D3D11)
+    {
+        auto legacy = td;
+        legacy.sharedResourceFlags = SharedResourceFlags::Shared;
+        TextureHandle kmt;
+        check(graphics->createTexture(legacy, &kmt), "create legacy KMT texture");
+        require(exporter->exportTexture(kmt, &rejected) == FE_UNSUPPORTED && !rejected,
+                "unsafe KMT export route rejected");
+    }
     BufferDesc bd;
-    bd.byteSize = 32 * sizeof(uint32_t);
+    bd.byteSize = count * sizeof(uint32_t);
     bd.structStride = sizeof(uint32_t);
     bd.canHaveUAVs = true;
     bd.sharedResourceFlags = SharedResourceFlags::Shared;
@@ -120,12 +130,12 @@ int run(IDevice *graphics)
     CommandListHandle graphicsCommands, cudaCommands;
     check(graphics->createCommandList(CommandListParameters(), &graphicsCommands), "graphics commands");
     check(cudaDevice->createCommandList(CommandListParameters(), &cudaCommands), "CUDA commands");
-    std::vector<uint32_t> pixels(32), values(32, 11);
-    for (uint32_t i = 0; i < 32; ++i)
+    std::vector<uint32_t> pixels(count), values(count, 11);
+    for (uint32_t i = 0; i < count; ++i)
         pixels[i] = i;
     graphicsCommands->open();
     graphicsCommands->beginTrackingTextureState(texture, AllSubresources, ResourceStates::Common);
-    graphicsCommands->writeTexture(texture, 0, 0, pixels.data(), 8 * sizeof(uint32_t));
+    graphicsCommands->writeTexture(texture, 0, 0, pixels.data(), td.width * sizeof(uint32_t));
     if (buffer)
     {
         graphicsCommands->beginTrackingBufferState(buffer, ResourceStates::Common);
@@ -169,7 +179,7 @@ int run(IDevice *graphics)
         cudaCommands->open();
         check(importer->waitFence(cudaCommands, cudaFence, cycle * 2 + 1), "CUDA wait graphics");
         cudaCommands->setComputeState(ComputeState().setPipeline(pipeline).addBindingSet(bindings));
-        cudaCommands->dispatch(1, 1, 1);
+        cudaCommands->dispatch((td.width + 7) / 8, (td.height + 3) / 4, 1);
         check(importer->signalFence(cudaCommands, cudaFence, cycle * 2 + 2), "CUDA consumer signal");
         submit(cudaDevice, cudaCommands);
         check(exporter->waitFence(CommandQueue::Graphics, fence, cycle * 2 + 2), "graphics wait CUDA");
@@ -204,9 +214,9 @@ int run(IDevice *graphics)
     const auto mapped = static_cast<const uint8_t *>(
         graphics->mapStagingTexture(staging, TextureSlice(), CpuAccessMode::Read, rowPitch));
     require(mapped != nullptr, "map graphics verification texture");
-    for (uint32_t y = 0; y < 4; ++y)
-        for (uint32_t x = 0; x < 8; ++x)
-            require(reinterpret_cast<const uint32_t *>(mapped + y * rowPitch)[x] == y * 8 + x + 36,
+    for (uint32_t y = 0; y < td.height; ++y)
+        for (uint32_t x = 0; x < td.width; ++x)
+            require(reinterpret_cast<const uint32_t *>(mapped + y * rowPitch)[x] == y * td.width + x + 36,
                     "graphics observes CUDA shared texture updates");
     graphics->unmapStagingTexture(staging);
     if (buffer)
@@ -226,7 +236,7 @@ int run(IDevice *graphics)
         graphics->waitForIdle();
         auto data = static_cast<const uint32_t *>(graphics->mapBuffer(readback, CpuAccessMode::Read));
         require(data != nullptr, "map verification buffer");
-        for (unsigned i = 0; i < 32; ++i)
+        for (unsigned i = 0; i < count; ++i)
             require(data[i] == 14, "graphics observes CUDA shared buffer updates");
         graphics->unmapBuffer(readback);
     }

@@ -93,6 +93,30 @@ int run(IDevice *device, const std::filesystem::path &library)
     color(pixel.color, {clipped, .5f * clipped, .25f * clipped, clipped});
     expectNear(pixel.depth, 2, "clipped volume depth");
     std::puts("PASS GVDB procedural RT sparse volume, analytic Beer-Lambert color and clipped ray interval");
+    // Off-axis near/far are view-Z planes when direction00.w is one.
+    p = f::raycastParameters(fixture);
+    p.image.x = 3;
+    p.rayOrigin = {-1, .5f, 1, 0};
+    p.direction00 = {1, 1.5f, 0, 1};
+    p.directionDx = {0, -1, 0, 0};
+    p.directionDy = {};
+    p.march.y = 0;
+    p.march.z = 1.25f;
+    pixel = read(runtime, renderer.render(p, transfer));
+    float opacity = 1 - std::exp(-.5f * .25f * std::sqrt(2.f));
+    color(pixel.color, {opacity, .5f * opacity, .25f * opacity, opacity});
+    expectNear(pixel.depth, std::sqrt(2.f), "off-axis RT view-Z far plane");
+    p.march.y = 1.1f;
+    pixel = read(runtime, renderer.render(p, transfer));
+    opacity = 1 - std::exp(-.5f * .15f * std::sqrt(2.f));
+    color(pixel.color, {opacity, .5f * opacity, .25f * opacity, opacity});
+    expectNear(pixel.depth, 1.1f * std::sqrt(2.f), "off-axis RT view-Z near plane");
+    p.march.y = 0;
+    p.direction00.w = 0;
+    pixel = read(runtime, renderer.render(p, transfer));
+    require(std::isinf(pixel.depth), "legacy RT ray-distance far clip changed");
+    color(pixel.color, p.background);
+    std::puts("PASS off-axis procedural RT view-Z clipping and legacy ray-distance clipping");
     p = f::raycastParameters(fixture);
     p.rayOrigin = {9, 3, .5f, 0};
     rt::AffineTransform transform = {2, 0, 0, 10, 0, 3, 0, 0, 0, 0, .5f, 0};
@@ -132,6 +156,17 @@ int run(IDevice *device, const std::filesystem::path &library)
         rejected = true;
     }
     require(rejected, "singular instance transform rejected");
+    rejected = false;
+    p.direction00.w = 2;
+    try
+    {
+        renderer.render(p, transfer);
+    }
+    catch (const std::invalid_argument &)
+    {
+        rejected = true;
+    }
+    require(rejected, "unknown ray clip mode rejected");
     return 0;
 }
 } // namespace

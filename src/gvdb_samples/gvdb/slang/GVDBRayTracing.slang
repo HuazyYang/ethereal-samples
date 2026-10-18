@@ -1,4 +1,4 @@
-﻿// Procedural sparse-volume ray tracing for DXR, Vulkan RT and CUDA/OptiX.
+// Procedural sparse-volume ray tracing for DXR, Vulkan RT and CUDA/OptiX.
 // SPDX-License-Identifier: Apache-2.0
 #include "GVDBRaycastCommon.slang"
 RaytracingAccelerationStructure g_Scene : register(t5);
@@ -31,9 +31,9 @@ void rayGeneration() {
     uint2 pixel=DispatchRaysIndex().xy;
     if(any(pixel>=g_Parameters.image.xy))return;
     RayDesc ray;ray.Origin=g_Parameters.rayOrigin.xyz;ray.Direction=pixelDirection(pixel);
-    ray.TMin=g_Parameters.march.y;ray.TMax=g_Parameters.march.z;
+    float2 clip=rayClipInterval(ray.Direction);ray.TMin=clip.x;ray.TMax=clip.y;
     RadiancePayload payload;payload.color=g_Parameters.background;payload.depth=asfloat(0x7f800000u);
-    if(any(ray.Direction!=0))TraceRay(g_Scene,RAY_FLAG_NONE,255,0,2,0,ray,payload);
+    if(any(ray.Direction!=0)&&ray.TMin<ray.TMax)TraceRay(g_Scene,RAY_FLAG_NONE,255,0,2,0,ray,payload);
     uint index=pixel.y*g_Parameters.image.x+pixel.x;
     g_Output[index]=payload.color;g_Depth[index]=payload.depth;
 }

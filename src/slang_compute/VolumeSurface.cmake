@@ -1,0 +1,33 @@
+# Opt-in renderer; including this file does not change VolumeViewer behavior.
+file(CONFIGURE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/volume-surface.cfg"
+    CONTENT "\"${CMAKE_CURRENT_LIST_DIR}/VolumeSurface.slang\" -T cs -E renderSurface\n" @ONLY)
+ethereal_compile_shaders(TARGET gvdb_volume_surface_shaders SLANG CUDA ALL_PLATFORMS
+    CONFIG "${CMAKE_CURRENT_BINARY_DIR}/volume-surface.cfg"
+    OUTPUT_DIRECTORY "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/shaders/gvdb_slang"
+    INCLUDE_DIRECTORIES "${CMAKE_CURRENT_LIST_DIR}/../gvdb_samples/gvdb/slang")
+add_library(gvdb_volume_surface STATIC "${CMAKE_CURRENT_LIST_DIR}/VolumeSurface.cpp")
+target_link_libraries(gvdb_volume_surface PUBLIC gvdb_slang_runtime)
+target_include_directories(gvdb_volume_surface PUBLIC "${CMAKE_CURRENT_LIST_DIR}")
+add_dependencies(gvdb_volume_surface gvdb_volume_surface_shaders)
+add_executable(gvdb_volume_surface_tests "${CMAKE_CURRENT_LIST_DIR}/VolumeSurfaceTests.cpp")
+target_link_libraries(gvdb_volume_surface_tests PRIVATE gvdb_volume_surface donut_app)
+ethereal_use_agility_sdk(gvdb_volume_surface_tests)
+if(NVRHI_WITH_CUDA)
+    target_link_libraries(gvdb_volume_surface_tests PRIVATE nvrhi::cuda)
+    target_compile_definitions(gvdb_volume_surface_tests PRIVATE ETHEREAL_TEST_CUDA=1)
+endif()
+foreach(api DX11 DX12 VULKAN CUDA)
+    if(NVRHI_WITH_${api})
+        if(api STREQUAL "VULKAN")
+            set(argument -vk)
+        elseif(api STREQUAL "DX11")
+            set(argument -dx11)
+        elseif(api STREQUAL "DX12")
+            set(argument -dx12)
+        else()
+            set(argument -cuda)
+        endif()
+        add_test(NAME gvdb_volume_surface_${api} COMMAND gvdb_volume_surface_tests ${argument})
+        set_tests_properties(gvdb_volume_surface_${api} PROPERTIES TIMEOUT 120)
+    endif()
+endforeach()

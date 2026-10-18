@@ -1,4 +1,4 @@
-﻿#ifndef GVDB_RAYCAST_COMMON_SLANG
+#ifndef GVDB_RAYCAST_COMMON_SLANG
 #define GVDB_RAYCAST_COMMON_SLANG
 // Sparse-volume ray marching on graphics and compute backends.
 // SPDX-License-Identifier: Apache-2.0
@@ -7,7 +7,7 @@ struct RaycastParameters {
     VolumeInfo volume;
     uint4 image;           // width, height, transfer-function entries, maximum steps
     float4 rayOrigin;
-    float4 direction00;    // direction at the lower image corner
+    float4 direction00;    // xyz: lower image corner; w: 0 ray distance, 1 view-Z clipping
     float4 directionDx;    // per-pixel direction increments, including perspective
     float4 directionDy;
     float4 march;          // step size, minimum t, maximum t, extinction multiplier
@@ -23,6 +23,7 @@ StructuredBuffer<LevelInfo> g_Levels : register(t3);
 StructuredBuffer<float4> g_Transfer : register(t4);
 RWStructuredBuffer<float4> g_Output : register(u0);
 RWStructuredBuffer<float> g_Depth : register(u1);
+#include "GVDBRayClip.slang"
 
 // Explicit zero-direction handling avoids 0*infinity NaNs for rays on a face.
 bool intersectBounds(float3 origin,float3 direction,float minimumT,float maximumT,out float enter,out float leave) {
@@ -44,7 +45,8 @@ bool intersectBounds(float3 origin,float3 direction,float minimumT,float maximum
     return enter < leave;
 }
 bool intersectVolume(float3 origin,float3 direction,out float enter,out float leave) {
-    return intersectBounds(origin,direction,g_Parameters.march.y,g_Parameters.march.z,enter,leave);
+    float2 clip=rayClipInterval(direction);
+    return intersectBounds(origin,direction,clip.x,clip.y,enter,leave);
 }
 float atlasValue(int3 voxel) {
     uint3 resolution = g_Parameters.volume.atlasResolutionAndApron.xyz;

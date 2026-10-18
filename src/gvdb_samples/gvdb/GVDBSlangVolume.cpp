@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: Apache-2.0
 #include "GVDBSlangVolume.h"
 #include "ComputeRuntime.h"
 #include <cmath>
@@ -142,6 +142,8 @@ void validateRaycastParameters(const RaycastParameters& p,const std::vector<Floa
     finite(p.valueRange.x);finite(p.valueRange.y);finite(p.valueRange.z);finite(p.valueRange.w);
     if(p.march.x<=0 || p.march.y>p.march.z || p.march.w<0 || p.valueRange.x==p.valueRange.y || p.valueRange.w<=0 || p.valueRange.w>1)
         throw std::invalid_argument("GVDB raycast range, step or extinction is invalid");
+    if(p.direction00.w!=0&&p.direction00.w!=1)
+        throw std::invalid_argument("GVDB raycast clip mode must be zero or one");
     const Float4 vectors[]={p.rayOrigin,p.direction00,p.directionDx,p.directionDy,p.background,p.light};
     for(const auto& v:vectors) {finite(v.x);finite(v.y);finite(v.z);finite(v.w);}
     for(const auto& value:transfer) {

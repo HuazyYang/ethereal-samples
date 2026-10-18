@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "VolumeViewer.h"
+#include "VolumeSurface.h"
 #include <donut/app/DeviceManager.h>
 #include <donut/app/ApplicationBase.h>
 #include <donut/engine/ShaderFactory.h>
@@ -45,6 +46,15 @@ Camera cameraFor(const g::VolumeInfo& info, const VolumeViewOptions& o) {
     c.eye = (low + high) * .5f + dm::float3(o.targetOffset.x, o.targetOffset.y, o.targetOffset.z) +
             back * c.radius * o.distanceScale;
     c.forward = -back;
+    if (o.explicitCamera) {
+        c.eye = {o.cameraEye.x, o.cameraEye.y, o.cameraEye.z};
+        c.forward = dm::normalize(dm::float3(o.cameraForward.x, o.cameraForward.y, o.cameraForward.z));
+        c.right = dm::normalize(dm::cross(c.forward, dm::float3(o.cameraUp.x, o.cameraUp.y, o.cameraUp.z)));
+        c.up = dm::cross(c.right, c.forward);
+        c.horizontal = std::tan(dm::radians(o.horizontalFov * .5f));
+        c.vertical = c.horizontal * float(o.height) / o.width;
+        return c;
+    }
     c.right = dm::normalize(dm::cross(c.forward, dm::float3(0, 1, 0)));
     c.up = dm::cross(c.right, c.forward);
     c.horizontal = std::tan(dm::radians(25.f));
@@ -64,13 +74,18 @@ g::RaycastParameters parameters(const g::VolumeInfo& info, const VolumeViewOptio
         throw std::invalid_argument("Volume viewer ray step requires more than one million samples");
     p.image = {o.width, o.height, uint32_t(transferSize), uint32_t(steps)};
     p.rayOrigin = f4(c.eye);
-    p.direction00 = f4(c.forward - c.right * c.horizontal + c.up * c.vertical);
+    p.direction00 = f4(c.forward - c.right * c.horizontal + c.up * c.vertical, o.explicitCamera ? 1.f : 0.f);
     p.directionDx = f4(c.right * (2 * c.horizontal / o.width));
     p.directionDy = f4(c.up * (-2 * c.vertical / o.height));
-    p.march = {o.step, 0, c.radius * (o.distanceScale + 4), o.extinction};
+    p.march = {o.step, o.explicitCamera ? o.cameraNear : 0,
+               o.explicitCamera ? o.cameraFar : c.radius * (o.distanceScale + 4), o.extinction};
     p.valueRange = {o.valueMin, o.valueMax, o.isovalue, .995f};
     p.background = o.background;
-    const auto center = c.eye - c.radius * o.distanceScale * (-c.forward);
+    const auto center =
+        o.explicitCamera ? dm::float3(info.boundsMin.x + info.boundsMax.x, info.boundsMin.y + info.boundsMax.y,
+                                      info.boundsMin.z + info.boundsMax.z) *
+                               .5f
+                         : c.eye - c.radius * o.distanceScale * (-c.forward);
     p.light =
         f4(center + dm::float3(o.lightDirection.x, o.lightDirection.y, o.lightDirection.z) * c.radius, .15f);
     return p;
@@ -88,35 +103,19 @@ nvrhi::BufferHandle settingsBuffer(es::ComputeRuntime& runtime, const ViewSettin
     runtime.upload(buffer, bytes, sizeof(bytes));
     return buffer;
 }
-bool projectLine(dm::float3 a, dm::float3 b, const Camera& c, const VolumeViewOptions& o, Line& line) {
-    auto toView = [&](dm::float3 v) {
-        const auto d = v - c.eye;
-        return dm::float3(dm::dot(d, c.right), dm::dot(d, c.up), dm::dot(d, c.forward));
-    };
-    a = toView(a);
-    b = toView(b);
-    const float nearPlane = std::max(.001f, c.radius * .001f);
-    if (a.z < nearPlane && b.z < nearPlane)
-        return false;
-    if (a.z < nearPlane)
-        a += (b - a) * ((nearPlane - a.z) / (b.z - a.z));
-    if (b.z < nearPlane)
-        b += (a - b) * ((nearPlane - b.z) / (a.z - b.z));
-    dm::float2 p((a.x / (a.z * c.horizontal) + 1) * o.width * .5f,
-                 (1 - a.y / (a.z * c.vertical)) * o.height * .5f);
-    dm::float2 q((b.x / (b.z * c.horizontal) + 1) * o.width * .5f,
-                 (1 - b.y / (b.z * c.vertical)) * o.height * .5f);
-    // Clip before tile binning; near-plane edges can otherwise cover huge ranges.
-    const dm::float2 delta = q - p;
-    float lo = 0, hi = 1;
-    const float origin[2] = {p.x, p.y}, direction[2] = {delta.x, delta.y},
-                limit[2] = {float(o.width), float(o.height)};
+bool clipScreenLine(dm::double2 p, dm::double2 q, const VolumeViewOptions& o, Line& line) {
+    if (!std::isfinite(p.x) || !std::isfinite(p.y) || !std::isfinite(q.x) || !std::isfinite(q.y))
+        throw std::invalid_argument("Viewer overlay projection exceeds finite coordinates");
+    const dm::double2 delta = q - p;
+    double lo = 0, hi = 1;
+    const double origin[2] = {p.x, p.y}, direction[2] = {delta.x, delta.y},
+                 limit[2] = {double(o.width), double(o.height)};
     for (unsigned axis = 0; axis < 2; ++axis) {
         if (direction[axis] == 0) {
             if (origin[axis] < 0 || origin[axis] > limit[axis])
                 return false;
         } else {
-            float x = (0 - origin[axis]) / direction[axis], y = (limit[axis] - origin[axis]) / direction[axis];
+            double x = (0 - origin[axis]) / direction[axis], y = (limit[axis] - origin[axis]) / direction[axis];
             if (x > y)
                 std::swap(x, y);
             lo = std::max(lo, x);
@@ -127,26 +126,109 @@ bool projectLine(dm::float3 a, dm::float3 b, const Camera& c, const VolumeViewOp
         return false;
     q = p + delta * hi;
     p += delta * lo;
-    line.points = {p.x, p.y, q.x, q.y};
+    if (!std::isfinite(p.x) || !std::isfinite(p.y) || !std::isfinite(q.x) || !std::isfinite(q.y))
+        throw std::invalid_argument("Nonfinite clipped overlay");
+    // Clamp the final double-precision intersection before integer tile conversion.
+    line.points = {float(std::clamp(p.x, 0., double(o.width))), float(std::clamp(p.y, 0., double(o.height))),
+                   float(std::clamp(q.x, 0., double(o.width))), float(std::clamp(q.y, 0., double(o.height)))};
     return true;
+}
+bool projectLine(dm::float3 start, dm::float3 end, const Camera& c, const VolumeViewOptions& o, Line& line) {
+    const auto toView = [&](dm::float3 v) {
+        const dm::double3 d(double(v.x) - c.eye.x, double(v.y) - c.eye.y, double(v.z) - c.eye.z);
+        const auto dot = [&](dm::float3 axis) { return d.x * axis.x + d.y * axis.y + d.z * axis.z; };
+        return dm::double3(dot(c.right), dot(c.up), dot(c.forward));
+    };
+    auto a = toView(start), b = toView(end);
+    const double nearPlane = o.explicitCamera ? o.cameraNear : std::max(.001f, c.radius * .001f);
+    if (a.z < nearPlane && b.z < nearPlane)
+        return false;
+    if (a.z < nearPlane)
+        a += (b - a) * ((nearPlane - a.z) / (b.z - a.z));
+    if (b.z < nearPlane)
+        b += (a - b) * ((nearPlane - b.z) / (a.z - b.z));
+    if (o.explicitCamera) {
+        const double farPlane = o.cameraFar;
+        if (a.z > farPlane && b.z > farPlane)
+            return false;
+        if (a.z > farPlane)
+            a += (b - a) * ((farPlane - a.z) / (b.z - a.z));
+        if (b.z > farPlane)
+            b += (a - b) * ((farPlane - b.z) / (a.z - b.z));
+    }
+    const dm::double2 p((a.x / (a.z * c.horizontal) + 1) * o.width * .5,
+                        (1 - a.y / (a.z * c.vertical)) * o.height * .5);
+    const dm::double2 q((b.x / (b.z * c.horizontal) + 1) * o.width * .5,
+                        (1 - b.y / (b.z * c.vertical)) * o.height * .5);
+    return clipScreenLine(p, q, o, line);
+}
+bool projectSectionLine(const g::Float4& a, const g::Float4& b, const g::VolumeInfo& info,
+                        const VolumeViewOptions& o, Line& line) {
+    const double sx = double(o.width) / (double(info.boundsMax.x) - info.boundsMin.x),
+                 sy = double(o.height) / (double(info.boundsMax.z) - info.boundsMin.z);
+    return clipScreenLine({(double(a.x) - info.boundsMin.x) * sx, (double(a.z) - info.boundsMin.z) * sy},
+                          {(double(b.x) - info.boundsMin.x) * sx, (double(b.z) - info.boundsMin.z) * sy}, o,
+                          line);
+}
+void drawOverlayLines(es::ComputeRuntime& runtime, const std::vector<Line>& lines, const VolumeViewOptions& o,
+                      const g::RaycastParameters& p, ViewSettings settings,
+                      std::vector<nvrhi::BindingSetItem> bindings) {
+    if (lines.empty())
+        return;
+    constexpr uint32_t tile = 16;
+    const uint32_t nx = (o.width + tile - 1) / tile, ny = (o.height + tile - 1) / tile;
+    std::vector<std::vector<uint32_t>> bins(size_t(nx) * ny);
+    size_t references = 0;
+    constexpr size_t maxReferences = 16 * 1024 * 1024;
+    for (uint32_t lineIndex = 0; lineIndex < lines.size(); ++lineIndex) {
+        const auto& line = lines[lineIndex];
+        const int x0 = std::max(0, int(std::floor((std::min(line.points.x, line.points.z) - 1) / tile)));
+        const int y0 = std::max(0, int(std::floor((std::min(line.points.y, line.points.w) - 1) / tile)));
+        const int x1 =
+            std::min(int(nx) - 1, int(std::floor((std::max(line.points.x, line.points.z) + 1) / tile)));
+        const int y1 =
+            std::min(int(ny) - 1, int(std::floor((std::max(line.points.y, line.points.w) + 1) / tile)));
+        const size_t added = x1 >= x0 && y1 >= y0 ? size_t(x1 - x0 + 1) * size_t(y1 - y0 + 1) : 0;
+        if (added > maxReferences - references)
+            throw std::runtime_error("Viewer overlay exceeds its 16-million tile-reference budget");
+        references += added;
+        for (int y = y0; y <= y1; ++y)
+            for (int x = x0; x <= x1; ++x)
+                bins[size_t(y) * nx + x].push_back(lineIndex);
+    }
+    std::vector<g::UInt2> ranges(bins.size());
+    std::vector<uint32_t> indices;
+    for (size_t i = 0; i < bins.size(); ++i) {
+        if (indices.size() + bins[i].size() > UINT32_MAX / 4)
+            throw std::runtime_error("Viewer overlay exceeds portable storage");
+        ranges[i] = {uint32_t(indices.size()), uint32_t(bins[i].size())};
+        indices.insert(indices.end(), bins[i].begin(), bins[i].end());
+    }
+    if (indices.empty())
+        return;
+    auto lineBuffer = runtime.buffer(lines.size() * sizeof(Line), sizeof(Line), lines.data());
+    auto rangeBuffer = runtime.buffer(ranges.size() * sizeof(g::UInt2), sizeof(g::UInt2), ranges.data());
+    auto indexBuffer = runtime.buffer(indices.size() * 4, 4, indices.data());
+    settings.lineGrid = {tile, nx, ny, 0};
+    auto constants = settingsBuffer(runtime, settings);
+    bindings.push_back(nvrhi::BindingSetItem::ConstantBuffer(1, constants));
+    bindings.push_back(nvrhi::BindingSetItem::StructuredBuffer_SRV(5, lineBuffer));
+    bindings.push_back(nvrhi::BindingSetItem::StructuredBuffer_SRV(6, rangeBuffer));
+    bindings.push_back(nvrhi::BindingSetItem::StructuredBuffer_SRV(7, indexBuffer));
+    runtime.dispatch("VolumeView", "overlayTopology", &p, sizeof(p), bindings, (o.width + 7) / 8,
+                     (o.height + 7) / 8);
 }
 void addTopology(es::ComputeRuntime& runtime, const g::PackedVolume& packed, const Camera& camera,
                  const VolumeViewOptions& o, const g::RaycastParameters& p, ViewSettings settings,
                  std::vector<nvrhi::BindingSetItem> bindings) {
-    constexpr uint32_t tile = 16;
-    const uint32_t nx = (o.width + tile - 1) / tile, ny = (o.height + tile - 1) / tile;
     std::vector<Line> lines;
-    std::vector<std::vector<uint32_t>> bins(size_t(nx) * ny);
-    size_t references = 0;
-    constexpr size_t maxReferences = 16 * 1024 * 1024;
-    size_t firstLevel = 0;
     const g::Float4 colors[] = {
         {.1f, 1,   .2f, 1},
         {1,   .7f, .1f, 1},
         {.1f, .6f, 1,   1},
         {1,   .2f, .8f, 1}
     };
-    for (size_t level = firstLevel; level < packed.levels.size(); ++level) {
+    for (size_t level = 0; level < packed.levels.size(); ++level) {
         const auto& l = packed.levels[level];
         for (uint32_t index = 0; index < l.nodes.z; ++index) {
             const size_t word = (l.nodes.x + uint64_t(index) * l.nodes.y) / 4;
@@ -193,50 +275,39 @@ void addTopology(es::ComputeRuntime& runtime, const g::PackedVolume& packed, con
                         line.points.w = std::clamp(line.points.w, 0.f, float(o.height));
                     } else if (!projectLine(vertex(corner), vertex(other), camera, o, line))
                         continue;
-                    const uint32_t lineIndex = uint32_t(lines.size());
+                    if (lines.size() >= 1000000)
+                        throw std::invalid_argument("Topology overlay exceeds one million projected lines");
                     lines.push_back(line);
-                    const int x0 =
-                        std::max(0, int(std::floor((std::min(line.points.x, line.points.z) - 1) / tile)));
-                    const int y0 =
-                        std::max(0, int(std::floor((std::min(line.points.y, line.points.w) - 1) / tile)));
-                    const int x1 = std::min(
-                        int(nx) - 1, int(std::floor((std::max(line.points.x, line.points.z) + 1) / tile)));
-                    const int y1 = std::min(
-                        int(ny) - 1, int(std::floor((std::max(line.points.y, line.points.w) + 1) / tile)));
-                    const size_t added = x1 >= x0 && y1 >= y0 ? size_t(x1 - x0 + 1) * size_t(y1 - y0 + 1) : 0;
-                    if (added > maxReferences - references)
-                        throw std::runtime_error(
-                            "Topology overlay exceeds its 16-million tile-reference budget");
-                    references += added;
-                    for (int y = y0; y <= y1; ++y)
-                        for (int x = x0; x <= x1; ++x)
-                            bins[size_t(y) * nx + x].push_back(lineIndex);
                 }
         }
     }
-    if (lines.empty())
-        return;
-    std::vector<g::UInt2> ranges(bins.size());
-    std::vector<uint32_t> indices;
-    for (size_t i = 0; i < bins.size(); ++i) {
-        if (indices.size() + bins[i].size() > UINT32_MAX / 4)
-            throw std::runtime_error("Topology overlay exceeds portable storage");
-        ranges[i] = {uint32_t(indices.size()), uint32_t(bins[i].size())};
-        indices.insert(indices.end(), bins[i].begin(), bins[i].end());
-    }
-    if (indices.empty())
-        return;
-    auto lineBuffer = runtime.buffer(lines.size() * sizeof(Line), sizeof(Line), lines.data());
-    auto rangeBuffer = runtime.buffer(ranges.size() * sizeof(g::UInt2), sizeof(g::UInt2), ranges.data());
-    auto indexBuffer = runtime.buffer(indices.size() * 4, 4, indices.data());
-    settings.lineGrid = {tile, nx, ny, 0};
-    auto constants = settingsBuffer(runtime, settings);
-    bindings.push_back(nvrhi::BindingSetItem::ConstantBuffer(1, constants));
-    bindings.push_back(nvrhi::BindingSetItem::StructuredBuffer_SRV(5, lineBuffer));
-    bindings.push_back(nvrhi::BindingSetItem::StructuredBuffer_SRV(6, rangeBuffer));
-    bindings.push_back(nvrhi::BindingSetItem::StructuredBuffer_SRV(7, indexBuffer));
-    runtime.dispatch("VolumeView", "overlayTopology", &p, sizeof(p), bindings, (o.width + 7) / 8,
-                     (o.height + 7) / 8);
+    drawOverlayLines(runtime, lines, o, p, settings, std::move(bindings));
+}
+void addSceneOverlay(es::ComputeRuntime& runtime, const std::vector<VolumeOverlayLine>& worldLines,
+                     const std::vector<VolumeOverlayPoint>& worldPoints, const Camera& camera,
+                     const VolumeViewOptions& o, const g::RaycastParameters& p, ViewSettings settings,
+                     std::vector<nvrhi::BindingSetItem> bindings) {
+    if (worldLines.size() + worldPoints.size() > 1000000)
+        throw std::invalid_argument("Scene overlay exceeds one million primitives");
+    std::vector<Line> lines;
+    auto add = [&](const g::Float4& a, const g::Float4& b, const g::Float4& color) {
+        const g::Float4 values[] = {a, b, color};
+        for (const auto& v : values)
+            if (!std::isfinite(v.x) || !std::isfinite(v.y) || !std::isfinite(v.z) || !std::isfinite(v.w))
+                throw std::invalid_argument("Nonfinite scene overlay primitive");
+        Line line{};
+        line.color = color;
+        const bool visible = o.mode == VolumeViewMode::Section2D
+                                 ? projectSectionLine(a, b, p.volume, o, line)
+                                 : projectLine({a.x, a.y, a.z}, {b.x, b.y, b.z}, camera, o, line);
+        if (visible)
+            lines.push_back(line);
+    };
+    for (const auto& line : worldLines)
+        add(line.start, line.end, line.color);
+    for (const auto& point : worldPoints)
+        add(point.position, point.position, point.color);
+    drawOverlayLines(runtime, lines, o, p, settings, std::move(bindings));
 }
 class VolumePass : public app::IRenderPass {
     NVRHI_INHERIT_INTERFACE_TABLE()
@@ -249,7 +320,8 @@ class VolumePass : public app::IRenderPass {
     nvrhi::GraphicsPipelineHandle m_pipeline;
     nvrhi::CommandListHandle m_commands;
     nvrhi::BufferHandle m_constants;
-    int m_drag = -1;
+    uint32_t m_frame = 0;
+    int m_drag = -1, m_modifiers = 0;
     bool m_moveLight = false;
     double m_mouseX = 0, m_mouseY = 0;
 
@@ -288,6 +360,8 @@ class VolumePass : public app::IRenderPass {
     bool KeyboardUpdate(int key, int, int action, int) override {
         if (action != GLFW_PRESS && action != GLFW_REPEAT)
             return false;
+        if (m_scene->key(key, m_options))
+            return true;
         if (key == GLFW_KEY_1)
             m_options.topology = !m_options.topology;
         else if (key == GLFW_KEY_V)
@@ -303,7 +377,7 @@ class VolumePass : public app::IRenderPass {
         else if (key == GLFW_KEY_DOWN)
             m_options.pitch = std::max(-1.5f, m_options.pitch - .08f);
         else
-            return m_scene->key(key, m_options);
+            return false;
         return true;
     }
     bool MouseButtonUpdate(int button, int action, int mods) override {
@@ -311,11 +385,17 @@ class VolumePass : public app::IRenderPass {
             button != GLFW_MOUSE_BUTTON_RIGHT)
             return false;
         m_drag = action == GLFW_PRESS ? button : -1;
+        m_modifiers = mods;
         m_moveLight = (mods & GLFW_MOD_SHIFT) != 0;
         return true;
     }
     bool MousePosUpdate(double x, double y) override {
         const float dx = float(x - m_mouseX), dy = float(y - m_mouseY);
+        if (m_drag >= 0 && m_scene->mouseDrag(m_drag, dx, dy, m_modifiers, m_options)) {
+            m_mouseX = x;
+            m_mouseY = y;
+            return true;
+        }
         if (m_drag == GLFW_MOUSE_BUTTON_LEFT) {
             if (m_moveLight) {
                 const auto& l = m_options.lightDirection;
@@ -344,11 +424,14 @@ class VolumePass : public app::IRenderPass {
         return m_drag >= 0;
     }
     bool MouseScrollUpdate(double, double y) override {
+        if (m_scene->mouseScroll(float(y), m_options))
+            return true;
         m_options.distanceScale = std::clamp(m_options.distanceScale * float(std::exp(-y * .1)), .1f, 50.f);
         return true;
     }
     void BackBufferResizing() override { m_pipeline = nullptr; }
-    void Animate(float) override {
+    void Animate(float elapsed) override {
+        m_scene->animate(elapsed, m_options);
         const std::string title =
             m_title + " | " + m_scene->describe() +
             " | 1 topology, V shading, I section; left orbit, middle pan, right/wheel zoom, Shift light";
@@ -394,6 +477,12 @@ class VolumePass : public app::IRenderPass {
         m_commands->draw(args);
         m_commands->close();
         GetDevice()->executeCommandList(m_commands);
+        if (m_options.frameLimit && ++m_frame >= m_options.frameLimit) {
+            if (!m_options.screenshot.empty())
+                writeVolumeImage(m_runtime, output, m_options.screenshot);
+            if (auto* window = GetDeviceManager()->GetWindow())
+                glfwSetWindowShouldClose(window, GLFW_TRUE);
+        }
     }
 };
 }  // namespace
@@ -403,6 +492,23 @@ g::RaycastOutput renderVolumeView(es::ComputeRuntime& runtime, VolumeScene& scen
         !std::isfinite(o.distanceScale) || o.distanceScale <= 0 || !std::isfinite(o.sectionHeight) ||
         o.sectionHeight < 0 || o.sectionHeight > 1 || uint32_t(o.mode) > uint32_t(VolumeViewMode::Section2D))
         throw std::invalid_argument("Invalid volume viewer dimensions, camera, mode or step");
+    if (!std::isfinite(o.scalarBackground))
+        throw std::invalid_argument("Nonfinite sparse background");
+    if (o.explicitCamera) {
+        const g::Float4 vectors[] = {o.cameraEye, o.cameraForward, o.cameraUp};
+        for (const auto& v : vectors)
+            if (!std::isfinite(v.x) || !std::isfinite(v.y) || !std::isfinite(v.z))
+                throw std::invalid_argument("Nonfinite explicit camera");
+        const dm::float3 forward(o.cameraForward.x, o.cameraForward.y, o.cameraForward.z),
+            up(o.cameraUp.x, o.cameraUp.y, o.cameraUp.z);
+        const float ff = dm::dot(forward, forward), uu = dm::dot(up, up);
+        const auto cross = dm::cross(forward, up);
+        if (!std::isfinite(ff) || !std::isfinite(uu) || ff < 1e-12f || uu < 1e-12f ||
+            dm::dot(cross, cross) <= ff * uu * 1e-8f || !std::isfinite(o.horizontalFov) ||
+            o.horizontalFov <= 0 || o.horizontalFov >= 179 || !std::isfinite(o.cameraNear) ||
+            !std::isfinite(o.cameraFar) || o.cameraNear <= 0 || o.cameraFar <= o.cameraNear)
+            throw std::invalid_argument("Invalid explicit camera basis, field of view or clip interval");
+    }
     const g::Float4 extra[] = {o.targetOffset, o.lightDirection};
     for (const auto& x : extra)
         if (!std::isfinite(x.x) || !std::isfinite(x.y) || !std::isfinite(x.z))
@@ -415,10 +521,15 @@ g::RaycastOutput renderVolumeView(es::ComputeRuntime& runtime, VolumeScene& scen
     const auto camera = cameraFor(info, o);
     auto p = parameters(info, o, camera, transfer.size());
     g::validateRaycastParameters(p, transfer);
+    const auto overlayLines = scene.overlayLines();
+    const auto overlayPoints = scene.overlayPoints();
     g::RaycastOutput output;
     if (o.mode == VolumeViewMode::Volume || o.mode == VolumeViewMode::Surface) {
-        output = volume.raycast(p, transfer, o.mode == VolumeViewMode::Surface);
-        if (!o.sectionInset && !o.topology)
+        if (o.mode == VolumeViewMode::Surface && (o.scalarBackground != 0 || scene.colorAtlas()))
+            output = renderVolumeSurface(runtime, volume, p, transfer, scene.colorAtlas(), o.scalarBackground);
+        else
+            output = volume.raycast(p, transfer, o.mode == VolumeViewMode::Surface);
+        if (!o.sectionInset && !o.topology && overlayLines.empty() && overlayPoints.empty())
             return output;
     } else {
         output.width = o.width;
@@ -451,6 +562,7 @@ g::RaycastOutput renderVolumeView(es::ComputeRuntime& runtime, VolumeScene& scen
     }
     if (o.topology)
         addTopology(runtime, scene.packed(), camera, o, p, settings, bindings);
+    addSceneOverlay(runtime, overlayLines, overlayPoints, camera, o, p, settings, bindings);
     if (o.sectionInset && o.mode != VolumeViewMode::Section2D) {
         const uint32_t width = std::max(1u, o.width / 4), height = std::max(1u, o.height / 4);
         settings.rectangle = {0, o.height - height, width, height};
@@ -524,6 +636,7 @@ std::vector<uint8_t> renderVolumeOffscreen(int argc, const char** argv, const Sc
         nvrhi::FramebufferHandle framebuffer;
         check(device->createFramebuffer(nvrhi::FramebufferDesc().addColorAttachment(color), &framebuffer),
               "create display framebuffer");
+        view.Animate(0);
         view.Render(framebuffer);
         nvrhi::StagingTextureHandle staging;
         check(device->createStagingTexture(desc, nvrhi::CpuAccessMode::Read, &staging),

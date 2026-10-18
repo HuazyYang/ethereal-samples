@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2026. SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026. SPDX-License-Identifier: Apache-2.0
 // Host-side layouts for the portable Slang GVDB execution representation.
 #pragma once
 #include <cstddef>
@@ -132,6 +132,8 @@ struct alignas(16) RaycastParameters {
     VolumeInfo volume;
     UInt4 image;
     Float4 rayOrigin;
+    // xyz: lower image-corner direction; w: 0 keeps ray-distance near/far,
+    // 1 treats march.y/z as view-Z planes along the normalized image-center ray.
     Float4 direction00;
     Float4 directionDx;
     Float4 directionDy;
