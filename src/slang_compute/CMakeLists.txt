@@ -193,3 +193,5 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/../gvdb_samples/gvdb/GVDBNvrhiGatherApi.cma
 include("${CMAKE_CURRENT_SOURCE_DIR}/../gvdb_samples/gvdb/GVDBNvrhiApronApi.cmake")
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/../gvdb_samples/samples/sample-utils/OwnedVolumeSurface.cmake")
+
+include("${CMAKE_CURRENT_SOURCE_DIR}/../gvdb_samples/gvdb/GVDBNvrhiDownsampleApi.cmake")

@@ -39,12 +39,13 @@
       "remaining": "Public R32 dense-to-sparse transform/remap, exact outside preservation, explicit background and caller-owned publication pass four-backend Windows tests, native validation and CUDA memory checking. Coordinate-zero launch coverage and unused-slot zeroing are documented corrections; broader consumers and Linux remain."
     },
     "regional-downsample": {
-      "status": "portable-foundation",
+      "status": "owned-validated",
       "replacementFiles": [
-        "gvdb/slang/GVDBResample.slang",
-        "gvdb/slang/GVDBResampleStats.slang"
+        "gvdb/slang/GVDBDenseDownsample.slang",
+        "gvdb/GVDBNvrhiDownsample.cpp",
+        "gvdb/GVDBNvrhiDownsampleApi.cpp"
       ],
-      "remaining": "Public explicit-completion adapter remains; downsampleDense has different placement semantics."
+      "remaining": "Public device-only copied-source query, caller recording/completion, exact endpoint division and explicit Vulkan RTE32 pass NVIDIA/AMD Windows graphics and CUDA memory/package checks. Consumer integration, Linux and broader performance/reference gates remain."
     },
     "linking": {
       "status": "portable-foundation",
