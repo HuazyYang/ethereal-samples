@@ -327,6 +327,10 @@ FRESULT NvrhiVolume::describePlacement(const AtlasPlacement& placement, VolumeIn
     return guarded([&] { auto candidate = place(m_impl->host, placement); output = candidate.topology.volume; });
 }
 FRESULT NvrhiVolume::prepareGeneration(const GenerationRequest& request, std::unique_ptr<PreparedGeneration>& output) noexcept {
+    return prepareGenerationForHost(m_impl->host, request, output);
+}
+FRESULT NvrhiVolume::prepareGenerationForHost(const HostVolume& host, const GenerationRequest& request,
+                                            std::unique_ptr<PreparedGeneration>& output) noexcept {
     return guarded([&] {
         auto& state = *m_impl;
         require(request.uploadCount <= c_MaxChannels && (!request.uploadCount || request.uploads));
@@ -340,7 +344,7 @@ FRESULT NvrhiVolume::prepareGeneration(const GenerationRequest& request, std::un
         generation->owner = state.owner;
         generation->serial = advance(state.serial);
         generation->incarnations = state.incarnations;
-        auto placedStorage = std::make_shared<Placement>(place(state.host, request.placement));
+        auto placedStorage = std::make_shared<Placement>(place(host, request.placement));
         generation->placement = placedStorage;
         auto& placed = *placedStorage;
         if (state.current && state.current->bindings().revision.epoch == placed.topology.revision.epoch)
@@ -630,17 +634,14 @@ FRESULT detail::VolumeMutationBuilder::finish(std::unique_ptr<PreparedGeneration
     });
 }
 
-FRESULT detail::VolumeAdoptionBuilder::prepareImport(NvrhiVolume& volume, const VolumeImportRequest& request,
-                                                    std::unique_ptr<PreparedGeneration>& output) noexcept {
+FRESULT detail::VolumeAdoptionBuilder::cloneHostForOwner(NvrhiVolume& volume, const HostVolume& source,
+                                                        std::unique_ptr<HostVolume>& output) noexcept {
     return guarded([&] {
         auto& state = *volume.m_impl;
-        require(request.candidate && !request.candidate->dirty() && !state.host.dirty());
-        require(request.channelCount <= c_MaxChannels && (!request.channelCount || request.channels));
-        const HostVolume& source = *request.candidate;
+        require(!source.dirty() && !state.host.dirty());
         check(source.validate());
-        auto adopted = std::make_unique<HostAdoption>();
-        adopted->host = std::make_unique<HostVolume>(state.host.m_limits);
-        HostVolume& candidate = *adopted->host;
+        auto copy = std::make_unique<HostVolume>(state.host.m_limits);
+        HostVolume& candidate = *copy;
         candidate.m_config = source.m_config;
         candidate.m_ranges = source.m_ranges;
         candidate.m_root = source.m_root;
@@ -655,6 +656,40 @@ FRESULT detail::VolumeAdoptionBuilder::prepareImport(NvrhiVolume& volume, const 
         }
         candidate.m_revision = {advance(state.host.revision().epoch), state.host.revision().topology, 0};
         check(candidate.finishTopology());
+        output = std::move(copy);
+    });
+}
+FRESULT detail::VolumeAdoptionBuilder::describeTopologyPlacement(const HostVolume& host, const AtlasPlacement& placement,
+                                                                VolumeInfo& output) noexcept {
+    return guarded([&] { auto candidate = place(host, placement); output = candidate.topology.volume; });
+}
+FRESULT detail::VolumeAdoptionBuilder::prepareTopology(NvrhiVolume& volume, const HostVolume& source,
+    const GenerationRequest& request, bool preserveAttachment, std::unique_ptr<PreparedGeneration>& output) noexcept {
+    return guarded([&] {
+        auto& state = *volume.m_impl;
+        auto adopted = std::make_unique<HostAdoption>();
+        check(cloneHostForOwner(volume, source, adopted->host));
+        adopted->channels = state.channels;
+        adopted->channelRevision = state.channelRevision;
+        adopted->incarnationSerial = state.incarnationSerial;
+        std::unique_ptr<PreparedGeneration> candidate;
+        check(volume.prepareGenerationForHost(*adopted->host, request, candidate));
+        if (preserveAttachment && state.current)
+            candidate->m_impl->generation->m_impl->attachment = state.current->m_impl->attachment;
+        candidate->m_impl->adoption = std::move(adopted);
+        output = std::move(candidate);
+    });
+}
+
+FRESULT detail::VolumeAdoptionBuilder::prepareImport(NvrhiVolume& volume, const VolumeImportRequest& request,
+                                                    std::unique_ptr<PreparedGeneration>& output) noexcept {
+    return guarded([&] {
+        auto& state = *volume.m_impl;
+        require(request.candidate && !request.candidate->dirty() && !state.host.dirty());
+        require(request.channelCount <= c_MaxChannels && (!request.channelCount || request.channels));
+        auto adopted = std::make_unique<HostAdoption>();
+        check(cloneHostForOwner(volume, *request.candidate, adopted->host));
+        HostVolume& candidate = *adopted->host;
         adopted->channelRevision = advance(state.channelRevision);
         adopted->incarnationSerial = state.incarnationSerial;
         auto ticket = std::make_unique<PreparedGeneration::Impl>();

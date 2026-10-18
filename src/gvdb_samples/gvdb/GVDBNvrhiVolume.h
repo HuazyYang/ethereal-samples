@@ -126,6 +126,8 @@ class NvrhiVolume {
     struct Impl;
     std::unique_ptr<Impl> m_impl;
     explicit NvrhiVolume(std::unique_ptr<Impl>) noexcept;
+    nvrhi::FRESULT prepareGenerationForHost(const HostVolume&, const GenerationRequest&,
+                                           std::unique_ptr<PreparedGeneration>& output) noexcept;
     friend class detail::VolumeMutationBuilder;
     friend class detail::VolumeAdoptionBuilder;
 };

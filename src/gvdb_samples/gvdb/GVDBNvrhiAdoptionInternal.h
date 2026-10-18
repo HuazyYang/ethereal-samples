@@ -36,10 +36,25 @@ class VolumeAdoptionBuilder {
     // must be finished; later host/config/publication changes make the ticket stale.
     static nvrhi::FRESULT prepareImport(NvrhiVolume&, const VolumeImportRequest&,
                                         std::unique_ptr<PreparedGeneration>& output) noexcept;
+    // Dense rebuild transaction: deep-copies a finished candidate, keeps
+    // configured channels/incarnations, and uses normal signed-origin remapping.
+    // The candidate determines the complete resulting active leaf set, even if it
+    // only removes leaves or becomes empty. Uploads override selected interiors;
+    // all aprons/unused slots follow the normal generation policy. New host epoch.
+    // Metadata retention is explicit because a rebuild can keep the coordinate
+    // system despite replacing every node ID. No live-host mutation or hidden wait.
+    static nvrhi::FRESULT prepareTopology(NvrhiVolume&, const HostVolume& candidate,
+        const GenerationRequest&, bool preserveAttachment,
+        std::unique_ptr<PreparedGeneration>& output) noexcept;
+    static nvrhi::FRESULT describeTopologyPlacement(const HostVolume&, const AtlasPlacement&,
+                                                   VolumeInfo& output) noexcept;
     // Copies frozen, placed CPU metadata from an authenticated retained generation. No
     // live HostVolume, GPU readback or wait is consulted. Failure preserves output.
     static nvrhi::FRESULT exportTopology(const VolumeGeneration&, slang::PackedVolume& output) noexcept;
     static nvrhi::FRESULT validateGeneration(const NvrhiVolume&, const VolumeGeneration&) noexcept;
     static nvrhi::IRHIObject* attachment(const VolumeGeneration&) noexcept; // Borrowed from generation.
+ private:
+    static nvrhi::FRESULT cloneHostForOwner(NvrhiVolume&, const HostVolume&,
+                                           std::unique_ptr<HostVolume>& output) noexcept;
 };
 } // namespace gvdb::portable::detail
