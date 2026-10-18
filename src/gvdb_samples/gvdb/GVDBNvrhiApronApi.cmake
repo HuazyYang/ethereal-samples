@@ -1,0 +1,13 @@
+# Additive boundary override facade; existing voxel IID and mutation shader are reused.
+include("${CMAKE_CURRENT_LIST_DIR}/GVDBNvrhiVoxelApi.cmake")
+get_target_property(_gvdb_apron_api_added gvdb_nvrhi_api GVDB_APRON_API_ADDED)
+if(NOT _gvdb_apron_api_added)
+    set_property(TARGET gvdb_nvrhi_api PROPERTY GVDB_APRON_API_ADDED TRUE)
+    target_sources(gvdb_nvrhi_api PRIVATE "${CMAKE_CURRENT_LIST_DIR}/GVDBNvrhiApronApi.cpp" "${CMAKE_CURRENT_LIST_DIR}/GVDBNvrhiApronApi.h")
+    if(GVDB_NVRHI_INSTALL)
+        install(FILES "${CMAKE_CURRENT_LIST_DIR}/GVDBNvrhiApronApi.h" DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/gvdb")
+        install(FILES "${CMAKE_CURRENT_LIST_DIR}/GVDBNvrhiApronApi.md" DESTINATION "${CMAKE_INSTALL_DATADIR}/doc/gvdb")
+    endif()
+endif()
+include("${CMAKE_CURRENT_LIST_DIR}/GVDBNvrhiApronApiTests.cmake")
+unset(_gvdb_apron_api_added)

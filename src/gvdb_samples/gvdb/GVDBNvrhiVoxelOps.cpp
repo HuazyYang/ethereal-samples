@@ -149,16 +149,28 @@ FRESULT NvrhiVoxelOps::prepareCopy(uint32_t source, uint32_t destination, const 
 }
 FRESULT NvrhiVoxelOps::prepareApron(uint32_t mask, const PreparationBudget& budget,
                                    std::unique_ptr<PreparedGeneration>& output) noexcept {
-    return prepare(Apron, mask, 0, {}, budget, output);
+    return prepareApron(mask, nullptr, 0, budget, output);
+}
+FRESULT NvrhiVoxelOps::prepareApron(uint32_t mask, const Float4* values, uint32_t overrideMask,
+    const PreparationBudget& budget, std::unique_ptr<PreparedGeneration>& output) noexcept {
+    return prepare(Apron, mask, 0, {}, budget, output, values, overrideMask);
 }
 FRESULT NvrhiVoxelOps::prepare(uint32_t operation, uint32_t mask, uint32_t source, Float4 value,
-                              const PreparationBudget& budget, std::unique_ptr<PreparedGeneration>& output) noexcept {
+    const PreparationBudget& budget, std::unique_ptr<PreparedGeneration>& output,
+    const Float4* boundaryValues, uint32_t overrideMask) noexcept {
     return guarded([&] {
         auto& state = *m_impl;
         const auto snapshot = state.volume->snapshot();
         require(bool(snapshot), FE_NOT_ALIVE_OBJECT);
         const auto& current = snapshot->bindings();
         require(!(mask & ~current.channelMask), FE_NOT_FOUND);
+        require(!(overrideMask & ~mask) && (!overrideMask || boundaryValues));
+        for (uint32_t channel = 0; channel < c_MaxChannels; ++channel) {
+            if (!(overrideMask & (uint32_t(1) << channel))) continue;
+            ChannelDesc boundary = current.channels[channel].desc;
+            boundary.voidValue = boundaryValues[channel];
+            require(bool(validateChannelDesc(boundary)));
+        }
         uint32_t writeMask = mask;
         slang::UInt4 fill{};
         if (operation == Fill) {
@@ -195,7 +207,9 @@ FRESULT NvrhiVoxelOps::prepare(uint32_t operation, uint32_t mask, uint32_t sourc
                 uint32_t(binding.storage.allocatedBytes / 4), uint32_t((binding.storage.logicalBytes - 1) % 4 + 1)};
             parameters.operation.x = operation;
             parameters.fillBits = fill;
-            parameters.voidBits = voidBits(binding.desc);
+            ChannelDesc boundary = binding.desc;
+            if (overrideMask & (uint32_t(1) << channel)) boundary.voidValue = boundaryValues[channel];
+            parameters.voidBits = voidBits(boundary);
             BufferHandle constants;
             check(builder->upload(&parameters, sizeof(parameters), 0, false, true, constants));
             BindingSetDesc desc;

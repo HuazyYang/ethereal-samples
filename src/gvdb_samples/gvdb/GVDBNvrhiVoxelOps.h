@@ -37,6 +37,12 @@ class NvrhiVoxelOps {
     // active neighbors. Missing sparse cells use each channel's complete void value.
     nvrhi::FRESULT prepareApron(uint32_t channelMask, const PreparationBudget&,
                                  std::unique_ptr<PreparedGeneration>& output) noexcept;
+    // Per-call missing-neighbor boundary values. values is logically 32 entries;
+    // only overrideMask bits are read. Those bits must be selected in channelMask.
+    // All supplied values obey ChannelDesc::voidValue validation, even on no-ops.
+    // The channel descriptors and retained snapshots are never modified.
+    nvrhi::FRESULT prepareApron(uint32_t channelMask, const Float4* values, uint32_t overrideMask,
+        const PreparationBudget&, std::unique_ptr<PreparedGeneration>& output) noexcept;
     // Zero mask, empty atlas, or apron update with apron=0 returns a valid unconsumed
     // no-op ticket. Recording validates and consumes it once, without GPU allocation,
     // dispatch, publication serial or channel/topology revision changes.
@@ -45,6 +51,7 @@ class NvrhiVoxelOps {
     std::unique_ptr<Impl> m_impl;
     explicit NvrhiVoxelOps(std::unique_ptr<Impl>) noexcept;
     nvrhi::FRESULT prepare(uint32_t operation, uint32_t mask, uint32_t source, Float4 value,
-                            const PreparationBudget&, std::unique_ptr<PreparedGeneration>& output) noexcept;
+                            const PreparationBudget&, std::unique_ptr<PreparedGeneration>& output,
+                            const Float4* boundaryValues = nullptr, uint32_t overrideMask = 0) noexcept;
 };
 } // namespace gvdb::portable
