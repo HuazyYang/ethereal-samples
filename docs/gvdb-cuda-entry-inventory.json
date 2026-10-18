@@ -133,11 +133,13 @@
       "remaining": "Obstacle-volume subcell mapping needs an explicit replacement and tests."
     },
     "gather": {
-      "status": "portable-foundation",
+      "status": "owned-validated",
       "replacementFiles": [
-        "gvdb/slang/GVDBGather.slang"
+        "gvdb/slang/GVDBAtlasGather.slang",
+        "gvdb/GVDBNvrhiGather.cpp",
+        "gvdb/GVDBNvrhiGatherApi.cpp"
       ],
-      "remaining": "Public channel publication and attribute transport remain; retained gather does not read velocity attributes."
+      "remaining": "Public ordinary R32 density/level-set and optional RGBA8 gathers use authenticated PointSets, stable signed/shifted subcell bins, separate support/distance radii and explicit channel publication. Windows four-backend/native/memory/package checks pass. Normalized-ushort weighted color, broader consumers and Linux remain; velocity is not read by retained gathers."
     },
     "weighted-ushort-gather": {
       "status": "partial",

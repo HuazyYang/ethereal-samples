@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "GVDBNvrhiPointApi.h"
+#include "GVDBNvrhiPointApiInternal.h"
 #include "GVDBNvrhiApiInternal.h"
 #include "GVDBNvrhiAdoptionInternal.h"
 #include "GVDBPointStreamConversion.h"
@@ -351,6 +352,23 @@ FRESULT PointOps::prepareTopology(IGVDBPointSet* points,const PointTopologyDesc&
     });
 }
 } // namespace
+namespace detail {
+nvrhi::FRESULT resolvePointSet(IGVDBPointSet* input,nvrhi::IDevice* device,ResolvedPointSet& output) noexcept {
+    return guarded([&] {
+        require(device!=nullptr);
+        const auto point=implementation<PointSet>(input);
+        require(point->device.Get()==device);
+        ResolvedPointSet result;result.retained=point.Get();result.info=point->info;
+        check(point->getData(PointAttribute::Position,result.positions));
+        check(point->getStream(PointAttribute::Position,result.positionStream));
+        if(result.info.attributeMask&(1u<<uint32_t(PointAttribute::Color))) {
+            check(point->getData(PointAttribute::Color,result.colors));
+            check(point->getStream(PointAttribute::Color,result.colorStream));
+        }
+        output=std::move(result);return FS_OK;
+    });
+}
+} // namespace detail
 nvrhi::FRESULT gvdbCreateNvrhiPointOps(uint32_t apiVersion,const PointOpsCreateDesc* desc,IGVDBPointOps** output) noexcept {
     if(!output)return FE_INVALID_ARGS;*output=nullptr;
     return guarded([&] {
