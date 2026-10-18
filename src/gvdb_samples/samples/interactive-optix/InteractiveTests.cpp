@@ -114,10 +114,35 @@ void runSelfTests(ethereal::slang::ComputeRuntime &runtime)
     scene.mouseScroll(1, view);
     require(scene.sampleCount() == 0, "wheel resets samples");
     scene.renderCustom(p, view);
-    scene.key('R', view);
-    require(scene.sampleCount() == 0, "reset key clears samples");
-    scene.key('2', view);
-    require(scene.description().volumes[0].mode == sample::SceneVolumeMode::Surface, "shading key selects pipeline");
+    const uint32_t beforeRepeat = scene.sampleCount();
+    require(beforeRepeat > 0 && !scene.keyEvent('R', true, view) && scene.sampleCount() == beforeRepeat,
+            "repeated reset must preserve accumulation");
+    require(!scene.keyEvent('2', true, view) &&
+                scene.description().volumes[0].mode == sample::SceneVolumeMode::Deep &&
+                scene.sampleCount() == beforeRepeat,
+            "repeated shading action must preserve mode and accumulation");
+    require(!scene.keyEvent('V', true, view) && !scene.keyEvent('I', true, view),
+            "scene toggle keys must remain press-only");
+    require(scene.keyEvent('R', false, view) && scene.sampleCount() == 0, "reset press clears samples");
+    require(scene.keyEvent('2', false, view) &&
+                scene.description().volumes[0].mode == sample::SceneVolumeMode::Surface,
+            "shading press selects pipeline");
+    const auto beforeTranslation = scene.description().instances[1];
+    for (int key : {'X', 'Y', 'Z'})
+        require(scene.keyEvent(key, true, view), "positive translation accepts repeat");
+    const auto translated = scene.description().instances[1].transform;
+    close(translated[3], beforeTranslation.transform[3] + 1, "repeated X translation");
+    close(translated[7], beforeTranslation.transform[7] + 1, "repeated Y translation");
+    close(translated[11], beforeTranslation.transform[11] + 1, "repeated Z translation");
+    for (int key : {'A', 'S', 'D'})
+        require(scene.keyEvent(key, true, view), "negative translation accepts repeat");
+    const auto restored = scene.description().instances[1].transform;
+    close(restored[3], beforeTranslation.transform[3], "repeated A translation");
+    close(restored[7], beforeTranslation.transform[7], "repeated S translation");
+    close(restored[11], beforeTranslation.transform[11], "repeated D translation");
+    scene.setMaxSamples(8);
+    require(scene.keyEvent('[', true, view) && scene.maxSamples() == 4, "repeated sample limit decrease");
+    require(scene.keyEvent(']', true, view) && scene.maxSamples() == 8, "repeated sample limit increase");
     bool rejected = false;
     try
     {

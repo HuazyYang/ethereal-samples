@@ -215,6 +215,11 @@ slang::RaycastOutput InteractiveScene::renderCustom(const slang::RaycastParamete
     m_advance = m_samples >= m_options.maxSamples;
     return image;
 }
+bool InteractiveScene::acceptsKeyRepeat(int key) const
+{
+    return key == 'X' || key == 'Y' || key == 'Z' || key == 'A' || key == 'S' || key == 'D' ||
+           key == '[' || key == ']';
+}
 bool InteractiveScene::key(int key, sample::VolumeViewOptions &view)
 {
     const sample::SceneVolumeMode modes[] = {sample::SceneVolumeMode::Deep, sample::SceneVolumeMode::Surface,

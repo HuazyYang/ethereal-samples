@@ -313,8 +313,45 @@ int main(int argc, const char** argv) {
                 expectNear(got.y, expected.y, 1e-6f, "world point projection and clipping");
                 expectNear(got.z, expected.z, 1e-6f, "world overlay preserves other pixels");
             }
-        scene.lines.clear();
         scene.points.clear();
+        scene.lines = {
+            {{0, 2, 2, 0}, {4, 2, 2, 0}, {1, 0, 0, .25f}},
+            {{0, 2, 2, 0}, {4, 2, 2, 0}, {0, 0, 1, .5f}},
+            {{0, 2, 2, 0}, {4, 2, 2, 0}, {0, 1, 0, 0}}
+        };
+        image = colors(runtime, v::renderVolumeView(runtime, scene, options));
+        for (unsigned y = 0; y < options.height; ++y)
+            for (unsigned x = 0; x < options.width; ++x) {
+                const auto i = y * options.width + x;
+                const auto& background = unadorned[i];
+                const bool covered = y == 6 && x >= 6 && x <= 10;
+                const g::Float4 expected = covered
+                    ? g::Float4{background.x * .375f + .125f, background.y * .375f,
+                                background.z * .375f + .5f, 1}
+                    : background;
+                expectNear(image[i].x, expected.x, 1e-6f, "overlay alpha and draw order red");
+                expectNear(image[i].y, expected.y, 1e-6f, "transparent overlay preserves destination");
+                expectNear(image[i].z, expected.z, 1e-6f, "overlapping alpha accumulation blue");
+                expectNear(image[i].w, expected.w, 1e-6f, "composited overlay alpha");
+            }
+        // The same blend equation must preserve a custom renderer's nonopaque alpha.
+        options.mode = v::VolumeViewMode::Surface;
+        scene.custom = [&](const g::RaycastParameters&, const v::VolumeViewOptions& o) {
+            std::vector<g::Float4> pixels(size_t(o.width) * o.height, {.2f, .3f, .4f, .4f});
+            std::vector<float> depths(pixels.size(), 1.f);
+            return g::RaycastOutput{
+                runtime.buffer(pixels.size() * sizeof(g::Float4), sizeof(g::Float4), pixels.data()),
+                runtime.buffer(depths.size() * sizeof(float), sizeof(float), depths.data()), o.width, o.height};
+        };
+        image = colors(runtime, v::renderVolumeView(runtime, scene, options));
+        expectNear(image[center].x, .2f, 1e-6f, "translucent background red composition");
+        expectNear(image[center].y, .1125f, 1e-6f, "translucent background green composition");
+        expectNear(image[center].z, .65f, 1e-6f, "translucent background blue composition");
+        expectNear(image[center].w, .775f, 1e-6f, "translucent background alpha composition");
+        expectNear(image.front().w, .4f, 1e-6f, "uncovered custom alpha unchanged");
+        scene.custom = {};
+        options.mode = v::VolumeViewMode::Voxel;
+        scene.lines.clear();
         options.cameraFar = 5;
         output = v::renderVolumeView(runtime, scene, options);
         runtime.read(output.depth, depth.data(), depth.size() * 4);

@@ -32,6 +32,8 @@ struct VolumeViewOptions {
     slang::Float4 background{.1f, .2f, .4f, 1};
     slang::Float4 targetOffset{0, 0, 0, 0}, lightDirection{-1, 2, -1, 0};
 };
+// Primitives composite in vector order with source-alpha blending (alpha clamped to [0,1]).
+// Lines are drawn before points; these screen overlays do not test scene depth.
 struct VolumeOverlayLine {
     slang::Float4 start, end, color;
 };
@@ -63,6 +65,11 @@ class VolumeScene {
     virtual bool mouseScroll(float, VolumeViewOptions&) { return false; }
     virtual bool key(int) { return false; }
     virtual bool key(int value, VolumeViewOptions&) { return key(value); }
+    // Actions are press-only unless a scene opts into repeating a continuous control.
+    virtual bool acceptsKeyRepeat(int) const { return false; }
+    bool keyEvent(int value, bool repeat, VolumeViewOptions& options) {
+        return (!repeat || acceptsKeyRepeat(value)) && key(value, options);
+    }
     virtual std::string describe() const { return {}; }
 };
 using SceneFactory = std::function<std::unique_ptr<VolumeScene>(ethereal::slang::ComputeRuntime&)>;

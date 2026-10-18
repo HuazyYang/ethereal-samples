@@ -121,13 +121,17 @@ void overlayTopology(uint3 id:SV_DispatchThreadID) {
     uint2 tile=id.xy/g_View.lineGrid.x;
     uint2 range=g_TileRanges[tile.y*g_View.lineGrid.y+tile.x];
     float2 pixel=float2(id.xy)+.5;
-    bool found=false;float4 color=float4(0);
+    bool found=false;float4 color=g_Output[id.y*g_Parameters.image.x+id.x];
     [loop] for(uint i=0;i<range.y;++i) {
         Line line=g_Lines[g_LineIndices[range.x+i]];
         float2 a=line.points.xy,b=line.points.zw,d=b-a;
         float t=dot(d,d)>0?saturate(dot(pixel-a,d)/dot(d,d)):0;
         if(dot(pixel-a-t*d,pixel-a-t*d)<=.7*.7) {
-            color=line.color;found=true;break;
+            // Match source-alpha blending in draw order, including overlapping
+            // translucent rays. Zero-alpha lines leave the scene unchanged.
+            float alpha=saturate(line.color.w);
+            color=float4(lerp(color.xyz,line.color.xyz,alpha),alpha+color.w*(1-alpha));
+            found=true;
         }
     }
     // Keep the UAV side effect outside the dynamic loop for FXC.

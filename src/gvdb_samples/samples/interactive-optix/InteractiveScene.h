@@ -55,6 +55,7 @@ class InteractiveScene final : public sample::VolumeScene
     void animate(float, sample::VolumeViewOptions &) override;
     slang::RaycastOutput renderCustom(const slang::RaycastParameters &, const sample::VolumeViewOptions &) override;
     bool key(int, sample::VolumeViewOptions &) override;
+    bool acceptsKeyRepeat(int) const override;
     bool mouseDrag(int, float, float, int, sample::VolumeViewOptions &) override;
     bool mouseScroll(float, sample::VolumeViewOptions &) override;
     std::string describe() const override;

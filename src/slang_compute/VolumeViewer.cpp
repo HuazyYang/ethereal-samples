@@ -375,8 +375,12 @@ class VolumePass : public app::IRenderPass {
     bool KeyboardUpdate(int key, int, int action, int) override {
         if (action != GLFW_PRESS && action != GLFW_REPEAT)
             return false;
-        if (m_scene->key(key, m_options))
+        if (m_scene->keyEvent(key, action == GLFW_REPEAT, m_options))
             return true;
+        // Unhandled repeats only drive the viewer's continuous camera controls.
+        if (action == GLFW_REPEAT && key != GLFW_KEY_LEFT && key != GLFW_KEY_RIGHT &&
+            key != GLFW_KEY_UP && key != GLFW_KEY_DOWN)
+            return false;
         if (key == GLFW_KEY_1)
             m_options.topology = !m_options.topology;
         else if (key == GLFW_KEY_V)
@@ -608,10 +612,14 @@ void exerciseGuiInput(VolumePass& view, VolumeGuiPass& gui, app::DeviceManager& 
     gui.MouseButtonUpdate(GLFW_MOUSE_BUTTON_LEFT, GLFW_RELEASE, 0);
     view.KeyboardUpdate(GLFW_KEY_GRAVE_ACCENT, 0, GLFW_PRESS, 0);
     require(!view.uiVisible(), "Fixture did not hide the Inspector");
+    view.KeyboardUpdate(GLFW_KEY_GRAVE_ACCENT, 0, GLFW_REPEAT, 0);
+    require(!view.uiVisible(), "Key repeat toggled the Inspector a second time");
+    require(view.KeyboardUpdate(GLFW_KEY_LEFT, 0, GLFW_REPEAT, 0), "Camera navigation lost key repeat");
     // Test the transition before a new ImGui frame updates its stale capture flags.
     io.WantCaptureKeyboard = io.WantCaptureMouse = true;
     require(!gui.KeyboardUpdate(GLFW_KEY_G, 0, GLFW_PRESS, 0), "Hidden Inspector captured a key");
     view.KeyboardUpdate(GLFW_KEY_G, 0, GLFW_PRESS, 0);
+    require(!view.KeyboardUpdate(GLFW_KEY_G, 0, GLFW_REPEAT, 0), "Repeated scene action was forwarded");
     require(!gui.KeyboardCharInput('g', 0), "Hidden Inspector captured character input");
     require(!gui.MouseButtonUpdate(GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS, 0),
             "Hidden Inspector captured a mouse press");
