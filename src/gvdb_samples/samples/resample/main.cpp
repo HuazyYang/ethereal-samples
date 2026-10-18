@@ -1,4 +1,4 @@
-﻿// Original RAW resample example through NVRHI and offline Slang on every API.
+// Original RAW resample example through NVRHI and offline Slang on every API.
 // SPDX-License-Identifier: Apache-2.0
 #include "ResampleVolume.h"
 #include "ResampleTests.h"
@@ -30,8 +30,39 @@ class ResampleScene final : public gvdb::sample::VolumeScene {
                 options.input == std::filesystem::path(GVDB_SAMPLES_ASSETS_DIR) / "head.raw");
         m_pipeline.rebuild(options.sparse, options.halo);
     }
-    gvdb::slang::SlangVolume& volume() override { return m_pipeline.volume(); }
-    const gvdb::slang::PackedVolume& packed() const override { return m_pipeline.packed(); }
+    gvdb::portable::SnapshotHandle ownedSnapshot() const override { return m_pipeline.snapshot(); }
+    bool topologyOverlay(std::vector<gvdb::sample::VolumeOverlayLine>& output) const override {
+        const auto& host = m_pipeline.topology();
+        const gvdb::slang::Float4 colors[] = {
+            {.1f, 1,   .2f, 1},
+            {1,   .7f, .1f, 1},
+            {.1f, .6f, 1,   1},
+            {1,   .2f, .8f, 1}
+        };
+        output.clear();
+        for (uint32_t level = 0; level < host.getConfiguration().levelCount; ++level) {
+            const auto pool = host.getPool(0, level);
+            if (pool.count && (!pool.data || pool.stride != sizeof(gvdb::portable::Node)))
+                throw std::logic_error("Resample node pool");
+            if (pool.count > (1000000 - output.size()) / 12)
+                throw std::invalid_argument("Resample topology overlay too large");
+            for (uint64_t i = 0; i < pool.count; ++i) {
+                gvdb::portable::Node node;
+                std::memcpy(&node, static_cast<const uint8_t*>(pool.data) + i * pool.stride, sizeof(node));
+                const float w = float(host.getRange(int32_t(level)));
+                const auto vertex = [&](uint32_t c) {
+                    return gvdb::slang::Float4{float(node.position.x) + (c & 1 ? w : 0),
+                                               float(node.position.y) + (c & 2 ? w : 0),
+                                               float(node.position.z) + (c & 4 ? w : 0), 0};
+                };
+                for (uint32_t c = 0; c < 8; ++c)
+                    for (uint32_t axis = 0; axis < 3; ++axis)
+                        if (!(c & (1u << axis)))
+                            output.push_back({vertex(c), vertex(c | (1u << axis)), colors[level % 4]});
+            }
+        }
+        return true;
+    }
     std::vector<gvdb::slang::Float4> transfer() const override {
         return gvdb::samples::resampleTransferFunction();
     }
@@ -46,11 +77,11 @@ class ResampleScene final : public gvdb::sample::VolumeScene {
         return true;
     }
     std::string describe() const override {
-        const auto& packed = m_pipeline.packed();
-        const auto r = packed.volume.atlasResolutionAndApron;
+        const auto snapshot = m_pipeline.snapshot()->getDesc();
+        const auto r = snapshot.volume.atlasResolutionAndApron;
         return std::string(m_pipeline.sparse() ? "Sparse" : "Dense") +
                (m_pipeline.halo() ? "; halo on" : "; halo off") + "; " +
-               std::to_string(packed.levels[0].nodes.z) + " bricks; " +
+               std::to_string(snapshot.activeLeafCount) + " bricks; " +
                std::to_string(uint64_t(r.x) * r.y * r.z) + " atlas voxels; 2 sparse, 3 halo";
     }
 };
@@ -74,7 +105,7 @@ int main(int argc, const char** argv) {
                     "resample [-dx11|-dx12|-vk|-cuda] [--adapter N] [--validation]\n"
                     "  [--input head.raw] [--dense|--sparse] [--halo|--no-halo] [--topology]\n"
                     "  [--headless] [--output image.png] [--width N] [--height N] [--step N]\n"
-                    "  [--verify] [--self-test]\n"
+                    "  [--verify] [--self-test] [--frames N]\n"
                     "Interactive: 1 topology, 2 sparse, 3 halo; arrows/mouse orbit, wheel zoom.\n"
                     "--verify checks all three topology modes against CPU references. CUDA runs headless.");
                 return 0;
@@ -96,7 +127,11 @@ int main(int argc, const char** argv) {
                 options.halo = false;
             else if (!std::strcmp(argv[i], "--topology"))
                 options.view.topology = true;
-            else if (!std::strcmp(argv[i], "--width"))
+            else if (!std::strcmp(argv[i], "--frames")) {
+                options.view.frameLimit = uint32_t(std::stoul(argument()));
+                if (!options.view.frameLimit || options.view.frameLimit > 10000)
+                    throw std::invalid_argument("Frames must be in [1,10000]");
+            } else if (!std::strcmp(argv[i], "--width"))
                 options.view.width = uint32_t(std::stoul(argument()));
             else if (!std::strcmp(argv[i], "--height"))
                 options.view.height = uint32_t(std::stoul(argument()));

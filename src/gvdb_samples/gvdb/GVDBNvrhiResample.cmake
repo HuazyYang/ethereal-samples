@@ -11,8 +11,7 @@ if(NOT TARGET gvdb_nvrhi_resample)
     if(MSVC)
         target_compile_options(gvdb_nvrhi_resample PRIVATE /utf-8)
     endif()
-    if(BUILD_TESTING AND TARGET donut_app AND TARGET gvdb_nvrhi_owner_shaders
-            AND COMMAND ethereal_compile_shaders)
+    if(COMMAND ethereal_compile_shaders)
         file(CONFIGURE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/gvdb-owned-resample.cfg"
             CONTENT "\"${CMAKE_CURRENT_LIST_DIR}/slang/GVDBAtlasResample.slang\" -T cs -E resampleOwnedAtlas\n" @ONLY)
         ethereal_compile_shaders(TARGET gvdb_nvrhi_resample_shaders SLANG CUDA ALL_PLATFORMS
