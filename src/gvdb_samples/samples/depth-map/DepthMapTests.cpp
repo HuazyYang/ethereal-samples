@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "../../tests/PortableFixtures.h"
 #include "DepthMap.h"
+#if ETHEREAL_DEPTH_REFERENCE_TESTS
+#include "DepthMapReference.h"
+#endif
+#include <gvdb/slang/GVDBPortableVbx.h>
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -128,9 +132,16 @@ void runAnalyticTests(nvrhi::IDevice *graphics, nvrhi::IDevice *compute)
     auto fixture = g::fixtures::twoBrickVolume();
     Scene scene;
     std::string error;
-    if (!g::packVolume(g::fixtures::volumeSource(fixture), scene.volume.packed, error))
+    g::VbxRawVolume source;
+    if (!g::packVolume(g::fixtures::volumeSource(fixture), source.packed, error))
         throw std::runtime_error(error);
-    scene.volume.atlas = fixture.atlas;
+    g::VbxChannel scalar;
+    scalar.format = g::AtlasFormat::R32_FLOAT;
+    scalar.bytes.resize(fixture.atlas.size() * sizeof(float));
+    std::memcpy(scalar.bytes.data(), fixture.atlas.data(), scalar.bytes.size());
+    source.channels.push_back(std::move(scalar));
+    if (!g::saveRawVBX(source, scene.volumeVBX, error))
+        throw std::runtime_error(error);
     scene.refreshApron = false;
     scene.transfer.assign(16384, {.8f, .4f, .2f, .5f});
     Renderer renderer(graphics, compute, scene);
@@ -180,6 +191,9 @@ void runAnalyticTests(nvrhi::IDevice *graphics, nvrhi::IDevice *compute)
                     renderer.render(w, h, view);
                 auto result = renderer.read();
                 validate(result, view, distance, true);
+#if ETHEREAL_DEPTH_REFERENCE_TESTS
+                compareTypedReference(compute, scene, result, view);
+#endif
                 ++cases;
             }
         }
@@ -189,7 +203,37 @@ void runAnalyticTests(nvrhi::IDevice *graphics, nvrhi::IDevice *compute)
     empty.light = empty.cameraToWorld.m_translation;
     renderer.setMesh({});
     renderer.render(19, 11, empty);
-    validate(renderer.read(), empty, 0, false);
+    auto emptyImage = renderer.read();
+    validate(emptyImage, empty, 0, false);
+#if ETHEREAL_DEPTH_REFERENCE_TESTS
+    compareTypedReference(compute, scene, emptyImage, empty);
+    // Poison only aprons. Keeping imported values and rebuilding sparse borders
+    // must both agree with the old path, and must yield different images.
+    for (uint32_t z = 0; z < 4; ++z)
+        for (uint32_t y = 0; y < 4; ++y)
+            for (uint32_t x = 0; x < 8; ++x)
+            {
+                const float value = (x % 4 >= 1 && x % 4 <= 2 && y >= 1 && y <= 2 && z >= 1 && z <= 2) ? .35f : 42.f;
+                std::memcpy(source.channels[0].bytes.data() + ((z * 4 + y) * 8 + x) * 4, &value, 4);
+            }
+    if (!g::saveRawVBX(source, scene.volumeVBX, error))
+        throw std::runtime_error(error);
+    scene.transfer = referenceTransfer();
+    std::vector<uint32_t> importedImage;
+    for (bool refresh : {false, true})
+    {
+        scene.refreshApron = refresh;
+        Renderer candidate(graphics, compute, scene);
+        candidate.render(65, 33, empty);
+        const auto image = candidate.read();
+        compareTypedReference(compute, scene, image, empty);
+        if (!refresh)
+            importedImage = image.volume;
+        else if (importedImage == image.volume)
+            throw std::runtime_error("Apron refresh did not change poisoned sparse boundary");
+    }
+    std::printf("PASS exact typed/raw comparison, imported apron preservation and sparse apron refresh\n");
+#endif
     std::printf("PASS %u depth-map analytic cases: projected plane, depth clipping, off-axis rays, transformed "
                 "instances, reference alpha, repeated GPU ownership and resize\n",
                 cases + 1);

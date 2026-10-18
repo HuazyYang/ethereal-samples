@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "DepthMap.h"
+#include "DepthMapShaderData.h"
 #include "../sample-utils/ObjLoader.h"
 #include "ComputeRuntime.h"
 #include <algorithm>
@@ -10,7 +11,7 @@
 #include <donut/core/vfs/VFS.h>
 #include <donut/engine/ShaderFactory.h>
 #include <fstream>
-#include <gvdb/GVDBSlangVolume.h>
+#include "../sample-utils/OwnedVolumeIO.h"
 #include <nvrhi/shader-program.h>
 #include <stdexcept>
 namespace depth_map
@@ -29,17 +30,7 @@ void require(bool value, const char *what)
     if (!value)
         throw std::runtime_error(what);
 }
-g::Float4 f4(dm::float3 v, float w = 0)
-{
-    return {v.x, v.y, v.z, w};
-}
-struct DepthParameters
-{
-    g::VolumeInfo volume;
-    g::UInt4 image;
-    g::Float4 origin, direction00, directionDx, directionDy;
-    g::Float4 indexToWorldRows[3], cameraForward, nearFarStepBias, integration, background;
-};
+using detail::DepthParameters;
 struct RasterParameters
 {
     dm::float4x4 viewProjection;
@@ -90,9 +81,10 @@ std::vector<g::Float4> referenceTransfer()
 Scene loadScene(const std::filesystem::path &volume, const std::filesystem::path &mesh)
 {
     Scene scene;
-    std::string error;
-    if (!g::loadVBXFile(volume, scene.volume, error))
-        throw std::runtime_error(error);
+    std::ifstream input(volume, std::ios::binary);
+    require(bool(input), "Cannot open depth-map VBX");
+    scene.volumeVBX.assign(std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>());
+    require(!input.bad() && !scene.volumeVBX.empty(), "Cannot read depth-map VBX");
     auto fs = MAKE_RC_OBJ_PTR(donut::vfs::NativeFileSystem);
     auto source = SampleUtils::ObjLoader()(fs, mesh.string().c_str());
     require(!source.positions.empty() && !source.indices.empty(), "Cannot load depth-map OBJ mesh");
@@ -138,7 +130,11 @@ struct Renderer::Impl
     ExternalFenceHandle fence, importedFence;
     uint64_t frame = 0;
     ethereal::slang::ComputeRuntime runtime;
-    g::SlangVolume volume;
+    gvdb::portable::SnapshotHandle volume;
+    gvdb::portable::SnapshotDesc volumeDesc;
+    gvdb::portable::ChannelSnapshotDesc scalar;
+    gvdb::portable::BorrowedBufferBinding nodes, children, levels;
+    BufferHandle dummyChildren;
     BufferHandle transfer;
     BufferHandle positions, normals, indices, rasterConstants, depthConstants;
     uint32_t indexCount = 0;
@@ -158,12 +154,45 @@ struct Renderer::Impl
     bool first = true;
     Impl(IDevice *gr, IDevice *co, const Scene &scene)
         : graphics(gr), compute(co), runtime(co, donut::app::GetDirectoryWithExecutable() / "shaders/gvdb_slang" /
-                                                     donut::app::GetShaderTypeName(co->getGraphicsAPI())),
-          volume(runtime, scene.volume.packed, scene.volume.atlas.data(), scene.volume.atlas.size())
+                                                     donut::app::GetShaderTypeName(co->getGraphicsAPI()))
     {
         require(scene.transfer.size() == 16384, "Depth-map transfer requires 16384 entries");
+        const auto owned = donut::app::GetDirectoryWithExecutable() / "shaders/gvdb_owned" /
+                           donut::app::GetShaderTypeName(co->getGraphicsAPI());
+        gvdb::sample::OwnedVolumeLoadOptions load;
         if (scene.refreshApron)
-            volume.updateApron();
+        {
+            load.refreshApronChannels = 1;
+            load.mutationArtifact = owned / "GVDBAtlasMutation_mutateAtlas.bin";
+        }
+        volume = gvdb::sample::loadOwnedVBX(co, owned / "GVDBAtlasRepack_relocateAtlas.bin", scene.volumeVBX.data(),
+                                            scene.volumeVBX.size(), load);
+        volumeDesc = volume->getDesc();
+        check(volume->getChannel(0, scalar), "depth-map scalar channel");
+        require(volumeDesc.channelMask == 1 && scalar.desc.format == gvdb::portable::AtlasFormat::R32_FLOAT,
+                "Depth-map requires exactly one R32_FLOAT channel");
+        check(volume->getTopologyBuffer(gvdb::portable::TopologyBuffer::Nodes, nodes), "depth-map nodes");
+        check(volume->getTopologyBuffer(gvdb::portable::TopologyBuffer::Children, children), "depth-map children");
+        check(volume->getTopologyBuffer(gvdb::portable::TopologyBuffer::Levels, levels), "depth-map levels");
+        const auto raw = [](const gvdb::portable::BorrowedBufferBinding &binding, uint64_t minimum) {
+            return bool(gvdb::portable::validateRawView({binding.buffer, binding.byteOffset, binding.byteSize}, minimum,
+                                                        false));
+        };
+        require(raw(scalar.raw, scalar.storage.allocatedBytes) && raw(nodes, sizeof(gvdb::portable::Node)) &&
+                    raw(children, 0),
+                "Depth-map canonical raw ranges");
+        require(
+            levels.buffer && levels.buffer->getDesc().structStride == sizeof(g::LevelInfo) &&
+                gvdb::portable::containsBytes(levels.buffer->getDesc().byteSize, levels.byteOffset, levels.byteSize) &&
+                levels.byteOffset % sizeof(g::LevelInfo) == 0 &&
+                levels.byteSize >= uint64_t(volumeDesc.levelCount) * sizeof(g::LevelInfo),
+            "Depth-map level range");
+        if (!children.buffer)
+        {
+            const uint32_t missing[2] = {UINT32_MAX, UINT32_MAX};
+            dummyChildren = runtime.buffer(sizeof(missing), 0, missing, true);
+            children = {dummyChildren, 0, sizeof(missing)};
+        }
         transfer = runtime.buffer(scene.transfer.size() * sizeof(g::Float4), sizeof(g::Float4), scene.transfer.data());
         runtime.flush();
         if (gr != co)
@@ -221,9 +250,70 @@ struct Renderer::Impl
         require(bool(file), "Missing depth-map compute artifact");
         std::vector<char> bytes((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
         check(createShaderProgram(co, bytes.data(), bytes.size(), &computeProgram), "load depth clipping program");
+        uint32_t entry;
+        check(computeProgram->findEntryPoint("clipVolume", ShaderType::Compute, &entry), "depth clipping entry");
+        ShaderEntryPointDesc entryDesc;
+        check(computeProgram->getEntryPointDesc(entry, entryDesc), "depth clipping entry ABI");
+        require(entryDesc.threadGroupSize[0] == 8 && entryDesc.threadGroupSize[1] == 8 &&
+                    entryDesc.threadGroupSize[2] == 1 && entryDesc.entryParamsSize == 0,
+                "Depth clipping threadgroup/entry ABI");
+        check(computeProgram->getBindingLayoutDesc(entry, 0, layout), "depth clipping reflection");
+        const ResourceType types[] = {ResourceType::ConstantBuffer,       ResourceType::RawBuffer_SRV,
+                                      ResourceType::RawBuffer_SRV,        ResourceType::RawBuffer_SRV,
+                                      ResourceType::StructuredBuffer_SRV, ResourceType::StructuredBuffer_SRV,
+                                      ResourceType::Texture_SRV,          ResourceType::Texture_UAV};
+        const uint32_t slots[] = {0, 0, 1, 2, 3, 4, 5, 0};
+        const uint32_t strides[] = {sizeof(DepthParameters), 1, 1, 1, sizeof(g::LevelInfo), sizeof(g::Float4), 0, 0};
+        require(layout.bindings.size() == 8, "Depth clipping resource ABI");
+        for (uint32_t i = 0; i < 8; ++i)
+            require(std::count_if(layout.bindings.begin(), layout.bindings.end(),
+                                  [&](const auto &b) { return b.type == types[i] && b.slot == slots[i]; }) == 1,
+                    "Depth clipping binding ABI");
+        uint32_t globals = 0, globalMask = 0, memberMask = 0, constantIndex = UINT32_MAX;
+        std::vector<ShaderParameterDesc> parameters;
+        for (uint32_t i = 0; i < computeProgram->getParameterCount(entry); ++i)
+        {
+            ShaderParameterDesc p;
+            check(computeProgram->getParameterDesc(entry, i, p), "depth clipping parameter ABI");
+            parameters.push_back(p);
+            require(p.registerSpace == 0, "Depth clipping register space");
+            if (p.scope == ShaderParameterScope::Global)
+            {
+                ++globals;
+                require(p.count == 1 && p.parentParameter == UINT32_MAX, "Depth clipping global ABI");
+                uint32_t found = 8;
+                for (uint32_t j = 0; j < 8; ++j)
+                    if (p.resourceType == types[j] && p.registerIndex == slots[j])
+                        found = j;
+                require(found < 8, "Depth clipping unexpected global");
+                require(!(globalMask & (1u << found)) && (!strides[found] || p.elementStride == strides[found]),
+                        "Depth clipping resource stride");
+                globalMask |= 1u << found;
+                if (found == 0)
+                    constantIndex = i;
+            }
+            else
+            {
+                require(p.scope == ShaderParameterScope::ConstantBuffer && p.resourceType == ResourceType::None &&
+                            p.elementStride == 16 && p.size && p.size % 16 == 0 && p.count == p.size / 16 &&
+                            p.offset % 16 == 0 && uint64_t(p.offset) + p.size <= sizeof(DepthParameters),
+                        "Depth clipping constant member ABI");
+                for (uint32_t offset = p.offset; offset < p.offset + p.size; offset += 16)
+                {
+                    const auto bit = 1u << (offset / 16);
+                    require(!(memberMask & bit), "Depth clipping overlapping constants");
+                    memberMask |= bit;
+                }
+            }
+        }
+        require(globals == 8 && globalMask == 255 && memberMask == ((1u << (sizeof(DepthParameters) / 16)) - 1) &&
+                    constantIndex != UINT32_MAX,
+                "Depth clipping constant block ABI");
+        for (const auto &p : parameters)
+            if (p.scope == ShaderParameterScope::ConstantBuffer)
+                require(p.parentParameter == constantIndex, "Depth clipping constant parent ABI");
         ShaderHandle shader;
-        check(computeProgram->createShader(0, &shader), "depth clipping shader");
-        check(computeProgram->getBindingLayoutDesc(0, 0, layout), "depth clipping reflection");
+        check(computeProgram->createShader(entry, &shader), "depth clipping shader");
         check(co->createBindingLayout(layout, &computeLayout), "depth clipping layout");
         check(co->createComputePipeline(ComputePipelineDesc().setComputeShader(shader).addBindingLayout(computeLayout),
                                         &computePipeline),
@@ -355,14 +445,16 @@ struct Renderer::Impl
         BindingSetDesc bindings;
         bindings.bindings = {BindingSetItem::Texture_SRV(0, meshColor), BindingSetItem::Texture_SRV(1, volumeColor)};
         check(graphics->createBindingSet(bindings, compositeLayout, &compositeBindings), "composition bindings");
-        bindings.bindings = {BindingSetItem::ConstantBuffer(0, depthConstants),
-                             BindingSetItem::StructuredBuffer_SRV(0, volume.atlas()),
-                             BindingSetItem::RawBuffer_SRV(1, volume.nodes()),
-                             BindingSetItem::RawBuffer_SRV(2, volume.children()),
-                             BindingSetItem::StructuredBuffer_SRV(3, volume.levels()),
-                             BindingSetItem::StructuredBuffer_SRV(4, transfer),
-                             BindingSetItem::Texture_SRV(5, importedDepth),
-                             BindingSetItem::Texture_UAV(0, importedColor)};
+        bindings.bindings = {
+            BindingSetItem::ConstantBuffer(0, depthConstants),
+            BindingSetItem::RawBuffer_SRV(0, scalar.raw.buffer, {scalar.raw.byteOffset, scalar.raw.byteSize}),
+            BindingSetItem::RawBuffer_SRV(1, nodes.buffer, {nodes.byteOffset, nodes.byteSize}),
+            BindingSetItem::RawBuffer_SRV(2, children.buffer, {children.byteOffset, children.byteSize}),
+            BindingSetItem::StructuredBuffer_SRV(3, levels.buffer, Format::UNKNOWN,
+                                                 {levels.byteOffset, levels.byteSize}),
+            BindingSetItem::StructuredBuffer_SRV(4, transfer),
+            BindingSetItem::Texture_SRV(5, importedDepth),
+            BindingSetItem::Texture_UAV(0, importedColor)};
         check(compute->createBindingSet(bindings, computeLayout, &computeBindings), "depth clipping bindings");
     }
     void render(uint32_t w, uint32_t h, const View &view, IFramebuffer *target)
@@ -377,23 +469,7 @@ struct Renderer::Impl
         require(target->getFramebufferInfo().width == w && target->getFramebufferInfo().height == h,
                 "Mismatched composition target size");
         const float horizontal = std::tan(dm::radians(25.f)), vertical = horizontal * float(h) / w;
-        auto right = view.cameraToWorld.m_linear.row0, up = view.cameraToWorld.m_linear.row1,
-             forward = view.cameraToWorld.m_linear.row2;
-        const auto inverse = dm::inverse(view.indexToWorld);
-        DepthParameters p{};
-        p.volume = volume.info();
-        p.image = {w, h, 256, uint32_t(view.exactDepth)};
-        p.origin = f4(inverse.transformPoint(view.cameraToWorld.m_translation));
-        p.direction00 = f4(inverse.transformVector(forward - right * horizontal + up * vertical));
-        p.directionDx = f4(inverse.transformVector(right * (2 * horizontal / w)));
-        p.directionDy = f4(inverse.transformVector(up * (-2 * vertical / h)));
-        p.indexToWorldRows[0] = f4(view.indexToWorld.m_linear.row0);
-        p.indexToWorldRows[1] = f4(view.indexToWorld.m_linear.row1);
-        p.indexToWorldRows[2] = f4(view.indexToWorld.m_linear.row2);
-        p.cameraForward = f4(forward);
-        p.nearFarStepBias = {view.nearPlane, view.farPlane, view.step, view.bias};
-        p.integration = {1, 1, .005f, .005f};
-        p.background = {.1f, .2f, .4f, 1};
+        const auto p = detail::clipParameters(volumeDesc.volume, w, h, view);
         RasterParameters r{};
         r.viewProjection = dm::affineToHomogeneous(dm::inverse(view.cameraToWorld)) *
                            dm::perspProjD3DStyle(2 * std::atan(vertical), float(w) / h, view.nearPlane, view.farPlane);

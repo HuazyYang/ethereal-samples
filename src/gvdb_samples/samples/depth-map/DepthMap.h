@@ -2,7 +2,7 @@
 #pragma once
 #include <donut/core/math/math.h>
 #include <filesystem>
-#include <gvdb/slang/GVDBPortableVbx.h>
+#include <gvdb/slang/GVDBPortableData.h>
 #include <memory>
 #include <nvrhi/graphics-interop.h>
 #include <vector>
@@ -15,7 +15,7 @@ struct Mesh
 };
 struct Scene
 {
-    gvdb::slang::VbxVolume volume;
+    std::vector<uint8_t> volumeVBX; // Serialized source; the renderer owns one public snapshot.
     Mesh mesh;
     std::vector<gvdb::slang::Float4> transfer;
     bool refreshApron = true;

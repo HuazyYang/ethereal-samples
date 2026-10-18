@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Lucy raster depth -> Slang sparse-volume clipping -> graphics composition.
 #include "DepthMap.h"
+#if ETHEREAL_DEPTH_REFERENCE_TESTS
+#include "DepthMapReference.h"
+#endif
 #include <GLFW/glfw3.h>
 #include <donut/app/ApplicationBase.h>
 #include <donut/app/DeviceManager.h>
@@ -367,6 +370,10 @@ int main(int argc, const char **argv)
                 for (uint32_t i = 0; i < std::max(3u, options.frames); ++i)
                     renderer.render(options.width, options.height, view);
                 auto image = renderer.read();
+#if ETHEREAL_DEPTH_REFERENCE_TESTS
+                compareTypedReference(compute, scene, image, view);
+                std::printf("PASS exact owned/structured Lucy/explosion clipping comparison\n");
+#endif
                 size_t meshPixels = 0, volumePixels = 0, clipped = 0;
                 for (size_t i = 0; i < image.depth.size(); ++i)
                 {

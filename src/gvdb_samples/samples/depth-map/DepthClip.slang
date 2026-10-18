@@ -15,7 +15,11 @@ struct DepthParameters {
     float4 background;
 };
 ConstantBuffer<DepthParameters> g_Parameters : register(b0);
+#if defined(GVDB_DEPTH_TYPED_ATLAS)
 StructuredBuffer<float> g_Atlas : register(t0);
+#else
+ByteAddressBuffer g_Atlas : register(t0);
+#endif
 ByteAddressBuffer g_Nodes : register(t1);
 ByteAddressBuffer g_Children : register(t2);
 StructuredBuffer<LevelInfo> g_Levels : register(t3);
@@ -24,7 +28,12 @@ Texture2D<float> g_RasterDepth : register(t5);
 RWTexture2D<uint> g_Output : register(u0);
 float atlasValue(int3 coordinate) {
     uint3 res=g_Parameters.volume.atlasResolutionAndApron.xyz;
-    return g_Atlas[flatten3(uint3(clamp(coordinate,int3(0),int3(res)-1)),res)];
+    uint index=flatten3(uint3(clamp(coordinate,int3(0),int3(res)-1)),res);
+#if defined(GVDB_DEPTH_TYPED_ATLAS)
+    return g_Atlas[index];
+#else
+    return asfloat(g_Atlas.Load(index*4u));
+#endif
 }
 float sampleLeaf(VDBNode leaf,float3 position) {
     float3 coordinate=float3(leaf.atlasPosition)+position-float3(leaf.position)-.5;
