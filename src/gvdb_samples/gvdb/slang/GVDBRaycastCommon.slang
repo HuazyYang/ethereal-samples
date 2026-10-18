@@ -16,7 +16,11 @@ struct RaycastParameters {
     float4 light;          // index-space light position, ambient fraction
 };
 ConstantBuffer<RaycastParameters> g_Parameters : register(b0);
+#if defined(GVDB_ATLAS_RAW)
+ByteAddressBuffer g_Atlas : register(t0);
+#else
 StructuredBuffer<float> g_Atlas : register(t0);
+#endif
 ByteAddressBuffer g_Nodes : register(t1);
 ByteAddressBuffer g_Children : register(t2);
 StructuredBuffer<LevelInfo> g_Levels : register(t3);
@@ -51,7 +55,11 @@ bool intersectVolume(float3 origin,float3 direction,out float enter,out float le
 float atlasValue(int3 voxel) {
     uint3 resolution = g_Parameters.volume.atlasResolutionAndApron.xyz;
     uint3 clamped = uint3(clamp(voxel, int3(0), int3(resolution) - 1));
+#if defined(GVDB_ATLAS_RAW)
+    return asfloat(g_Atlas.Load(flatten3(clamped, resolution) * 4u));
+#else
     return g_Atlas[flatten3(clamped, resolution)];
+#endif
 }
 float sampleVolume(float3 position) {
     VDBNode leaf;
