@@ -217,6 +217,16 @@ struct NvrhiVolume::Impl {
     std::shared_ptr<VolumeGeneration> current;
     explicit Impl(const VolumeOwnerDesc& desc) : device(desc.device), host(desc.hostLimits) {}
 };
+struct detail::AccumulationCandidate::Impl {
+    std::shared_ptr<OwnerIdentity> owner;
+    TopologyRevision hostRevision;
+    uint64_t baseSerial = 0, channelRevision = 0;
+    std::unique_ptr<HostVolume> host;
+};
+detail::AccumulationCandidate::AccumulationCandidate(std::unique_ptr<Impl> impl) noexcept : m_impl(std::move(impl)) {}
+detail::AccumulationCandidate::~AccumulationCandidate() = default;
+HostVolume& detail::AccumulationCandidate::host() noexcept { return *m_impl->host; }
+const HostVolume& detail::AccumulationCandidate::host() const noexcept { return *m_impl->host; }
 PreparedGeneration::PreparedGeneration(std::unique_ptr<Impl> impl) noexcept : m_impl(std::move(impl)) {}
 PreparedGeneration::~PreparedGeneration() = default;
 VolumeGeneration::VolumeGeneration(std::unique_ptr<Impl> impl) noexcept : m_impl(std::move(impl)) {}
@@ -634,7 +644,7 @@ FRESULT detail::VolumeMutationBuilder::finish(std::unique_ptr<PreparedGeneration
     });
 }
 
-FRESULT detail::VolumeAdoptionBuilder::cloneHostForOwner(NvrhiVolume& volume, const HostVolume& source,
+FRESULT detail::VolumeAdoptionBuilder::cloneHostForOwner(NvrhiVolume& volume, const HostVolume& source, bool newEpoch,
                                                         std::unique_ptr<HostVolume>& output) noexcept {
     return guarded([&] {
         auto& state = *volume.m_impl;
@@ -654,7 +664,8 @@ FRESULT detail::VolumeAdoptionBuilder::cloneHostForOwner(NvrhiVolume& volume, co
             candidate.m_children[level] = source.m_children[level];
             for (auto& node : candidate.m_nodes[level]) node.atlasInterior = {-1,-1,-1};
         }
-        candidate.m_revision = {advance(state.host.revision().epoch), state.host.revision().topology, 0};
+        candidate.m_revision = {newEpoch ? advance(state.host.revision().epoch) : state.host.revision().epoch,
+                                state.host.revision().topology, 0};
         check(candidate.finishTopology());
         output = std::move(copy);
     });
@@ -668,7 +679,7 @@ FRESULT detail::VolumeAdoptionBuilder::prepareTopology(NvrhiVolume& volume, cons
     return guarded([&] {
         auto& state = *volume.m_impl;
         auto adopted = std::make_unique<HostAdoption>();
-        check(cloneHostForOwner(volume, source, adopted->host));
+        check(cloneHostForOwner(volume, source, true, adopted->host));
         adopted->channels = state.channels;
         adopted->channelRevision = state.channelRevision;
         adopted->incarnationSerial = state.incarnationSerial;
@@ -681,6 +692,81 @@ FRESULT detail::VolumeAdoptionBuilder::prepareTopology(NvrhiVolume& volume, cons
     });
 }
 
+FRESULT detail::VolumeAdoptionBuilder::beginAccumulation(NvrhiVolume& volume,
+    std::unique_ptr<AccumulationCandidate>& output) noexcept {
+    return guarded([&] {
+        auto& state = *volume.m_impl;
+        auto candidate = std::make_unique<AccumulationCandidate::Impl>();
+        check(cloneHostForOwner(volume, state.host, false, candidate->host));
+        candidate->owner = state.owner;
+        candidate->hostRevision = state.host.revision();
+        candidate->baseSerial = state.serial;
+        candidate->channelRevision = state.channelRevision;
+        output = std::unique_ptr<AccumulationCandidate>(new AccumulationCandidate(std::move(candidate)));
+    });
+}
+FRESULT detail::VolumeAdoptionBuilder::prepareAccumulation(NvrhiVolume& volume,
+    const AccumulationCandidate& candidate, const GenerationRequest& request,
+    std::unique_ptr<PreparedGeneration>& output) noexcept {
+    return guarded([&] {
+        auto& state = *volume.m_impl;
+        const auto& captured = *candidate.m_impl;
+        const HostVolume& source = *captured.host;
+        const HostVolume& before = state.host;
+        require(captured.owner == state.owner && captured.baseSerial == state.serial &&
+                captured.channelRevision == state.channelRevision && !before.dirty() &&
+                sameRevision(captured.hostRevision, before.revision()));
+        require(!source.dirty() && source.revision().epoch == captured.hostRevision.epoch);
+        require(request.placement.preserve && request.uploadCount == 0);
+        require(source.m_config.levelCount == before.m_config.levelCount &&
+                source.m_config.logDimension == before.m_config.logDimension &&
+                source.m_config.initialNodeCapacity == before.m_config.initialNodeCapacity);
+        // Existing semantic records must stay at their exact indices. A new root
+        // may adopt the previous root, and null child slots may acquire new nodes.
+        for (uint32_t level = 0; level < c_MaxLevels; ++level) {
+            const auto& oldNodes = before.m_nodes[level];
+            const auto& newNodes = source.m_nodes[level];
+            const auto& oldChildren = before.m_children[level];
+            const auto& newChildren = source.m_children[level];
+            require(newNodes.size() >= oldNodes.size() && newChildren.size() >= oldChildren.size());
+            for (size_t index = 0; index < oldNodes.size(); ++index) {
+                const Node& old = oldNodes[index];
+                const Node& next = newNodes[index];
+                require(old.level == next.level && origin(old) == origin(next) &&
+                        (!old.flags || old.flags == next.flags) && old.priority == next.priority &&
+                        old.reserved == next.reserved && old.mask == next.mask &&
+                        std::memcmp(old.range, next.range, sizeof(old.range)) == 0);
+                NodeId id;
+                require(NodeId::encode(0, level, index, id));
+                if (old.parent != next.parent) {
+                    require(id == before.m_root && old.parent.isNull() && !next.parent.isNull() &&
+                            next.parent.group() == 0 && next.parent.level() < c_MaxLevels &&
+                            next.parent.index() >= before.m_nodes[next.parent.level()].size());
+                }
+                if (!old.children.isNull()) require(old.children == next.children);
+                else if (!next.children.isNull()) require(next.children.group() == 1 &&
+                    next.children.level() == level && next.children.index() >= before.count(1,level));
+            }
+            for (size_t index = 0; index < oldChildren.size(); ++index) {
+                if (!oldChildren[index].isNull()) require(newChildren[index] == oldChildren[index]);
+                else if (!newChildren[index].isNull()) require(newChildren[index].group() == 0 &&
+                    newChildren[index].level() < c_MaxLevels &&
+                    newChildren[index].index() >= before.m_nodes[newChildren[index].level()].size());
+            }
+        }
+        check(source.validate());
+        auto adopted = std::make_unique<HostAdoption>();
+        check(cloneHostForOwner(volume, source, false, adopted->host));
+        adopted->channels = state.channels;
+        adopted->channelRevision = state.channelRevision;
+        adopted->incarnationSerial = state.incarnationSerial;
+        std::unique_ptr<PreparedGeneration> ticket;
+        check(volume.prepareGenerationForHost(*adopted->host, request, ticket));
+        ticket->m_impl->adoption = std::move(adopted);
+        output = std::move(ticket);
+    });
+}
+
 FRESULT detail::VolumeAdoptionBuilder::prepareImport(NvrhiVolume& volume, const VolumeImportRequest& request,
                                                     std::unique_ptr<PreparedGeneration>& output) noexcept {
     return guarded([&] {
@@ -688,7 +774,7 @@ FRESULT detail::VolumeAdoptionBuilder::prepareImport(NvrhiVolume& volume, const 
         require(request.candidate && !request.candidate->dirty() && !state.host.dirty());
         require(request.channelCount <= c_MaxChannels && (!request.channelCount || request.channels));
         auto adopted = std::make_unique<HostAdoption>();
-        check(cloneHostForOwner(volume, *request.candidate, adopted->host));
+        check(cloneHostForOwner(volume, *request.candidate, true, adopted->host));
         HostVolume& candidate = *adopted->host;
         adopted->channelRevision = advance(state.channelRevision);
         adopted->incarnationSerial = state.incarnationSerial;

@@ -27,6 +27,21 @@ struct VolumeImportRequest {
     // Immutable serializer-owned extension; the generic owner does not inspect its schema.
     nvrhi::AutoPtr<nvrhi::IRHIObject> attachment;
 };
+// Authenticated private clone for append-only topology edits. Never installed.
+// CPU borrows may be invalidated by growth; existing NodeIds retain their epoch.
+class AccumulationCandidate {
+ public:
+    ~AccumulationCandidate();
+    AccumulationCandidate(const AccumulationCandidate&) = delete;
+    AccumulationCandidate& operator=(const AccumulationCandidate&) = delete;
+    HostVolume& host() noexcept;
+    const HostVolume& host() const noexcept;
+ private:
+    struct Impl;
+    std::unique_ptr<Impl> m_impl;
+    explicit AccumulationCandidate(std::unique_ptr<Impl>) noexcept;
+    friend class VolumeAdoptionBuilder;
+};
 class VolumeAdoptionBuilder {
  public:
     // Replaces host configuration/topology and the entire channel set, preserving exact
@@ -48,13 +63,25 @@ class VolumeAdoptionBuilder {
         std::unique_ptr<PreparedGeneration>& output) noexcept;
     static nvrhi::FRESULT describeTopologyPlacement(const HostVolume&, const AtlasPlacement&,
                                                    VolumeInfo& output) noexcept;
+    // Begins from this owner's finished host, capturing owner/host/config/publication.
+    // The private candidate can grow and activate inactive leaves, but cannot remove,
+    // reorder, move or reconfigure existing nodes. Clear/configure invalidates it.
+    static nvrhi::FRESULT beginAccumulation(NvrhiVolume&,
+        std::unique_ptr<AccumulationCandidate>& output) noexcept;
+    // Finished candidate required. Preserves epoch, IDs, channels and attachment;
+    // validates old graph prefixes and prepares a separate immutable deep copy.
+    // Topology-only: preservation must be enabled and uploads must be absent.
+    // Candidate stays reusable until the owner changes; neither failure nor successful
+    // preparation consumes it. Resulting generation tickets remain one-use.
+    static nvrhi::FRESULT prepareAccumulation(NvrhiVolume&, const AccumulationCandidate&,
+        const GenerationRequest&, std::unique_ptr<PreparedGeneration>& output) noexcept;
     // Copies frozen, placed CPU metadata from an authenticated retained generation. No
     // live HostVolume, GPU readback or wait is consulted. Failure preserves output.
     static nvrhi::FRESULT exportTopology(const VolumeGeneration&, slang::PackedVolume& output) noexcept;
     static nvrhi::FRESULT validateGeneration(const NvrhiVolume&, const VolumeGeneration&) noexcept;
     static nvrhi::IRHIObject* attachment(const VolumeGeneration&) noexcept; // Borrowed from generation.
  private:
-    static nvrhi::FRESULT cloneHostForOwner(NvrhiVolume&, const HostVolume&,
+    static nvrhi::FRESULT cloneHostForOwner(NvrhiVolume&, const HostVolume&, bool newEpoch,
                                            std::unique_ptr<HostVolume>& output) noexcept;
 };
 } // namespace gvdb::portable::detail
