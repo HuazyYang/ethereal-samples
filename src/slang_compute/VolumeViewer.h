@@ -43,8 +43,16 @@ struct VolumeOverlayPoint {
 class VolumeScene {
  public:
     virtual ~VolumeScene() = default;
-    virtual slang::SlangVolume& volume() = 0;
-    virtual const slang::PackedVolume& packed() const = 0;
+    // Optional legacy fallback. Snapshot-backed scenes override volumeInfo and
+    // renderCustom instead; these accessors throw when a fallback is requested.
+    virtual slang::SlangVolume& volume();
+    virtual const slang::PackedVolume& packed() const;
+    // Metadata and custom rendering must refer to the same retained publication
+    // for the duration of renderVolumeView (including its overlays).
+    virtual slang::VolumeInfo volumeInfo() { return volume().info(); }
+    // Return true to supply topology lines directly, including an empty set.
+    // False selects the legacy packed topology overlay.
+    virtual bool topologyOverlay(std::vector<VolumeOverlayLine>&) const { return false; }
     virtual std::vector<slang::Float4> transfer() const = 0;
     virtual void animate(float, VolumeViewOptions&) {}
     // Called inside the windowed Inspector with an active ImGui context.

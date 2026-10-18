@@ -19,6 +19,12 @@ using namespace donut;
 namespace gvdb::sample {
 namespace g = gvdb::slang;
 namespace es = ethereal::slang;
+slang::SlangVolume& VolumeScene::volume() {
+    throw std::logic_error("This scene does not provide a legacy volume renderer");
+}
+const slang::PackedVolume& VolumeScene::packed() const {
+    throw std::logic_error("This scene does not provide legacy packed topology");
+}
 namespace {
 void check(nvrhi::FRESULT result, const char* what) {
     if (NVRHI_FAILED(result))
@@ -428,7 +434,7 @@ class VolumePass : public app::IRenderPass {
                 m_options.pitch = std::clamp(m_options.pitch + dy * .006f, -1.5f, 1.5f);
             }
         } else if (m_drag == GLFW_MOUSE_BUTTON_MIDDLE) {
-            const auto c = cameraFor(m_scene->volume().info(), m_options);
+            const auto c = cameraFor(m_scene->volumeInfo(), m_options);
             const auto movement =
                 (-c.right * dx + c.up * dy) *
                 (2 * c.horizontal * c.radius * m_options.distanceScale / std::max(1u, m_options.width));
@@ -667,17 +673,18 @@ g::RaycastOutput renderVolumeView(es::ComputeRuntime& runtime, VolumeScene& scen
     if (o.lightDirection.x == 0 && o.lightDirection.y == 0 && o.lightDirection.z == 0)
         throw std::invalid_argument("Zero viewer light direction");
     auto transfer = scene.transfer();
-    auto& volume = scene.volume();
-    const auto& info = volume.info();
+    const auto info = scene.volumeInfo();
     const auto camera = cameraFor(info, o);
     auto p = parameters(info, o, camera, transfer.size());
     g::validateRaycastParameters(p, transfer);
     const auto overlayLines = scene.overlayLines();
     const auto overlayPoints = scene.overlayPoints();
     g::RaycastOutput output;
+    bool customSelected = false;
     if (o.mode == VolumeViewMode::Volume || o.mode == VolumeViewMode::Surface) {
         output = scene.renderCustom(p, o);
         if (output.color || output.depth) {
+            customSelected = true;
             const uint64_t pixels = uint64_t(o.width) * o.height;
             if (!output.color || !output.depth || output.width != o.width || output.height != o.height ||
                 output.color->getDesc().structStride != sizeof(g::Float4) ||
@@ -686,9 +693,9 @@ g::RaycastOutput renderVolumeView(es::ComputeRuntime& runtime, VolumeScene& scen
                 output.depth->getDesc().byteSize < pixels * sizeof(float))
                 throw std::invalid_argument("Custom scene output does not match the viewer image");
         } else if (o.mode == VolumeViewMode::Surface && (o.scalarBackground != 0 || scene.colorAtlas()))
-            output = renderVolumeSurface(runtime, volume, p, transfer, scene.colorAtlas(), o.scalarBackground);
+            output = renderVolumeSurface(runtime, scene.volume(), p, transfer, scene.colorAtlas(), o.scalarBackground);
         else
-            output = volume.raycast(p, transfer, o.mode == VolumeViewMode::Surface);
+            output = scene.volume().raycast(p, transfer, o.mode == VolumeViewMode::Surface);
         if (!o.sectionInset && !o.topology && overlayLines.empty() && overlayPoints.empty())
             return output;
     } else {
@@ -697,16 +704,23 @@ g::RaycastOutput renderVolumeView(es::ComputeRuntime& runtime, VolumeScene& scen
         output.color = runtime.buffer(size_t(o.width) * o.height * sizeof(g::Float4), sizeof(g::Float4));
         output.depth = runtime.buffer(size_t(o.width) * o.height * sizeof(float), sizeof(float));
     }
-    auto transferBuffer =
-        runtime.buffer(transfer.size() * sizeof(g::Float4), sizeof(g::Float4), transfer.data());
     std::vector<nvrhi::BindingSetItem> bindings = {
-        nvrhi::BindingSetItem::StructuredBuffer_SRV(0, volume.atlas()),
-        nvrhi::BindingSetItem::RawBuffer_SRV(1, volume.nodes()),
-        nvrhi::BindingSetItem::RawBuffer_SRV(2, volume.children()),
-        nvrhi::BindingSetItem::StructuredBuffer_SRV(3, volume.levels()),
-        nvrhi::BindingSetItem::StructuredBuffer_SRV(4, transferBuffer),
         nvrhi::BindingSetItem::StructuredBuffer_UAV(0, output.color),
         nvrhi::BindingSetItem::StructuredBuffer_UAV(1, output.depth)};
+    // Screen overlays only need the output image. A custom snapshot renderer
+    // therefore needs no duplicate typed atlas or legacy SlangVolume instance.
+    nvrhi::BufferHandle transferBuffer;
+    if (!customSelected || o.sectionInset) {
+        auto& volume = scene.volume();
+        transferBuffer =
+            runtime.buffer(transfer.size() * sizeof(g::Float4), sizeof(g::Float4), transfer.data());
+        bindings.insert(bindings.end(), {
+            nvrhi::BindingSetItem::StructuredBuffer_SRV(0, volume.atlas()),
+            nvrhi::BindingSetItem::RawBuffer_SRV(1, volume.nodes()),
+            nvrhi::BindingSetItem::RawBuffer_SRV(2, volume.children()),
+            nvrhi::BindingSetItem::StructuredBuffer_SRV(3, volume.levels()),
+            nvrhi::BindingSetItem::StructuredBuffer_SRV(4, transferBuffer)});
+    }
     ViewSettings settings{};
     settings.rectangle = {0, 0, o.width, o.height};
     settings.section = {0, info.boundsMin.y + (info.boundsMax.y - info.boundsMin.y) * o.sectionHeight, 0, 0};
@@ -720,8 +734,13 @@ g::RaycastOutput renderVolumeView(es::ComputeRuntime& runtime, VolumeScene& scen
                                                                 : "renderSection2D";
         runtime.dispatch("VolumeView", entry, &p, sizeof(p), extended, (o.width + 7) / 8, (o.height + 7) / 8);
     }
-    if (o.topology)
-        addTopology(runtime, scene.packed(), camera, o, p, settings, bindings);
+    if (o.topology) {
+        std::vector<VolumeOverlayLine> topology;
+        if (scene.topologyOverlay(topology))
+            addSceneOverlay(runtime, topology, {}, camera, o, p, settings, bindings);
+        else
+            addTopology(runtime, scene.packed(), camera, o, p, settings, bindings);
+    }
     addSceneOverlay(runtime, overlayLines, overlayPoints, camera, o, p, settings, bindings);
     if (o.sectionInset && o.mode != VolumeViewMode::Section2D) {
         const uint32_t width = std::max(1u, o.width / 4), height = std::max(1u, o.height / 4);

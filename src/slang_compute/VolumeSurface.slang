@@ -12,10 +12,14 @@ struct SurfaceParameters {
     float4 valueRange;
     float4 background;
     float4 light;
-    float4 options; // scalar background, has packed color, reserved
+    float4 options; // scalar background, has packed color, active publication (raw only), reserved
 };
 ConstantBuffer<SurfaceParameters> g_Parameters : register(b0);
+#if defined(GVDB_SURFACE_RAW)
+ByteAddressBuffer g_Atlas : register(t0);
+#else
 StructuredBuffer<float> g_Atlas : register(t0);
+#endif
 ByteAddressBuffer g_Nodes : register(t1);
 ByteAddressBuffer g_Children : register(t2);
 StructuredBuffer<LevelInfo> g_Levels : register(t3);
@@ -25,6 +29,13 @@ RWStructuredBuffer<float4> g_Output : register(u0);
 RWStructuredBuffer<float> g_Depth : register(u1);
 #include "GVDBRayClip.slang"
 
+float loadAtlasScalar(uint address) {
+#if defined(GVDB_SURFACE_RAW)
+    return asfloat(g_Atlas.Load(address*4u));
+#else
+    return g_Atlas[address];
+#endif
+}
 bool voxelAddress(int3 cell,out uint address) {
     address=0;
     VDBNode leaf;uint index;
@@ -55,7 +66,7 @@ float scalarValue(float3 position,out bool supported) {
                 int3 offset=int3(corner&1,(corner>>1)&1,(corner>>2)&1);
                 float3 w=lerp(1-fraction,fraction,float3(offset));
                 uint address=flatten3(uint3(leaf.atlasPosition+local+offset),g_Parameters.volume.atlasResolutionAndApron.xyz);
-                interior+=w.x*w.y*w.z*g_Atlas[address];
+                interior+=w.x*w.y*w.z*loadAtlasScalar(address);
             }
             return interior;
         }
@@ -67,7 +78,7 @@ float scalarValue(float3 position,out bool supported) {
         if(weight<=0)continue;
         uint address=0;bool present=voxelAddress(lower+offset,address);
         supported=supported||present;
-        value+=weight*(present?g_Atlas[address]:g_Parameters.options.x);
+        value+=weight*(present?loadAtlasScalar(address):g_Parameters.options.x);
     }
     return value;
 }
@@ -108,6 +119,12 @@ bool crosses(float a,float b,bool supportedA,bool supportedB) {
 void renderSurface(uint3 id:SV_DispatchThreadID) {
     if(any(id.xy>=g_Parameters.image.xy))return;
     uint pixel=id.y*g_Parameters.image.x+id.x;
+#if defined(GVDB_SURFACE_RAW)
+    // Empty/all-inactive publications have no readable root or atlas allocation.
+    [branch] if(g_Parameters.options.z==0) {
+        g_Output[pixel]=g_Parameters.background;g_Depth[pixel]=asfloat(0x7f800000u);return;
+    }
+#endif
     float3 origin=g_Parameters.rayOrigin.xyz;
     float3 direction=g_Parameters.direction00.xyz+(float(id.x)+.5)*g_Parameters.directionDx.xyz+
         (float(id.y)+.5)*g_Parameters.directionDy.xyz;
