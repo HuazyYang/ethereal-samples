@@ -1,0 +1,66 @@
+# Add the concrete filter facade to the same binary as its private volume bridge.
+include("${CMAKE_CURRENT_LIST_DIR}/GVDBNvrhiVoxelFilters.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/GVDBNvrhiApi.cmake")
+get_target_property(_gvdb_filter_api_added gvdb_nvrhi_api GVDB_FILTER_API_ADDED)
+if(NOT _gvdb_filter_api_added)
+    set_property(TARGET gvdb_nvrhi_api PROPERTY GVDB_FILTER_API_ADDED TRUE)
+    target_sources(gvdb_nvrhi_api PRIVATE
+        "${CMAKE_CURRENT_LIST_DIR}/GVDBNvrhiVoxelFilterApi.cpp"
+        "${CMAKE_CURRENT_LIST_DIR}/GVDBNvrhiVoxelFilterApi.h"
+        "${CMAKE_CURRENT_LIST_DIR}/GVDBNvrhiApiInternal.h")
+    target_link_libraries(gvdb_nvrhi_api PRIVATE gvdb::nvrhi_voxel_filters)
+    if(GVDB_NVRHI_BUILD_API_TESTS)
+        add_executable(gvdb_nvrhi_filter_api_abi_tests "${CMAKE_CURRENT_LIST_DIR}/tests/GVDBNvrhiVoxelFilterApiAbiTests.cpp")
+        target_link_libraries(gvdb_nvrhi_filter_api_abi_tests PRIVATE gvdb::nvrhi_api)
+        if(MSVC)
+            target_compile_options(gvdb_nvrhi_filter_api_abi_tests PRIVATE /utf-8)
+        endif()
+        add_test(NAME gvdb_nvrhi_filter_api_abi COMMAND gvdb_nvrhi_filter_api_abi_tests)
+        set_tests_properties(gvdb_nvrhi_filter_api_abi PROPERTIES TIMEOUT 30
+            ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:gvdb_nvrhi_api>;PATH=path_list_prepend:$<TARGET_FILE_DIR:nvrhi_core>")
+        if(TARGET donut_app AND TARGET gvdb_nvrhi_filter_shaders AND TARGET gvdb_nvrhi_owner_shaders)
+            add_executable(gvdb_nvrhi_filter_api_tests "${CMAKE_CURRENT_LIST_DIR}/tests/GVDBNvrhiVoxelFilterApiTests.cpp")
+            target_link_libraries(gvdb_nvrhi_filter_api_tests PRIVATE gvdb::nvrhi_api donut_app)
+            add_dependencies(gvdb_nvrhi_filter_api_tests gvdb_nvrhi_filter_shaders gvdb_nvrhi_owner_shaders)
+            ethereal_use_agility_sdk(gvdb_nvrhi_filter_api_tests)
+            if(MSVC)
+                target_compile_options(gvdb_nvrhi_filter_api_tests PRIVATE /utf-8)
+            endif()
+            if(NVRHI_WITH_CUDA)
+                target_link_libraries(gvdb_nvrhi_filter_api_tests PRIVATE nvrhi::cuda)
+                target_compile_definitions(gvdb_nvrhi_filter_api_tests PRIVATE ETHEREAL_TEST_CUDA=1)
+            endif()
+            foreach(api DX11 DX12 VULKAN CUDA)
+                if(NVRHI_WITH_${api})
+                    if(api STREQUAL "VULKAN")
+                        set(_gvdb_filter_api_argument -vk)
+                    elseif(api STREQUAL "DX11")
+                        set(_gvdb_filter_api_argument -dx11)
+                    elseif(api STREQUAL "DX12")
+                        set(_gvdb_filter_api_argument -dx12)
+                    else()
+                        set(_gvdb_filter_api_argument -cuda)
+                    endif()
+                    add_test(NAME gvdb_nvrhi_filter_api_${api} COMMAND gvdb_nvrhi_filter_api_tests ${_gvdb_filter_api_argument})
+                    set_tests_properties(gvdb_nvrhi_filter_api_${api} PROPERTIES TIMEOUT 120
+                        ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:gvdb_nvrhi_api>;PATH=path_list_prepend:$<TARGET_FILE_DIR:nvrhi_core>")
+                endif()
+            endforeach()
+        endif()
+    endif()
+    if(GVDB_NVRHI_INSTALL)
+        # The export set is assembled at generation time, including this later target.
+        set_property(TARGET gvdb_nvrhi_voxel_filters PROPERTY INTERFACE_INCLUDE_DIRECTORIES
+            "$<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}>;$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/gvdb>")
+        install(TARGETS gvdb_nvrhi_voxel_filters EXPORT gvdbNvrhiTargets
+            ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}")
+        install(FILES "${CMAKE_CURRENT_LIST_DIR}/GVDBNvrhiVoxelFilterApi.h"
+            "${CMAKE_CURRENT_LIST_DIR}/GVDBNvrhiVoxelFilters.h" DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/gvdb")
+        install(FILES "${CMAKE_CURRENT_LIST_DIR}/GVDBNvrhiVoxelFilterApi.md"
+            "${CMAKE_CURRENT_LIST_DIR}/GVDBNvrhiVoxelFilters.md" DESTINATION "${CMAKE_INSTALL_DATADIR}/doc/gvdb")
+        install(FILES "${CMAKE_CURRENT_LIST_DIR}/slang/GVDBAtlasFilters.slang"
+            DESTINATION "${CMAKE_INSTALL_DATADIR}/gvdb/shaders")
+    endif()
+endif()
+unset(_gvdb_filter_api_added)
+unset(_gvdb_filter_api_argument)
