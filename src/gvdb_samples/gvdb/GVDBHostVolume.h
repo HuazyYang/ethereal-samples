@@ -61,6 +61,12 @@ class HostVolume {
     nvrhi::FRESULT setActive(NodeId node, bool active) noexcept;
     nvrhi::FRESULT activate(double x, double y, double z, NodeId& output) noexcept;
     nvrhi::FRESULT activateAtLevel(uint32_t level, Int3 position, NodeId& output) noexcept;
+    // Choose one compatible ancestor for a complete incoming half-open batch.
+    // Preserves the whole existing root, every existing node ID/origin and leaf
+    // phase. Allocates only an ancestor and its path to the old root; callers
+    // still activate selected leaves in their chosen order. Empty bounds do
+    // nothing. Failure rolls back logical state; pool reservations may grow.
+    nvrhi::FRESULT encloseBounds(const IndexBounds& bounds, uint32_t minimumLevel = 0) noexcept;
     // Extents select level-1 cells in x-fast order. selected counts matching
     // cells, including existing nodes. Level zero is a no-op. Failure clears
     // selected and rolls back the entire batch; reservations may still grow.

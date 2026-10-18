@@ -361,6 +361,55 @@ nvrhi::FRESULT HostVolume::activateAtLevel(uint32_t level, Int3 position, NodeId
         return nvrhi::FS_OK;
     } GVDB_HOST_CATCH
 }
+nvrhi::FRESULT HostVolume::encloseBounds(const IndexBounds& bounds, uint32_t minimumLevel) noexcept {
+    try {
+        if (minimumLevel >= m_config.levelCount) fail();
+        if (bounds.empty) return nvrhi::FS_OK;
+        if (m_manualEdits) validateImpl();
+        int64_t lower[] = {bounds.lower.x, bounds.lower.y, bounds.lower.z};
+        int64_t upper[] = {bounds.upper.x, bounds.upper.y, bounds.upper.z};
+        for (uint32_t axis = 0; axis < 3; ++axis) if (lower[axis] >= upper[axis]) fail();
+        const NodeId previous = m_root;
+        Node old{};
+        int64_t anchor[3]{};
+        int64_t alignment = range(0);
+        uint32_t firstLevel = minimumLevel;
+        if (!previous.isNull()) {
+            const auto* existing = node(previous); if (!existing) fail();
+            old = *existing;
+            alignment = range(old.level);
+            anchor[0] = old.position.x; anchor[1] = old.position.y; anchor[2] = old.position.z;
+            bool contained = old.level >= minimumLevel;
+            for (uint32_t axis = 0; axis < 3; ++axis) {
+                contained = contained && lower[axis] >= anchor[axis] && upper[axis] <= anchor[axis] + alignment;
+                lower[axis] = std::min(lower[axis], anchor[axis]);
+                upper[axis] = std::max(upper[axis], anchor[axis] + alignment);
+            }
+            if (contained) return nvrhi::FS_OK;
+            firstLevel = std::max(firstLevel, uint32_t(old.level) + 1);
+        }
+        Int3 chosen{}; uint32_t chosenLevel = m_config.levelCount;
+        for (uint32_t level = firstLevel; level < m_config.levelCount; ++level) {
+            const int64_t extent = range(int(level));
+            int32_t origin[3]{}; bool fits = true;
+            for (uint32_t axis = 0; axis < 3; ++axis) {
+                int64_t corner = floorMultiple(lower[axis], extent);
+                if (corner + extent < upper[axis] || (anchor[axis] - corner) % alignment)
+                    corner = anchor[axis] + floorMultiple(lower[axis] - anchor[axis], alignment);
+                if (corner < INT32_MIN || corner > lower[axis] || corner + extent > INT32_MAX ||
+                    corner + extent < upper[axis]) { fits = false; break; }
+                origin[axis] = int32_t(corner);
+            }
+            if (fits) { chosen = {origin[0], origin[1], origin[2]}; chosenLevel = level; break; }
+        }
+        if (chosenLevel == m_config.levelCount) fail(nvrhi::FE_UNSUPPORTED);
+        Transaction transaction(*this);
+        m_root = allocateNodeImpl(chosenLevel, chosen, true);
+        if (!previous.isNull()) descend(m_root, old.position, old.level, previous, transaction);
+        transaction.committed = true;
+        return nvrhi::FS_OK;
+    } GVDB_HOST_CATCH
+}
 nvrhi::FRESULT HostVolume::activate(double x, double y, double z, NodeId& output) noexcept {
     output = {};
     const double values[] = {x, y, z}; int32_t coordinates[3]{};

@@ -133,6 +133,65 @@ void signedGrowthAndPromotion() {
             "promotion creates ancestors without extra leaves");
     check(promotion.finishTopology(), "finish promoted topology");
 }
+void batchRootEnclosure() {
+    const g::Int3 centers[]={{8,12,8},{8,8,4}};
+    const g::Int3 lower[]={{4,12,8},{8,8,0}},upper[]={{8,16,12},{12,12,4}};
+    const g::IndexBounds bounds{{4,8,0},{16,20,16},false};
+    // Independent FloatSupport radius1 around (8,14,10),(11,11,4).
+    g::HostVolume sequential;check(sequential.configure(shape({2,1,1,1})),"configure sequential reference");
+    for(auto c:centers)activate(sequential,c.x,c.y,c.z);
+    bool rejected=false;
+    for(unsigned p=0;p<2&&!rejected;++p)
+        for(int x=lower[p].x;x<=upper[p].x&&!rejected;x+=4)
+            for(int y=lower[p].y;y<=upper[p].y&&!rejected;y+=4)
+                for(int z=lower[p].z;z<=upper[p].z&&!rejected;z+=4){g::NodeId unused;rejected=sequential.activateAtLevel(0,{x,y,z},unused)==nvrhi::FE_UNSUPPORTED;}
+    require(rejected,"two-point sequential reference exhausts root levels");
+    for(bool existing:{false,true}) {
+        g::HostVolume volume;check(volume.configure(shape({2,1,1,1})),"configure batch enclosure");
+        g::NodeId retained;
+        if(existing){retained=activate(volume,8,12,8);check(volume.setActive(retained,false),"retain inactive leaf");check(volume.finishTopology(),"finish seed");}
+        const auto epoch=volume.revision().epoch;
+        check(volume.encloseBounds(bounds),"enclose whole support");
+        require(volume.root().level()==2&&volume.revision().epoch==epoch,"smallest root and unchanged epoch");
+        if(existing)require(volume.findLeaf({8,12,8})==retained&&!volume.isActive({8,12,8}),"existing ID and inactive flag retained");
+        for(unsigned i=0;i<2;++i){g::NodeId leaf;check(volume.activateAtLevel(0,centers[i],leaf),"activate enclosed center");require(leaf==id(0,i),"center leaf allocation order");check(volume.setActive(leaf,true),"reactivate center");}
+        for(unsigned p=0;p<2;++p)for(int x=lower[p].x;x<=upper[p].x;x+=4)for(int y=lower[p].y;y<=upper[p].y;y+=4)for(int z=lower[p].z;z<=upper[p].z;z+=4)activate(volume,x,y,z);
+        check(volume.finishTopology(),"finish complete support");
+        require(volume.activeLeafCount()==16&&same(volume.bounds().lower,bounds.lower)&&same(volume.bounds().upper,bounds.upper),"sixteen unique leaves and exact bounds");
+        const auto before=records(volume);const auto root=volume.root();const auto revision=volume.revision().topology;
+        check(volume.encloseBounds(bounds),"contained bounds no-op");require(records(volume)==before&&!volume.dirty(),"contained bounds preserve all records");
+        require(volume.encloseBounds({{-100,-100,-100},{100,100,100},false})==nvrhi::FE_UNSUPPORTED,"true extent overflow rejects");
+        require(records(volume)==before&&volume.root()==root&&!volume.dirty()&&volume.revision().topology==revision,"extent failure rollback");
+    }
+    g::HostVolume shifted;check(shifted.configure(shape({2,1,1,1})),"configure shifted enclosure");
+    g::NodeId original;check(shifted.allocateNode(0,{1,-3,5},false,original),"allocate shifted root");check(shifted.setRoot(original),"set shifted root");check(shifted.finishTopology(),"finish shifted root");
+    check(shifted.encloseBounds({{-3,-7,1},{9,5,13},false}),"enclose shifted phase");
+    const auto pos=shifted.node(shifted.root())->position;
+    require((pos.x-1)%4==0&&(pos.y+3)%4==0&&(pos.z-5)%4==0&&shifted.findLeaf({1,-3,5})==original&&!shifted.isActive({1,-3,5}),"phase ID flags preserved");check(shifted.finishTopology(),"validate shifted graph");
+    g::HostVolume wrapped;check(wrapped.configure(shape({2,1,1,1,1})),"configure multi-level wrapper");
+    const auto leaf0=activate(wrapped,0,0,0),leaf1=activate(wrapped,4,0,0);
+    const auto priorRoot=wrapped.root();check(wrapped.setActive(priorRoot,false),"inactive prior root");
+    check(wrapped.setActive(leaf1,false),"inactive prior child");check(wrapped.finishTopology(),"finish prior graph");
+    const auto oldNode=*wrapped.node(priorRoot);const auto oldLeaf0=*wrapped.node(leaf0),oldLeaf1=*wrapped.node(leaf1);
+    std::array<g::NodeId,8> oldLinks{};std::memcpy(oldLinks.data(),wrapped.childList(oldNode.children),sizeof(oldLinks));
+    check(wrapped.encloseBounds({{-8,-8,-8},{16,16,16},false}),"wrap old subtree across two levels");
+    require(wrapped.root().level()==3&&wrapped.node(priorRoot)->flags==oldNode.flags&&
+        same(wrapped.node(priorRoot)->position,oldNode.position)&&wrapped.node(priorRoot)->children==oldNode.children&&
+        wrapped.node(leaf0)->parent==oldLeaf0.parent&&wrapped.node(leaf1)->parent==oldLeaf1.parent&&
+        wrapped.node(leaf0)->flags==oldLeaf0.flags&&wrapped.node(leaf1)->flags==oldLeaf1.flags&&
+        std::memcmp(oldLinks.data(),wrapped.childList(oldNode.children),sizeof(oldLinks))==0,
+        "multi-level wrapping retains old IDs origins flags and exact child links");
+    check(wrapped.finishTopology(),"validate wrapped subtree");
+    const auto wrappedBefore=records(wrapped);const auto wrappedRoot=wrapped.root();
+    require(wrapped.encloseBounds({{1,0,0},{1,4,4},false})==nvrhi::FE_INVALID_ARGS&&
+        records(wrapped)==wrappedBefore&&wrapped.root()==wrappedRoot&&!wrapped.dirty(),"invalid enclosure rollback");
+    g::HostVolume maximum;check(maximum.configure(shape({2,1})),"configure maximum root");
+    check(maximum.encloseBounds({{0,0,0},{8,8,8},false}),"allocate maximum root");
+    check(maximum.finishTopology(),"finish maximum root");const auto maximumBefore=records(maximum);
+    require(maximum.encloseBounds({{-4,0,0},{0,4,4},false})==nvrhi::FE_UNSUPPORTED&&records(maximum)==maximumBefore&&!maximum.dirty(),
+        "published maximum root cannot be moved to accept external point");
+    g::HostVolume empty;check(empty.configure(shape({2,1,1})),"configure empty enclosure");check(empty.encloseBounds({}),"empty bounds no-op");require(empty.root().isNull(),"no fabricated leaf");
+}
 void allocationRollbackAndClear() {
     g::HostVolume volume({64}); // One node and one eight-reference list per level.
     check(volume.configure(shape({1, 1, 1})), "configure bounded pools");
@@ -441,7 +500,7 @@ void independentPointSet() {
 }
 int main() {
     try {
-        legacyPositive(); legacyNegative(); signedGrowthAndPromotion(); allocationRollbackAndClear();
+        legacyPositive(); legacyNegative(); signedGrowthAndPromotion(); batchRootEnclosure(); allocationRollbackAndClear();
         manualValidationAndFlags(); mismatchedChildListValidation(); extentAndInputValidation();
         regionOrderingAndThresholds(); selectionMayBorrowGrowingPool(); simultaneousHalo(); batchRollbackAndExtentValidation(); independentPointSet();
         std::puts("GVDB HostVolume CPU semantics PASS: legacy ordering, signed growth, promotion, rollback, pools, empty export, validation, regions, halo");

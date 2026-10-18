@@ -131,3 +131,14 @@ includes leaf-64. Legacy truncation-based coverage remains the default. Invalid
 or unrepresentable endpoints and exhausted CPU/GPU budgets fail without changing
 the host or published generation. FloatSupport changes topology coverage only;
 it does not gather values, translate points, or change minimum-depth semantics.
+
+
+FloatSupport plans one compatible root enclosure from the complete incoming
+center/support bounds before activating leaves. This prevents multi-axis signed
+support from exhausting root levels solely because of point order. The enclosure
+retains the whole prior root, existing node IDs/origins and leaf phase, and the
+centers-before-support leaf allocation order remains unchanged. Newly allocated
+interior-node ordering can differ from sequential promotion. Default Legacy
+coverage keeps its original promotion path. An already published maximum-level
+root cannot absorb out-of-extent points without changing its existing topology;
+that append still returns unsupported. Empty point batches create no root.

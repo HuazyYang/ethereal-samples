@@ -982,6 +982,104 @@ void floatSupportGoldens(Harness& h, const std::vector<char>& remap, const std::
         "rebuild phase0, old32 ABI and invalid tails");
 }
 
+void floatingBatchEnclosure(Harness& h, const std::vector<char>& remap, const std::vector<char>& artifact) {
+    // Two simple boxes fit a16-wide ancestor. Sequential center-first growth used
+    // to spend all32-wide root headroom after adding support along another axis.
+    LeafSet expected;
+    for (int x : {4, 8})
+        for (int y : {12, 16})
+            for (int z : {8, 12})
+                expected.insert({x, y, z});
+    for (int x : {8, 12})
+        for (int y : {8, 12})
+            for (int z : {0, 4})
+                expected.insert({x, y, z});
+    require(expected.size() == 16, "independent batch support union");
+    for (auto mode : {g::PointTopologyMode::FullRebuild, g::PointTopologyMode::Accumulate}) {
+        g::VolumeCreateDesc create;
+        create.device = h.device;
+        create.configuration.levelCount = 4;
+        create.configuration.logDimension = {2, 1, 1, 1};
+        create.remapArtifact = remap.data();
+        create.remapArtifactBytes = remap.size();
+        g::VolumeHandle owner;
+        check(g::createVolume(create, &owner), "create limited-depth batch owner");
+        g::NodeId existing;
+        if (mode == g::PointTopologyMode::Accumulate)
+            check(owner->activate(8, 14, 10, existing), "existing batch center");
+        check(owner->finishTopology(), "finish batch initial topology");
+        check(owner->setChannel(0,
+                                {
+                                    g::AtlasFormat::R32_FLOAT, {3, 0, 0, 0}
+        }),
+              "batch scalar channel");
+        g::GenerationDesc generation;
+        generation.placement.minimumBrickCount = {1, 1, 1};
+        g::GenerationTicketHandle ticket;
+        check(owner->prepareGeneration(generation, &ticket), "prepare initial batch owner");
+        publish(h, owner, ticket);
+        const auto before = snapshot(owner);
+        const auto beforeLeaves = leaves(owner);
+        const auto beforeRoot = owner->getRootId();
+        const auto beforeRevision = owner->getTopologyRevision();
+        const auto beforeCount = owner->getPoolCount(0, 0);
+        g::ChannelSnapshotDesc beforeChannel;
+        check(before->getChannel(0, beforeChannel), "batch previous channel");
+        auto ops = makeOps(owner, artifact);
+        auto set = points(h, ops,
+                          {
+                              {8,  14, 10, 0},
+                              {11, 11, 4,  0}
+        });
+        g::PointTopologyDesc desc;
+        desc.mode = mode;
+        desc.radius = 1;
+        desc.coverage = g::PointSupportCoverage::FloatSupport;
+        auto reject = [&](g::PointPreparationBudget budget) {
+            auto* output = reinterpret_cast<g::IGVDBGenerationTicket*>(uintptr_t(1));
+            require(
+                NVRHI_FAILED(ops->prepareTopology(set, desc, generation.placement, budget, &output)) && !output,
+                "batch failure clears output");
+            const auto after = snapshot(owner);
+            g::ChannelSnapshotDesc channel;
+            check(after->getChannel(0, channel), "batch unchanged channel");
+            const auto revision = owner->getTopologyRevision();
+            require(leaves(owner) == beforeLeaves && owner->getRootId() == beforeRoot &&
+                        owner->getPoolCount(0, 0) == beforeCount && revision.epoch == beforeRevision.epoch &&
+                        revision.topology == beforeRevision.topology &&
+                        after->getDesc().revision.placement == before->getDesc().revision.placement &&
+                        channel.raw.buffer == beforeChannel.raw.buffer &&
+                        channel.revision.resource == beforeChannel.revision.resource &&
+                        channel.revision.content == beforeChannel.revision.content,
+                    "batch enclosure failure changed live owner/publication");
+        };
+        g::PointPreparationBudget budget;
+        budget.maxActivationCandidates = 17;
+        reject(budget);
+        budget.maxActivationCandidates = 18;
+        budget.maxAllocatedBytes = 0;
+        reject(budget);
+        budget.maxAllocatedBytes = UINT64_MAX;
+        check(ops->prepareTopology(set, desc, generation.placement, budget, &ticket),
+              "prepare full batch enclosure within configured depth");
+        publish(h, owner, ticket);
+        require(leaves(owner) == expected && owner->getRootId().level() == 2,
+                "batch support must fit the independently known16-wide root");
+        const auto center0 = owner->findLeaf({8, 12, 8}), center1 = owner->findLeaf({8, 8, 4});
+        require(center0.index() == 0 && center1.index() == 1,
+                "batch enclosure changed centers-first leaf allocation order");
+        if (mode == g::PointTopologyMode::Accumulate)
+            require(center0 == existing && owner->getTopologyRevision().epoch == beforeRevision.epoch,
+                    "batch append invalidated prior leaf ID/epoch");
+        else
+            require(owner->getTopologyRevision().epoch > beforeRevision.epoch,
+                    "batch rebuild failed to invalidate old epoch");
+    }
+    std::puts(
+        "PASS FloatSupport batch enclosure: exact16-leaf union, minimal root, stable center IDs and atomic "
+        "budgets");
+}
+
 void precisionAndColors(Harness& h, g::IGVDBPointOps* ops) {
     // Binary64 ties are specified independently as expected binary32 bit patterns.
     const double source[][3] = {
@@ -1271,6 +1369,7 @@ int main(int argc, const char** argv) {
             invalidInputs(h, ops, conversionBytes);
             topologyGoldens(h, remapBytes, conversionBytes);
             floatSupportGoldens(h, remapBytes, conversionBytes);
+            floatingBatchEnclosure(h, remapBytes, conversionBytes);
             retainedChannels(h, remapBytes, conversionBytes);
             hostPoolLimits(h, remapBytes, conversionBytes);
             lifetimes(h, remapBytes, conversionBytes);

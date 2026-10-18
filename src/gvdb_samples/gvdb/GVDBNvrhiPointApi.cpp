@@ -357,7 +357,27 @@ FRESULT PointOps::prepareTopology(IGVDBPointSet* points,const PointTopologyDesc&
         auto activate=[&](Int3 origin) {
             NodeId leaf;check(candidate.activateAtLevel(0,origin,leaf));check(candidate.setActive(leaf,true));
         };
-        // Preserve the legacy centers-before-support phase ordering, then x/y/z support order.
+        if(floatSupport&&!ranges.empty()) {
+            // Plan the entire batch before any promotion chooses a lasting root
+            // origin. Sequential signed support can otherwise spend every level
+            // on different axes although the full batch fits a much smaller root.
+            IndexBounds incoming;
+            auto include=[&](Int3 low,Int3 last) {
+                const int64_t upper[]={int64_t(last.x)+width,int64_t(last.y)+width,int64_t(last.z)+width};
+                require(upper[0]<=INT32_MAX&&upper[1]<=INT32_MAX&&upper[2]<=INT32_MAX,FE_UNSUPPORTED);
+                const Int3 high{int32_t(upper[0]),int32_t(upper[1]),int32_t(upper[2])};
+                if(incoming.empty){incoming={low,high,false};return;}
+                incoming.lower={std::min(incoming.lower.x,low.x),std::min(incoming.lower.y,low.y),std::min(incoming.lower.z,low.z)};
+                incoming.upper={std::max(incoming.upper.x,high.x),std::max(incoming.upper.y,high.y),std::max(incoming.upper.z,high.z)};
+            };
+            for(const auto& support:ranges) {
+                include(support.center,support.center);
+                if(support.expanded)include(support.lower,support.upper);
+            }
+            check(candidate.encloseBounds(incoming,desc.minDepth));
+        }
+        // Preserve centers-before-support leaf activation order, then x/y/z
+        // support order. Default Legacy coverage keeps its original root path.
         for(const auto& support:ranges)activate(support.center);
         for(const auto& support:ranges)if(support.expanded)
             for(int64_t x=support.lower.x;x<=support.upper.x;x+=width)
