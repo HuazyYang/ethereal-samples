@@ -546,6 +546,15 @@
                                         1,
                                         1
                                     ]
+                    },
+                    {
+                        "threads":  [
+                                        8,
+                                        8,
+                                        8
+                                    ],
+                        "entry":  "downsampleRegion",
+                        "source":  "GVDBResample.slang"
                     }
                 ]
 }

@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: Apache-2.0
 #include "GVDBTopologyBuilder.h"
 #include <algorithm>
 #include <cmath>
@@ -10,6 +10,13 @@ namespace gvdb::slang {
 namespace {
 using Position=std::tuple<int32_t,int32_t,int32_t>;
 void require(bool condition,const char* message){if(!condition)throw std::runtime_error(message);}
+// GPU traversal and sampling use float coordinates, including half-voxel centers.
+// Reserve an integer endpoint inside 2^23 so every center and boundary is exact.
+constexpr int64_t kCoordinateLimit=(int64_t(1)<<23)-1;
+void requireCoordinateRange(int64_t origin,uint32_t extent,uint32_t apron=0){
+    require(origin-int64_t(apron)>=-kCoordinateLimit&&origin+extent+int64_t(apron)<=kCoordinateLimit,
+        "topology coordinates exceed the exact float voxel range");
+}
 Position position(Int4 p){return {p.x,p.y,p.z};}
 Int4 coordinate(const Position& p){return {std::get<0>(p),std::get<1>(p),std::get<2>(p),0};}
 void reference(uint32_t* destination,UInt2 value){destination[0]=value.x;destination[1]=value.y;}
@@ -25,14 +32,14 @@ bool buildTopology(const std::vector<Int4>& leafOrigins,const TopologyBuildOptio
     const uint32_t leafWidth=extents[0];std::set<Position> leaves;
     Int4 root=leafOrigins[0],maximum=leafOrigins[0];
     for(const auto& p:leafOrigins){require(p.x%int32_t(leafWidth)==0&&p.y%int32_t(leafWidth)==0&&p.z%int32_t(leafWidth)==0,"leaf origin is not aligned to its width");
-        require(int64_t(p.x)+leafWidth<=INT32_MAX&&int64_t(p.y)+leafWidth<=INT32_MAX&&int64_t(p.z)+leafWidth<=INT32_MAX,"leaf endpoint exceeds signed coordinates");
+        requireCoordinateRange(p.x,leafWidth,options.apron);requireCoordinateRange(p.y,leafWidth,options.apron);requireCoordinateRange(p.z,leafWidth,options.apron);
         leaves.insert(position(p));root.x=std::min(root.x,p.x);root.y=std::min(root.y,p.y);root.z=std::min(root.z,p.z);
         maximum.x=std::max(maximum.x,p.x);maximum.y=std::max(maximum.y,p.y);maximum.z=std::max(maximum.z,p.z);
     }
     require(leaves.size()<=INT32_MAX,"too many leaves for atlas mapping");
     const uint64_t span=uint64_t(std::max({int64_t(maximum.x)-root.x,int64_t(maximum.y)-root.y,int64_t(maximum.z)-root.z}))+leafWidth;
     size_t top=0;while(top<extents.size()&&extents[top]<span)++top;require(top<extents.size(),"configured root cannot cover all leaf origins");
-    require(int64_t(root.x)+extents[top]<=INT32_MAX&&int64_t(root.y)+extents[top]<=INT32_MAX&&int64_t(root.z)+extents[top]<=INT32_MAX,"root endpoint exceeds signed coordinates");
+    requireCoordinateRange(root.x,extents[top]);requireCoordinateRange(root.y,extents[top]);requireCoordinateRange(root.z,extents[top]);
     UInt4 grid=options.atlasGrid;
     if(!grid.x&&!grid.y&&!grid.z){uint32_t side=1;while(uint64_t(side)*side*side<leaves.size())++side;grid={side,side,uint32_t((leaves.size()+uint64_t(side)*side-1)/(uint64_t(side)*side)),0};}
     require(grid.x&&grid.y&&grid.z&&uint64_t(grid.x)*grid.y<=UINT32_MAX&&uint64_t(grid.x)*grid.y*grid.z<=UINT32_MAX,"atlas grid dimensions exceed the portable range");
@@ -85,6 +92,25 @@ bool buildScalarVolume(const float* values,size_t count,UInt4 res,const Topology
             result.atlas[((size_t(az)+z)*atlasRes.y+ay+y)*atlasRes.x+ax+x]=values[(size_t(wz)*res.y+size_t(wy))*res.x+size_t(wx)];
         }
     }
+    output=std::move(result);error.clear();return true;
+}catch(const std::exception& exception){error=exception.what();return false;}}
+bool buildScalarVolumeAtOrigin(const float* values,size_t count,UInt4 resolution,Int4 origin,
+    const TopologyBuildOptions& options,float threshold,float background,ScalarVolumeData& output,std::string& error){try{
+    require(!options.logDimensions.empty()&&options.logDimensions[0]>0&&options.logDimensions[0]<=10,"leaf dimension is invalid");
+    const int32_t width=int32_t(1u<<options.logDimensions[0]);
+    require(origin.x%width==0&&origin.y%width==0&&origin.z%width==0,"dense source origin must align to the leaf width");
+    ScalarVolumeData result;if(!buildScalarVolume(values,count,resolution,options,threshold,background,result,error))return false;
+    const int32_t delta[3]={origin.x,origin.y,origin.z};
+    for(size_t l=0;l<result.packed.levels.size();++l){const auto& level=result.packed.levels[l];
+        for(uint32_t i=0;i<level.nodes.z;++i){
+            auto* node=result.packed.nodes.data()+(level.nodes.x+size_t(i)*level.nodes.y)/4;
+            for(size_t axis=0;axis<3;++axis){const int64_t coordinate=int64_t(int32_t(node[1+axis]))+delta[axis];
+                requireCoordinateRange(coordinate,level.nodeExtent.x,l==0?options.apron:0);node[1+axis]=uint32_t(int32_t(coordinate));}
+        }
+    }
+    for(auto& map:result.packed.atlasMap)if(map.leaf>=0){map.x+=origin.x;map.y+=origin.y;map.z+=origin.z;}
+    auto& volume=result.packed.volume;volume.boundsMin.x+=origin.x;volume.boundsMin.y+=origin.y;volume.boundsMin.z+=origin.z;
+    volume.boundsMax.x+=origin.x;volume.boundsMax.y+=origin.y;volume.boundsMax.z+=origin.z;
     output=std::move(result);error.clear();return true;
 }catch(const std::exception& exception){error=exception.what();return false;}}
 } // namespace gvdb::slang

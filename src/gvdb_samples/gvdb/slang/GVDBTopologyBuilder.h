@@ -19,4 +19,8 @@ bool buildTopology(const std::vector<Int4>& leafOrigins,const TopologyBuildOptio
 // No-active-leaf input returns a diagnostic; output is unchanged on failure.
 bool buildScalarVolume(const float* values,size_t count,UInt4 resolution,const TopologyBuildOptions& options,
     float threshold,float background,ScalarVolumeData& output,std::string& error);
+// Same dense-to-sparse construction at a leaf-aligned signed index origin.
+// Uniform translation preserves child ordering, references and all atlas bytes.
+bool buildScalarVolumeAtOrigin(const float* values,size_t count,UInt4 resolution,Int4 origin,
+    const TopologyBuildOptions& options,float threshold,float background,ScalarVolumeData& output,std::string& error);
 } // namespace gvdb::slang

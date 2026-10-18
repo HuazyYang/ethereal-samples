@@ -1,0 +1,41 @@
+set(view_shader_config "")
+foreach(entry renderVoxel renderSection renderSection2D overlayTopology)
+    string(APPEND view_shader_config "\"${CMAKE_CURRENT_LIST_DIR}/VolumeView.slang\" -T cs -E ${entry}\n")
+endforeach()
+file(CONFIGURE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/volume-view.cfg" CONTENT "${view_shader_config}" @ONLY)
+ethereal_compile_shaders(TARGET gvdb_volume_view_shaders SLANG CUDA ALL_PLATFORMS
+    CONFIG "${CMAKE_CURRENT_BINARY_DIR}/volume-view.cfg"
+    OUTPUT_DIRECTORY "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/shaders/gvdb_slang"
+    INCLUDE_DIRECTORIES "${gvdb_shader_dir}")
+file(CONFIGURE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/volume-present.cfg"
+    CONTENT "\"${CMAKE_CURRENT_LIST_DIR}/VolumePresent.slang\" -T vs -E main_vs\n\"${CMAKE_CURRENT_LIST_DIR}/VolumePresent.slang\" -T ps -E main_ps\n" @ONLY)
+ethereal_compile_shaders(TARGET gvdb_volume_present_shaders SLANG ALL_PLATFORMS
+    CONFIG "${CMAKE_CURRENT_BINARY_DIR}/volume-present.cfg"
+    OUTPUT_DIRECTORY "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/shaders/gvdb_volume_view")
+add_library(gvdb_volume_viewer STATIC VolumeViewer.cpp)
+target_link_libraries(gvdb_volume_viewer PUBLIC gvdb_slang_runtime donut_app)
+target_include_directories(gvdb_volume_viewer PUBLIC "${CMAKE_CURRENT_LIST_DIR}")
+add_dependencies(gvdb_volume_viewer gvdb_volume_view_shaders gvdb_volume_present_shaders gvdb_slang_shaders)
+
+add_executable(gvdb_volume_view_tests VolumeViewerTests.cpp)
+target_link_libraries(gvdb_volume_view_tests PRIVATE gvdb_volume_viewer)
+ethereal_use_agility_sdk(gvdb_volume_view_tests)
+if(NVRHI_WITH_CUDA)
+    target_link_libraries(gvdb_volume_view_tests PRIVATE nvrhi::cuda)
+    target_compile_definitions(gvdb_volume_view_tests PRIVATE ETHEREAL_TEST_CUDA=1)
+endif()
+foreach(api DX11 DX12 VULKAN CUDA)
+    if(NVRHI_WITH_${api})
+        if(api STREQUAL "VULKAN")
+            set(argument -vk)
+        elseif(api STREQUAL "DX11")
+            set(argument -dx11)
+        elseif(api STREQUAL "DX12")
+            set(argument -dx12)
+        else()
+            set(argument -cuda)
+        endif()
+        add_test(NAME gvdb_volume_view_${api} COMMAND gvdb_volume_view_tests ${argument})
+        set_tests_properties(gvdb_volume_view_${api} PROPERTIES TIMEOUT 120)
+    endif()
+endforeach()

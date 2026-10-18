@@ -1,167 +1,150 @@
-// resample (gResample): head.raw (128x256x256 bytes) converted to float and
-// resampled into a GVDB topology that is either dense or sparse (activated
-// from a downsampled copy, optionally with a halo of neighbouring bricks).
-#include <sample-utils/GVDBApp.h>
-#include <gvdb/GVDB.h>
-#include <donut/core/log.h>
-#include <imgui.h>
-#include <fstream>
-
-using namespace donut;
-using namespace SampleUtils;
-
-class ResampleApp : public GVDBApp {
-    NVRHI_INHERIT_INTERFACE_TABLE()
- public:
-    using GVDBApp::GVDBApp;
-
-    bool loadRAW(const std::filesystem::path &path, dm::int3 res) {
-        std::ifstream file(path, std::ios::binary);
-        if (!file) {
-            log::error("Cannot read %s", path.string().c_str());
-            return false;
-        }
-        size_t count = size_t(res.x) * res.y * res.z;
-        std::vector<uint8_t> bytes(count);
-        file.read(reinterpret_cast<char *>(bytes.data()), std::streamsize(count));
-        log::info("Convert to float.");
-        std::vector<float> values(count);
-        for (size_t i = 0; i < count; ++i) values[i] = float(bytes[i]) / 256.f;
-        m_dataRes = res;
-
-        log::info("Transfer data to GPU.");
-        gp::BufferDesc desc;
-        desc.byteSize = count * sizeof(float);
-        UT_V_GP(getGPDevice()->createBuffer(desc, &m_data));
-        UT_V_GP(getGPQueue()->writeBuffer(m_data, values.data(), desc.byteSize, 0));
-        return true;
-    }
-
-    bool OnInit() override {
-        log::info("Loading volume data.");
-        if (!loadRAW(getAssetPath("head.raw"), {128, 256, 256})) return false;
-
-        m_volume = createVolume();
-        if (!m_volume) return false;
-        if (NVRHI_FAILED(gvdb::createGVDBVoxelOps(m_volume, &m_ops))) return false;
-        m_instance = addVolumeInstance(m_volume, dm::affine3::identity(), "head");
-
-        m_volMax = {256.f, 256.f, 256.f};
-        rebuild();
-
-        gvdb::VolumeRenderAttributes &attrs = m_instance->GetRenderAttributes();
-        attrs.channel = 0;
-        attrs.shading = gvdb::VolumeShading::Volume;
-        attrs.steps = {0.5f, 16.f, 0.5f};
-        attrs.extinct = {-1.f, 1.5f, 0.f};
-        attrs.threshold = {0.05f, 0.f, 1.f};
-        attrs.cutoff = {0.001f, 0.001f, 0.f};
-        attrs.epsilon = 0.01f;   // larger than the default to avoid artifacts between bricks
-        attrs.transferFunction = MAKE_RC_OBJ_PTR(gvdb::VolumeTransferFunction, getGPDevice());
-        attrs.transferFunction->setLinear(0.00f, 0.15f, {0, 0, 0, 0}, {0, 0, 0, 0});
-        attrs.transferFunction->setLinear(0.15f, 0.25f, {0, 0, 0, 0}, {0, 0, 1, 0.01f});            // skin, blue
-        attrs.transferFunction->setLinear(0.25f, 0.50f, {0, 0, 1, 0.01f}, {1, 0, 0, 0.02f});        // bone, red
-        attrs.transferFunction->setLinear(0.50f, 0.75f, {1, 0, 0, 0.02f}, {0.2f, 0.2f, 0.2f, 0.02f});
-        attrs.transferFunction->setLinear(0.75f, 1.00f, {0.2f, 0.2f, 0.2f, 0.02f}, {0.1f, 0.1f, 0.1f, 0.1f});
-        attrs.transferFunction->commit(getGPQueue());
-
-        m_renderer = std::make_unique<VolRenderer>(getGPDevice(), getGPQueue(), getVFS());
-        m_renderer->getViewParams().backgroundColor = {0.1f, 0.2f, 0.4f, 1.f};
-
-        getCamera()->zNear = 0.1f;
-        getCamera()->zFar = 5000.f;
-        getCameraOrbit().setOrbit({90.f, 20.f, 0.f}, {128.f, 100.f, 128.f}, 1000.f);
-        getLightOrbit().setOrbit({299.f, 57.3f, 0.f}, {0.f, 0.f, 0.f}, 1400.f);
-        return true;
-    }
-
-    // Index space -> source voxel of head.raw: the reference Matrix4F::SRT(
-    // (1,0,0), (0,0,1), (0,1,0), t=(0,0,252), s=(.5,-1,1)), i.e. src = (0.5*x, z, 252 - y).
-    static dm::float4x4 sourceTransform() {
-        return dm::float4x4(dm::float4(0.5f, 0.f, 0.f, 0.f), dm::float4(0.f, 0.f, -1.f, 0.f),
-                            dm::float4(0.f, 1.f, 0.f, 0.f), dm::float4(0.f, 0.f, 252.f, 1.f));
-    }
-
-    void rebuild() {
-        m_volume->clear();
-        m_volume->destroyChannels();
-
-        log::info("Configure GVDB.");
-        m_volume->configure(gvdb::GVDBLevelConfig::fromBranching(3, 3, 3, 3, 4));
-        gvdb::GVDBAtlasConfig atlas;
-        atlas.gridDim = {16u, 16u, 16u};
-        m_volume->configureAtlas(atlas);
-        gvdb::GVDBChannelDesc chan;
-        chan.format = gvdb::ATLAS_FORMAT_R32_FLOAT;
-        m_volume->addChannel(chan);
-
-        dm::float4x4 xform = sourceTransform();
-        const dm::float3 inRange(0.f, 1.f, 0.f), outRange(0.f, 1.f, 0.f);
-
-        log::info("Activate GVDB volume.");
-        gvdb::Extents e = m_volume->computeExtents(1, dm::box3(dm::float3::zero(), m_volMax));
-        if (!m_sparse) {
-            m_volume->activateRegion(e);
-        } else {
-            std::vector<float> downsampled;
-            m_ops->downsample(xform, m_dataRes, m_data, e.ires, m_volMax, inRange, outRange, downsampled);
-            m_volume->activateRegionFromValues(e, downsampled.data(), 0.05f);
-            if (m_halo) m_volume->activateHalo(e);
-        }
-        m_volume->finishTopology();
-        m_volume->updateAtlas();
-        m_ops->clearAllChannels();
-
-        log::info("Resample.");
-        m_ops->resample(0, xform, m_dataRes, m_data, inRange, outRange);
-        m_volume->logMeasure();
-    }
-
-    void OnRender(uint32_t width, uint32_t height) override {
-        getCamera()->verticalFov = verticalFovFromHorizontal(dm::radians(50.f), float(width) / float(height));
-        updateScene();
-        RenderView view = getRenderView(int(width), int(height));
-        m_renderer->render(getSceneGraph(), view, getPresenter()->getRenderBuffer(0));
-        if (m_showTopology) getDebugDraw()->topology(m_instance);
-    }
-
-    void OnBuildUI() override {
-        ImGui::Checkbox("Topology", &m_showTopology);
-        bool changed = false;
-        changed |= ImGui::Checkbox("Halo", &m_halo);
-        changed |= ImGui::Checkbox("Sparse", &m_sparse);
-        if (changed) rebuild();
-        gvdb::GVDBUsage usage = m_volume->getUsage();
-        ImGui::Text("Bricks: %llu, %.1f MVoxels, atlas %.1f MB", (unsigned long long)usage.numBricks, usage.millionVoxels,
-                    usage.atlasMB);
-    }
-
-    bool OnKey(int key, int scancode, int action, int mods) override {
-        if (action != GLFW_PRESS) return false;
-        switch (key) {
-            case GLFW_KEY_1: m_showTopology = !m_showTopology; return true;
-            case GLFW_KEY_2: m_sparse = !m_sparse; rebuild(); return true;
-            case GLFW_KEY_3: m_halo = !m_halo; rebuild(); return true;
-            default: return false;
-        }
-    }
-
- private:
-    nvrhi::AutoPtr<gp::IBuffer> m_data;
-    dm::int3 m_dataRes = dm::int3::zero();
-    dm::float3 m_volMax = dm::float3::zero();
-    nvrhi::AutoPtr<gvdb::IGVDBVolume> m_volume;
-    nvrhi::AutoPtr<gvdb::IGVDBVoxelOps> m_ops;
-    nvrhi::AutoPtr<gvdb::GVDBVolumeInstance> m_instance;
-    std::unique_ptr<VolRenderer> m_renderer;
-    bool m_showTopology = false;
-    bool m_sparse = false;
-    bool m_halo = true;
+﻿// Original RAW resample example through NVRHI and offline Slang on every API.
+// SPDX-License-Identifier: Apache-2.0
+#include "ResampleVolume.h"
+#include "ResampleTests.h"
+#include "ExampleDevice.h"
+#include "VolumeViewer.h"
+#include <cmath>
+#include <cstdio>
+#include <cstring>
+#include <stdexcept>
+#include <string>
+namespace {
+using ethereal::slang::ComputeRuntime;
+using gvdb::samples::ResampleVolume;
+struct Options {
+    bool sparse = false, halo = true, headless = false, selfTest = false, verify = false;
+    std::filesystem::path input = std::filesystem::path(GVDB_SAMPLES_ASSETS_DIR) / "head.raw",
+                          output = "resample.png";
+    gvdb::sample::VolumeViewOptions view;
 };
+class ResampleScene final : public gvdb::sample::VolumeScene {
+    ResampleVolume m_pipeline;
 
-int main(int argc, const char **argv) {
-    GVDBAppOptions options;
-    options.title = "GVDB Voxels - resample";
-    options.sampleName = GVDB_SAMPLE_NAME;
-    return runGVDBApp<ResampleApp>(argc, argv, options);
+ public:
+    ResampleScene(ComputeRuntime& runtime, const std::vector<float>& source, const Options& options)
+        : m_pipeline(runtime, source) {
+        if (options.verify)
+            gvdb::samples::verifyResampleModes(
+                m_pipeline, source,
+                options.input == std::filesystem::path(GVDB_SAMPLES_ASSETS_DIR) / "head.raw");
+        m_pipeline.rebuild(options.sparse, options.halo);
+    }
+    gvdb::slang::SlangVolume& volume() override { return m_pipeline.volume(); }
+    const gvdb::slang::PackedVolume& packed() const override { return m_pipeline.packed(); }
+    std::vector<gvdb::slang::Float4> transfer() const override {
+        return gvdb::samples::resampleTransferFunction();
+    }
+    bool key(int key) override {
+        if (key == '2')
+            m_pipeline.rebuild(!m_pipeline.sparse(), m_pipeline.halo());
+        else if (key == '3')
+            m_pipeline.rebuild(m_pipeline.sparse(), !m_pipeline.halo());
+        else
+            return false;
+        std::puts(describe().c_str());
+        return true;
+    }
+    std::string describe() const override {
+        const auto& packed = m_pipeline.packed();
+        const auto r = packed.volume.atlasResolutionAndApron;
+        return std::string(m_pipeline.sparse() ? "Sparse" : "Dense") +
+               (m_pipeline.halo() ? "; halo on" : "; halo off") + "; " +
+               std::to_string(packed.levels[0].nodes.z) + " bricks; " +
+               std::to_string(uint64_t(r.x) * r.y * r.z) + " atlas voxels; 2 sparse, 3 halo";
+    }
+};
+}  // namespace
+int main(int argc, const char** argv) {
+    try {
+        Options options;
+        options.view.yaw = 1.57079632679f;
+        options.view.pitch = .3490658504f;
+        options.view.distanceScale = 4.5f;
+        options.view.step = .5f;
+        options.view.extinction = 1.5f;
+        for (int i = 1; i < argc; ++i) {
+            const auto argument = [&]() {
+                if (++i >= argc)
+                    throw std::invalid_argument("Missing option value");
+                return argv[i];
+            };
+            if (!std::strcmp(argv[i], "--help")) {
+                std::puts(
+                    "resample [-dx11|-dx12|-vk|-cuda] [--adapter N] [--validation]\n"
+                    "  [--input head.raw] [--dense|--sparse] [--halo|--no-halo] [--topology]\n"
+                    "  [--headless] [--output image.png] [--width N] [--height N] [--step N]\n"
+                    "  [--verify] [--self-test]\n"
+                    "Interactive: 1 topology, 2 sparse, 3 halo; arrows/mouse orbit, wheel zoom.\n"
+                    "--verify checks all three topology modes against CPU references. CUDA runs headless.");
+                return 0;
+            }
+            if (!std::strcmp(argv[i], "--input"))
+                options.input = argument();
+            else if (!std::strcmp(argv[i], "--output") || !std::strcmp(argv[i], "--screenshot")) {
+                options.output = argument();
+                options.headless = true;
+            } else if (!std::strcmp(argv[i], "--headless") || !std::strcmp(argv[i], "-cuda"))
+                options.headless = true;
+            else if (!std::strcmp(argv[i], "--sparse"))
+                options.sparse = true;
+            else if (!std::strcmp(argv[i], "--dense"))
+                options.sparse = false;
+            else if (!std::strcmp(argv[i], "--halo"))
+                options.halo = true;
+            else if (!std::strcmp(argv[i], "--no-halo"))
+                options.halo = false;
+            else if (!std::strcmp(argv[i], "--topology"))
+                options.view.topology = true;
+            else if (!std::strcmp(argv[i], "--width"))
+                options.view.width = uint32_t(std::stoul(argument()));
+            else if (!std::strcmp(argv[i], "--height"))
+                options.view.height = uint32_t(std::stoul(argument()));
+            else if (!std::strcmp(argv[i], "--step"))
+                options.view.step = std::stof(argument());
+            else if (!std::strcmp(argv[i], "--verify"))
+                options.verify = true;
+            else if (!std::strcmp(argv[i], "--self-test"))
+                options.selfTest = true;
+        }
+        if (options.selfTest) {
+            ethereal::slang::ExampleDevice device(argc, argv);
+            ComputeRuntime runtime(device.get(), device.shaderPath());
+            gvdb::samples::runResampleSelfTests(runtime);
+            return 0;
+        }
+        const auto source = gvdb::samples::loadRawBytes(options.input, {128, 256, 256, 0});
+        if (options.headless) {
+            ethereal::slang::ExampleDevice device(argc, argv);
+            ComputeRuntime runtime(device.get(), device.shaderPath());
+            ResampleScene scene(runtime, source, options);
+            std::puts(scene.describe().c_str());
+            const auto output = gvdb::sample::renderVolumeView(runtime, scene, options.view);
+            std::vector<gvdb::slang::Float4> pixels(size_t(output.width) * output.height);
+            runtime.read(output.color, pixels.data(), pixels.size() * sizeof(pixels[0]));
+            size_t changed = 0;
+            for (const auto& pixel : pixels) {
+                if (!std::isfinite(pixel.x) || !std::isfinite(pixel.y) || !std::isfinite(pixel.z) ||
+                    !std::isfinite(pixel.w))
+                    throw std::runtime_error("Resample render produced nonfinite pixels");
+                if (std::abs(pixel.x - options.view.background.x) +
+                        std::abs(pixel.y - options.view.background.y) +
+                        std::abs(pixel.z - options.view.background.z) >
+                    .01f)
+                    ++changed;
+            }
+            if (!changed)
+                throw std::runtime_error("Resample render contains no volume contribution");
+            std::printf("%zu non-background pixels\n", changed);
+            gvdb::sample::writeVolumeImage(runtime, output, options.output);
+            return 0;
+        }
+        return gvdb::sample::runVolumeWindow(
+            argc, argv, "GVDB Slang resample",
+            [&](ComputeRuntime& runtime) { return std::make_unique<ResampleScene>(runtime, source, options); },
+            options.view);
+    } catch (const std::exception& error) {
+        std::fprintf(stderr, "resample: %s\n", error.what());
+        return 1;
+    }
 }

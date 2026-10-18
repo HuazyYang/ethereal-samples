@@ -1,169 +1,199 @@
-// 3d-print (g3DPrint): solid voxelization of lucy.obj at a selectable voxel
-// size (0.5 / 0.4 / 0.3 / 0.2 mm for a 100 mm part), rendered with the CUDA
-// raycaster; a 256x256 cross-section inset (Section2D) in the bottom-left
-// quarter whose height follows the mouse; optional topology overlay.
-#include <sample-utils/GVDBApp.h>
-#include <sample-utils/ObjMesh.h>
-#include <gvdb/GVDB.h>
-#include <donut/core/log.h>
-#include <imgui.h>
-
-using namespace donut;
-using namespace SampleUtils;
-
-class PrintApp : public GVDBApp {
-    NVRHI_INHERIT_INTERFACE_TABLE()
- public:
-    using GVDBApp::GVDBApp;
-
-    bool OnInit() override {
-        log::info("Loading polygon model.");
-        m_mesh = loadObjMesh(nullptr, getAssetPath("lucy.obj"), 1.f);
-        if (!m_mesh) return false;
-        auto meshInstance = MAKE_RC_OBJ_PTR(engine::MeshInstance, m_mesh);
-        getSceneGraph()->AttachLeafNode(getSceneGraph()->GetRootNode(), meshInstance)->SetName("lucy");
-        m_meshGP = uploadMeshGP(getGPDevice(), getGPQueue(), m_mesh);
-        m_pivot = {0.3f, 0.45f, 0.3f};   // centre of the polygon model
-
-        log::info("Configure.");
-        m_volume = createVolume();
-        if (!m_volume) return false;
-        m_volume->configure(gvdb::GVDBLevelConfig::fromBranching(3, 3, 3, 3, 5));
-        gvdb::GVDBAtlasConfig atlas;
-        atlas.gridDim = {16u, 16u, 1u};
-        m_volume->configureAtlas(atlas);
-        if (NVRHI_FAILED(gvdb::createGVDBVoxelizer(m_volume, &m_voxelizer))) return false;
-        if (NVRHI_FAILED(gvdb::createGVDBVoxelOps(m_volume, &m_ops))) return false;
-
-        m_instance = addVolumeInstance(m_volume, dm::scaling(dm::float3(m_voxelSize)), "print");
-        gvdb::VolumeRenderAttributes &attrs = m_instance->GetRenderAttributes();
-        attrs.channel = 0;
-        attrs.steps = {0.5f, 16.f, 0.5f};
-        attrs.threshold = {0.25f, 0.f, 1.f};
-        attrs.extinct = {-1.f, 1.1f, 0.f};
-        attrs.cutoff = {0.005f, 0.005f, 0.f};
-        attrs.transferFunction = MAKE_RC_OBJ_PTR(gvdb::VolumeTransferFunction, getGPDevice());
-        attrs.transferFunction->setLinear(0.0f, 0.5f, {0, 0, 0, 0}, {1.f, 1.f, 1.f, 0.5f});
-        attrs.transferFunction->setLinear(0.5f, 1.0f, {1.f, 1.f, 1.f, 0.5f}, {1.f, 1.f, 1.f, 0.8f});
-        attrs.transferFunction->commit(getGPQueue());
-
-        revoxelize();
-
-        m_renderer = std::make_unique<VolRenderer>(getGPDevice(), getGPQueue(), getVFS());
-        m_renderer->getViewParams().backgroundColor = {0.1f, 0.2f, 0.4f, 1.f};
-        m_renderer->getViewParams().shadowParams = {0.f, 0.f, 0.f};
-
-        getCamera()->verticalFov = verticalFovFromHorizontal(dm::radians(50.f), aspect());
-        getCameraOrbit().setOrbit({-45.f, 30.f, 0.f}, m_pivot * m_partSize, 300.f);
-        getLightOrbit().setOrbit({299.f, 57.3f, 0.f}, m_pivot * m_partSize * dm::float3(1.3f, 1.8f, 1.1f), 200.f);
-
-        m_sectionTarget = getPresenter()->createTarget(256, 256);
-        return true;
-    }
-
-    float aspect() const {
-        uint32_t w = getPresenter()->getWidth(0), h = getPresenter()->getHeight(0);
-        return h ? float(w) / float(h) : 4.f / 3.f;
-    }
-
-    void revoxelize() {
-        static const float sizes[] = {0.5f, 0.4f, 0.3f, 0.2f};
-        m_voxelSize = sizes[dm::clamp(m_voxelSizeSelect, 0, 3)];
-
-        m_volume->destroyChannels();
-        gvdb::GVDBChannelDesc chan;
-        chan.format = gvdb::ATLAS_FORMAT_R32_FLOAT;
-        m_volume->addChannel(chan);
-
-        // Model -> index: rotate about the centre, move the pivot to the
-        // origin corner, voxel size, part size (the reference's 1st .. 4th steps).
-        dm::affine3 modelToIndex = dm::rotation(dm::float3(0.f, 1.f, 0.f), dm::radians(-10.f)) *
-                                   dm::translation(m_pivot) * dm::scaling(dm::float3(1.f / m_voxelSize)) *
-                                   dm::scaling(dm::float3(m_partSize));
-        if (m_instance) setNodeTransform(m_instance->GetNode(), dm::scaling(dm::float3(m_voxelSize)));
-
-        log::info("Voxelizing at %.1f mm.", m_voxelSize);
-        nvrhi::FRESULT fr = m_voxelizer->solidVoxelize(0, m_meshGP.positions, m_meshGP.numVertices, m_meshGP.indices,
-                                                       m_meshGP.numIndices, m_mesh->objectSpaceBounds, modelToIndex, 1.0f, 0.5f);
-        if (NVRHI_FAILED(fr)) log::error("solidVoxelize failed (%d)", int(fr));
-        m_ops->updateApron();
-        m_volume->logMeasure();
-        updateScene();
-    }
-
-    void OnRender(uint32_t width, uint32_t height) override {
-        getCamera()->verticalFov = verticalFovFromHorizontal(dm::radians(50.f), float(width) / float(height));
-        updateScene();
-        RenderView view = getRenderView(int(width), int(height));
-
-        float h = float(height);
-        float mouseY = getFrameCounter() <= 1 ? h * 0.5f : float(getMousePos().y);
-        float yslice = 100.f - mouseY * 100.f / h;
-
-        static const gvdb::VolumeShading shadings[] = {gvdb::VolumeShading::Voxel, gvdb::VolumeShading::Trilinear,
-                                                       gvdb::VolumeShading::Section3D, gvdb::VolumeShading::Volume};
-        m_instance->GetRenderAttributes().shading = shadings[dm::clamp(m_shadeStyle, 0, 3)];
-
-        // Main view: cross-section plane for Section3D at the mouse height.
-        VolumeViewParams &params = m_renderer->getViewParams();
-        params.sectionPoint = {0.f, yslice, 0.f};
-        params.sectionNormal = {0.f, 1.f, 0.f};
-        m_renderer->render(getSceneGraph(), view, getPresenter()->getRenderBuffer(0));
-
-        // Inset: 2D section through the part at the mouse height.
-        dm::float3 world = m_pivot * m_partSize / m_voxelSize;   // part centre in voxels
-        world.y *= 1.f - mouseY / h;
-        params.sectionPoint = world;
-        params.sectionNormal = {world.x, 1.f, world.z};
-        RenderView sectionView = getRenderView(256, 256);
-        m_renderer->renderInstance(m_instance, sectionView, getPresenter()->getRenderBuffer(m_sectionTarget), false,
-                                   gvdb::VolumeShading::Section2D);
-
-        if (m_showTopology) getDebugDraw()->topology(m_instance);
-    }
-
-    void OnDrawOverlay(nvrhi::ICommandList *commandList, nvrhi::IFramebuffer *framebuffer) override {
-        getPresenter()->blit(commandList, framebuffer, m_sectionTarget, dm::box2(dm::float2(0.f, 0.75f), dm::float2(0.25f, 1.f)));
-    }
-
-    void OnBuildUI() override {
-        ImGui::Checkbox("Topology", &m_showTopology);
-        ImGui::Combo("Shading", &m_shadeStyle, "Voxel\0Surface\0Section\0Volume\0\0");
-        if (ImGui::Combo("Voxel Size", &m_voxelSizeSelect, "0.5 mm, 10 MB\0" "0.4 mm, 10 MB\0" "0.3 mm, 20 MB\0" "0.2 mm, 40 MB\0\0"))
-            revoxelize();
-        ImGui::Text("Left: orbit, Middle: pan, Right: distance, Shift: light");
-        ImGui::Text("Mouse height selects the cross-section");
-    }
-
-    bool OnKey(int key, int scancode, int action, int mods) override {
-        if (action != GLFW_PRESS) return false;
-        switch (key) {
-            case GLFW_KEY_1: m_showTopology = !m_showTopology; return true;
-            case GLFW_KEY_2: m_shadeStyle = (m_shadeStyle + 1) % 4; return true;
-            default: return false;
-        }
-    }
-
- private:
-    nvrhi::AutoPtr<engine::MeshInfo> m_mesh;
-    MeshGPBuffers m_meshGP;
-    nvrhi::AutoPtr<gvdb::IGVDBVolume> m_volume;
-    nvrhi::AutoPtr<gvdb::IGVDBVoxelizer> m_voxelizer;
-    nvrhi::AutoPtr<gvdb::IGVDBVoxelOps> m_ops;
-    nvrhi::AutoPtr<gvdb::GVDBVolumeInstance> m_instance;
-    std::unique_ptr<VolRenderer> m_renderer;
-    int m_sectionTarget = -1;
-    dm::float3 m_pivot = dm::float3::zero();
-    float m_partSize = 100.f;   // part size in mm
-    float m_voxelSize = 0.5f;
-    int m_voxelSizeSelect = 0;
-    int m_shadeStyle = 0;
-    bool m_showTopology = false;
+﻿// Original Lucy solid-voxelization and cross-section example on portable Slang.
+// SPDX-License-Identifier: Apache-2.0
+#include "PrintVolume.h"
+#include "PrintTests.h"
+#include "ExampleDevice.h"
+#include "VolumeViewer.h"
+#include <algorithm>
+#include <cmath>
+#include <cstdio>
+#include <cstring>
+#include <stdexcept>
+namespace {
+using ethereal::slang::ComputeRuntime;
+struct Options {
+    float voxelSize = .5f;
+    bool headless = false, selfTest = false, verify = false;
+    std::filesystem::path input = std::filesystem::path(GVDB_SAMPLES_ASSETS_DIR) / "lucy.obj",
+                          output = "3d-print.png";
+    gvdb::sample::VolumeViewOptions view;
 };
+class PrintScene final : public gvdb::sample::VolumeScene {
+    gvdb::samples::PrintVolume m_pipeline;
 
-int main(int argc, const char **argv) {
-    GVDBAppOptions options;
-    options.title = "GVDB Voxels - 3d-print";
-    options.sampleName = GVDB_SAMPLE_NAME;
-    return runGVDBApp<PrintApp>(argc, argv, options);
+ public:
+    PrintScene(ComputeRuntime& runtime, const SampleUtils::TriangleMesh& mesh, float size)
+        : m_pipeline(runtime, mesh, configuration(size)) {}
+    static gvdb::samples::PrintConfiguration configuration(float size) {
+        gvdb::samples::PrintConfiguration c;
+        c.voxelSize = size;
+        return c;
+    }
+    gvdb::slang::SlangVolume& volume() override { return m_pipeline.volume(); }
+    const gvdb::slang::PackedVolume& packed() const override { return m_pipeline.packed(); }
+    std::vector<gvdb::slang::Float4> transfer() const override {
+        return gvdb::samples::printTransferFunction();
+    }
+    bool key(int key, gvdb::sample::VolumeViewOptions& view) override {
+        using Mode = gvdb::sample::VolumeViewMode;
+        if (key == '2') {
+            const Mode modes[] = {Mode::Voxel, Mode::Surface, Mode::Section, Mode::Volume};
+            size_t next = 0;
+            for (size_t i = 0; i < 4; ++i)
+                if (view.mode == modes[i])
+                    next = (i + 1) % 4;
+            view.mode = modes[next];
+            return true;
+        }
+        if (key == '3') {
+            const float sizes[] = {.5f, .4f, .3f, .2f};
+            size_t next = 0;
+            for (size_t i = 0; i < 4; ++i)
+                if (std::abs(m_pipeline.voxelSize() - sizes[i]) < 1e-6f)
+                    next = (i + 1) % 4;
+            m_pipeline.rebuild(sizes[next]);
+            std::puts(describe().c_str());
+            return true;
+        }
+        return false;
+    }
+    void verifyLucy() const {
+        if (std::abs(m_pipeline.voxelSize() - .5f) > 1e-6f || m_pipeline.packed().levels[0].nodes.z != 801 ||
+            m_pipeline.surfaceCount() != 56839 || m_pipeline.interiorCount() != 131750)
+            throw std::runtime_error(
+                "Lucy 0.5 mm fixture changed: expected 801 bricks, 56839 surface and 131750 interior voxels");
+        std::puts("PASS Lucy 0.5 mm: 801 bricks, 56839 surface / 131750 interior voxels");
+    }
+    std::string describe() const override {
+        return std::to_string(m_pipeline.voxelSize()) + " mm; " +
+               std::to_string(m_pipeline.packed().levels[0].nodes.z) + " bricks; " +
+               std::to_string(m_pipeline.surfaceCount()) + " surface / " +
+               std::to_string(m_pipeline.interiorCount()) + " interior voxels; 2 shading, 3 voxel size";
+    }
+};
+gvdb::sample::VolumeViewMode mode(const char* value) {
+    using M = gvdb::sample::VolumeViewMode;
+    if (!std::strcmp(value, "voxel"))
+        return M::Voxel;
+    if (!std::strcmp(value, "surface"))
+        return M::Surface;
+    if (!std::strcmp(value, "section"))
+        return M::Section;
+    if (!std::strcmp(value, "volume"))
+        return M::Volume;
+    if (!std::strcmp(value, "section2d"))
+        return M::Section2D;
+    throw std::invalid_argument("Unknown print shading mode");
+}
+}  // namespace
+int main(int argc, const char** argv) {
+    try {
+        Options options;
+        options.view.mode = gvdb::sample::VolumeViewMode::Voxel;
+        options.view.sectionInset = true;
+        options.view.yaw = -.7853981634f;
+        options.view.pitch = .5235987756f;
+        options.view.extinction = 1.1f;
+        options.view.isovalue = .25f;
+        for (int i = 1; i < argc; ++i) {
+            const auto value = [&]() {
+                if (++i >= argc)
+                    throw std::invalid_argument("Missing option value");
+                return argv[i];
+            };
+            if (!std::strcmp(argv[i], "--help")) {
+                std::puts(
+                    "3d-print [-dx11|-dx12|-vk|-cuda] [--adapter N] [--validation]\n"
+                    "  [--input lucy.obj] [--voxel-size 0.5|0.4|0.3|0.2] [--shading "
+                    "voxel|surface|section|volume|section2d]\n"
+                    "  [--section-height 0..1] [--no-inset] [--topology] [--headless] [--output image.png]\n"
+                    "  [--width N] [--height N] [--self-test] [--verify]\n"
+                    "Interactive: 1 topology, 2 shading, 3 voxel size; mouse height selects section. CUDA runs "
+                    "headless.");
+                return 0;
+            }
+            if (!std::strcmp(argv[i], "--input"))
+                options.input = value();
+            else if (!std::strcmp(argv[i], "--voxel-size"))
+                options.voxelSize = std::stof(value());
+            else if (!std::strcmp(argv[i], "--shading"))
+                options.view.mode = mode(value());
+            else if (!std::strcmp(argv[i], "--section-height"))
+                options.view.sectionHeight = std::stof(value());
+            else if (!std::strcmp(argv[i], "--width"))
+                options.view.width = uint32_t(std::stoul(value()));
+            else if (!std::strcmp(argv[i], "--height"))
+                options.view.height = uint32_t(std::stoul(value()));
+            else if (!std::strcmp(argv[i], "--output") || !std::strcmp(argv[i], "--screenshot")) {
+                options.output = value();
+                options.headless = true;
+            } else if (!std::strcmp(argv[i], "--headless") || !std::strcmp(argv[i], "-cuda"))
+                options.headless = true;
+            else if (!std::strcmp(argv[i], "--self-test"))
+                options.selfTest = true;
+            else if (!std::strcmp(argv[i], "--verify")) {
+                options.verify = true;
+                options.headless = true;
+            } else if (!std::strcmp(argv[i], "--no-inset"))
+                options.view.sectionInset = false;
+            else if (!std::strcmp(argv[i], "--topology"))
+                options.view.topology = true;
+        }
+        const float supportedSizes[] = {.5f, .4f, .3f, .2f};
+        if (!std::isfinite(options.voxelSize) ||
+            std::none_of(std::begin(supportedSizes), std::end(supportedSizes),
+                         [&](float v) { return std::abs(v - options.voxelSize) < 1e-6f; }))
+            throw std::invalid_argument("Voxel size must be 0.5,0.4,0.3 or0.2 mm");
+        if (options.selfTest) {
+            ethereal::slang::ExampleDevice device(argc, argv);
+            ComputeRuntime runtime(device.get(), device.shaderPath());
+            gvdb::samples::runPrintSelfTests(runtime);
+            return 0;
+        }
+        const auto mesh = gvdb::samples::loadPrintMesh(options.input);
+        if (options.headless) {
+            ethereal::slang::ExampleDevice device(argc, argv);
+            ComputeRuntime runtime(device.get(), device.shaderPath());
+            PrintScene scene(runtime, mesh, options.voxelSize);
+            std::puts(scene.describe().c_str());
+            if (options.verify)
+                scene.verifyLucy();
+            const auto output = gvdb::sample::renderVolumeView(runtime, scene, options.view);
+            std::vector<gvdb::slang::Float4> pixels(size_t(output.width) * output.height);
+            runtime.read(output.color, pixels.data(), pixels.size() * sizeof(pixels[0]));
+            size_t changed = 0;
+            const uint32_t insetWidth = std::max(1u, output.width / 4),
+                           insetHeight = std::max(1u, output.height / 4);
+            for (uint32_t y = 0; y < output.height; ++y)
+                for (uint32_t x = 0; x < output.width; ++x) {
+                    const auto& p = pixels[size_t(y) * output.width + x];
+                    if (!std::isfinite(p.x) || !std::isfinite(p.y) || !std::isfinite(p.z) ||
+                        !std::isfinite(p.w))
+                        throw std::runtime_error("Print render produced nonfinite pixels");
+                    const bool sectionOnly = options.view.mode == gvdb::sample::VolumeViewMode::Section2D;
+                    if (options.view.sectionInset && !sectionOnly && x < insetWidth &&
+                        y >= output.height - insetHeight)
+                        continue;
+                    changed += sectionOnly ? (std::abs(p.x) + std::abs(p.y) + std::abs(p.z) > .01f)
+                                           : (std::abs(p.x - options.view.background.x) +
+                                                  std::abs(p.y - options.view.background.y) +
+                                                  std::abs(p.z - options.view.background.z) >
+                                              .01f);
+                }
+            if (!changed)
+                throw std::runtime_error("Print render contains no model contribution");
+            gvdb::sample::writeVolumeImage(runtime, output, options.output);
+            std::printf("%zu non-background pixels\n", changed);
+            return 0;
+        }
+        return gvdb::sample::runVolumeWindow(
+            argc, argv, "GVDB Slang 3D print",
+            [&](ComputeRuntime& runtime) {
+                return std::make_unique<PrintScene>(runtime, mesh, options.voxelSize);
+            },
+            options.view);
+    } catch (const std::exception& error) {
+        std::fprintf(stderr, "3d-print: %s\n", error.what());
+        return 1;
+    }
 }

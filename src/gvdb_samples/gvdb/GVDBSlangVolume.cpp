@@ -117,7 +117,25 @@ std::vector<float> downsampleDense(ethereal::slang::ComputeRuntime& runtime,nvrh
         BindingSetItem::StructuredBuffer_SRV(0,source),BindingSetItem::StructuredBuffer_UAV(0,output)},groups8(d.x),groups8(d.y),groups8(d.z));
     std::vector<float> result(count);runtime.read(output,result.data(),count*4);return result;
 }
-RaycastOutput SlangVolume::raycast(RaycastParameters p,const std::vector<Float4>& transfer,bool surface) {
+std::vector<float> downsampleRegion(ethereal::slang::ComputeRuntime& runtime,nvrhi::IBuffer* source,
+    UInt4 sourceResolution,UInt4 destinationResolution,Float4 destinationExtent,
+    const std::array<Float4,3>& transform,Float4 remap) {
+    validateDenseSource(source,sourceResolution);validateTransform(transform,remap);
+    const auto d=destinationResolution;
+    finite(destinationExtent.x);finite(destinationExtent.y);finite(destinationExtent.z);
+    if(destinationExtent.x<=0||destinationExtent.y<=0||destinationExtent.z<=0||
+        !d.x||!d.y||!d.z||d.x>65535u*8u||d.y>65535u*8u||d.z>65535u*8u||
+        uint64_t(d.x)*d.y>UINT32_MAX||uint64_t(d.x)*d.y*d.z>UINT32_MAX/4)
+        throw std::invalid_argument("GVDB region downsample dimensions exceed the portable range");
+    validateCoordinates(transform,{-1,-1,-1,0},destinationExtent);
+    OperatorParameters p{};p.volume.atlasResolutionAndApron=d;p.sourceResolution=sourceResolution;p.remap=remap;p.value=destinationExtent;
+    for(size_t i=0;i<3;++i)p.transformRows[i]=transform[i];
+    const size_t count=size_t(d.x)*d.y*d.z;auto output=runtime.buffer(count*4,4);
+    runtime.dispatch("GVDBResample","downsampleRegion",&p,sizeof(p),{
+        BindingSetItem::StructuredBuffer_SRV(0,source),BindingSetItem::StructuredBuffer_UAV(0,output)},groups8(d.x),groups8(d.y),groups8(d.z));
+    std::vector<float> result(count);runtime.read(output,result.data(),count*4);return result;
+}
+void validateRaycastParameters(const RaycastParameters& p,const std::vector<Float4>& transfer) {
     if(!p.image.x || !p.image.y || uint64_t(p.image.x)*p.image.y>UINT32_MAX || !p.image.w || transfer.empty() || transfer.size()>UINT32_MAX)
         throw std::invalid_argument("GVDB raycast dimensions or transfer function are invalid");
     finite(p.march.x);finite(p.march.y);finite(p.march.z);finite(p.march.w);
@@ -130,6 +148,9 @@ RaycastOutput SlangVolume::raycast(RaycastParameters p,const std::vector<Float4>
         finite(value.x);finite(value.y);finite(value.z);finite(value.w);
         if(value.w<0)throw std::invalid_argument("GVDB transfer extinction must be nonnegative");
     }
+}
+RaycastOutput SlangVolume::raycast(RaycastParameters p,const std::vector<Float4>& transfer,bool surface) {
+    validateRaycastParameters(p,transfer);
     p.volume=m_volume;p.image.z=uint32_t(transfer.size());
     auto transferBuffer=m_runtime->buffer(transfer.size()*sizeof(Float4),sizeof(Float4),transfer.data());
     RaycastOutput result;

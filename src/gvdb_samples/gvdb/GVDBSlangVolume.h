@@ -12,6 +12,8 @@ struct RaycastOutput {
     nvrhi::BufferHandle depth;
     uint32_t width = 0, height = 0;
 };
+// Shared validation for standard and specialized sparse volume renderers.
+void validateRaycastParameters(const RaycastParameters& parameters,const std::vector<Float4>& transfer);
 // Owns NVRHI resources for one packed hierarchy and one R32_FLOAT atlas.
 // The borrowed ComputeRuntime must outlive this object. Construction requires a
 // successful packVolume result; it performs no legacy CUDA initialization.
@@ -47,4 +49,10 @@ public:
 // directly to source coordinates. The source must be StructuredBuffer<float>.
 std::vector<float> downsampleDense(ethereal::slang::ComputeRuntime& runtime,nvrhi::IBuffer* source,
     UInt4 sourceResolution,UInt4 destinationResolution,const std::array<Float4,3>& transform,Float4 remap);
+// Legacy sparse-activation placement: inclusive source boxes derived from
+// destinationExtent/(destinationResolution+1), truncated transformed endpoints,
+// and upper endpoints clamped to lower endpoints (including reflected axes).
+std::vector<float> downsampleRegion(ethereal::slang::ComputeRuntime& runtime,nvrhi::IBuffer* source,
+    UInt4 sourceResolution,UInt4 destinationResolution,Float4 destinationExtent,
+    const std::array<Float4,3>& transform,Float4 remap);
 } // namespace gvdb::slang

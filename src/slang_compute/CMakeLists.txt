@@ -131,3 +131,15 @@ target_sources(gvdb_slang_tests PRIVATE ExtendedComputeTests.cpp)
 add_executable(gvdb_topology_builder_tests ../gvdb_samples/tests/TopologyBuilderTests.cpp)
 target_link_libraries(gvdb_topology_builder_tests PRIVATE gvdb_slang_runtime)
 add_test(NAME gvdb_topology_builder COMMAND gvdb_topology_builder_tests)
+
+include(InteropTests.cmake)
+
+include(VolumeViewer.cmake)
+
+if(NOT TARGET resample)
+    add_subdirectory(../gvdb_samples/samples/resample gvdb-resample)
+endif()
+
+if(NOT TARGET 3d-print)
+    add_subdirectory(../gvdb_samples/samples/3d-print gvdb-3d-print)
+endif()

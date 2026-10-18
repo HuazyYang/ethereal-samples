@@ -1,7 +1,10 @@
-﻿// CPU topology construction and sparse apron tests.
+// CPU topology construction and sparse apron tests.
 // SPDX-License-Identifier: Apache-2.0
 #include "../gvdb/slang/GVDBTopologyBuilder.h"
+#include <algorithm>
+#include <cmath>
 #include <cstring>
+#include <limits>
 #include <iostream>
 #include <stdexcept>
 using namespace gvdb::slang;
@@ -18,6 +21,27 @@ static bool lookup(const PackedVolume& v,Int4 p){
         const size_t word=(info.children.x+referenceIndex(list)*info.children.y)/4+bit*2;
         const UInt2 child{v.children[word],v.children[word+1]};if(isNull(child))return false;index=uint32_t(referenceIndex(child));--level;
     }
+}
+static void verifyTranslation(const ScalarVolumeData& source,const ScalarVolumeData& shifted,Int4 origin){
+    const int32_t delta[]={origin.x,origin.y,origin.z};auto expectedNodes=source.packed.nodes;
+    require(source.packed.levels.size()==shifted.packed.levels.size(),"translation changed level count");
+    for(size_t l=0;l<source.packed.levels.size();++l){const auto& level=source.packed.levels[l];
+        require(std::memcmp(&level,&shifted.packed.levels[l],sizeof(level))==0,"translation changed level layout");
+        for(uint32_t i=0;i<level.nodes.z;++i){auto* node=expectedNodes.data()+(level.nodes.x+size_t(i)*level.nodes.y)/4;
+            for(size_t axis=0;axis<3;++axis)node[1+axis]=uint32_t(int64_t(int32_t(node[1+axis]))+delta[axis]);}
+    }
+    require(expectedNodes==shifted.packed.nodes,"translation did not shift every signed node position");
+    require(source.packed.children==shifted.packed.children&&source.atlas==shifted.atlas,"translation changed references or atlas values");
+    require(source.packed.atlasMap.size()==shifted.packed.atlasMap.size(),"translation changed atlas map count");
+    for(size_t i=0;i<source.packed.atlasMap.size();++i){const auto& a=source.packed.atlasMap[i];const auto& b=shifted.packed.atlasMap[i];
+        const bool active=a.leaf>=0;
+        require(b.leaf==a.leaf&&b.x==a.x+(active?origin.x:0)&&b.y==a.y+(active?origin.y:0)&&b.z==a.z+(active?origin.z:0),"translation did not shift signed atlas map positions");}
+    auto expectedVolume=source.packed.volume;
+    expectedVolume.boundsMin.x+=origin.x;expectedVolume.boundsMin.y+=origin.y;expectedVolume.boundsMin.z+=origin.z;
+    expectedVolume.boundsMax.x+=origin.x;expectedVolume.boundsMax.y+=origin.y;expectedVolume.boundsMax.z+=origin.z;
+    require(std::memcmp(&expectedVolume,&shifted.packed.volume,sizeof(expectedVolume))==0,"translation did not shift bounds or changed volume layout");
+    require(lookup(shifted.packed,{origin.x+1,origin.y,origin.z,0})&&
+        !lookup(shifted.packed,{origin.x,origin.y+2,origin.z,0}),"translated sparse lookup differs");
 }
 int main(){try{
     TopologyBuildOptions options;options.logDimensions={1,1,1};options.atlasGrid={3,1,1,0};PackedVolume volume;std::string error;
@@ -36,7 +60,30 @@ int main(){try{
     const auto at=[&](size_t x,size_t y,size_t z){return scalar.atlas[(z*4+y)*12+x];};
     require(at(2,1,1)==7&&at(3,1,1)==11&&at(4,1,1)==7,"cross-brick scalar apron values");
     require(at(9,1,2)==13&&at(10,1,2)==0&&at(0,0,0)==0,"partial source brick and outer background");
-    const auto saved=scalar.atlas;std::fill(values.begin(),values.end(),0);
+    for(const auto delta:std::vector<Int4>{{-8,4,-6,0},{8388598,-8388606,0,0}}){
+        ScalarVolumeData shifted;require(buildScalarVolumeAtOrigin(values.data(),values.size(),{5,3,2,0},delta,options,0,0,shifted,error),error.c_str());
+        verifyTranslation(scalar,shifted,delta);
+    }
+    // Integer coordinates alone are insufficient: these accepted int32 values
+    // collapse an eight-voxel float box to zero width and lose voxel centers.
+    constexpr int32_t large=1<<28;
+    require(float(large)==float(large+8),"large-coordinate regression premise changed");
+    const auto savedNodes=scalar.packed.nodes,savedChildren=scalar.packed.children;const auto saved=scalar.atlas;
+    for(const auto delta:std::vector<Int4>{{large,0,0,0},{0,-large,0,0},{0,0,large,0},{8388600,0,0,0},{-8388608,0,0,0}}){
+        require(!buildScalarVolumeAtOrigin(values.data(),values.size(),{5,3,2,0},delta,options,0,0,scalar,error),"unrepresentable translated coordinates accepted");
+        require(scalar.packed.nodes==savedNodes&&scalar.packed.children==savedChildren&&scalar.atlas==saved,"invalid translation changed output");
+    }
+    for(const auto p:std::vector<Int4>{{large,0,0,0},{0,-large,0,0},{0,0,large,0},{8388606,0,0,0},{-8388608,0,0,0}})
+        require(!buildTopology({p},options,volume,error)&&volume.nodes==original,"unrepresentable topology or apron accepted or output changed");
+    require(!buildTopology({{8388600,0,0,0},{8388604,0,0,0}},options,volume,error),"root extent outside float range accepted");
+    for(const auto p:std::vector<Int4>{{8388604,0,0,0},{-8388606,0,0,0}}){
+        PackedVolume edge;require(buildTopology({p},options,edge,error),error.c_str());
+        require(lookup(edge,p)&&double(float(p.x)+.5f)==double(p.x)+.5&&
+            double(float(p.x+1)+.5f)==double(p.x)+1.5,"representable boundary voxel center or lookup differs");
+    }
+    values[0]=std::numeric_limits<float>::quiet_NaN();
+    require(!buildScalarVolume(values.data(),values.size(),{5,3,2,0},options,0,0,scalar,error)&&scalar.atlas==saved,"NaN scalar accepted or output changed");
+    std::fill(values.begin(),values.end(),0.f);
     require(!buildScalarVolume(values.data(),values.size(),{5,3,2,0},options,0,0,scalar,error)&&scalar.atlas==saved,"empty activation changed output");
-    std::cout<<"Portable topology builder, negative coordinates, sparse lookup and dense apron tests passed\n";return 0;
+    std::cout<<"Portable topology builder, signed translations, float coordinate limits and sparse apron tests passed\n";return 0;
 }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}
