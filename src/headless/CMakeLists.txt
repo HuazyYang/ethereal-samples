@@ -20,13 +20,15 @@
 # DEALINGS IN THE SOFTWARE.
 
 
-file(GLOB shaders "*.hlsl")
+file(GLOB shaders "*.slang")
 file(GLOB sources "*.cpp" "*.h")
 
 set(project headless)
 set(folder "Examples/Headless")
 
 ethereal_compile_shaders(
+    SLANG
+    CUDA
     ALL_PLATFORMS
     TARGET ${project}_shaders
     CONFIG ${CMAKE_CURRENT_SOURCE_DIR}/shaders.cfg
@@ -41,3 +43,21 @@ set_target_properties(${project} PROPERTIES FOLDER ${folder})
 if (MSVC)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /W3 /MP")
 endif()
+
+if(NVRHI_WITH_CUDA)
+    target_link_libraries(headless nvrhi::cuda)
+    target_compile_definitions(headless PRIVATE ETHEREAL_TEST_CUDA=1)
+    add_test(NAME slang_headless_cuda COMMAND headless -cuda)
+endif()
+foreach(api DX11 DX12 VULKAN)
+    if(NVRHI_WITH_${api})
+        if(api STREQUAL "VULKAN")
+            set(argument -vk)
+        elseif(api STREQUAL "DX11")
+            set(argument -dx11)
+        else()
+            set(argument -dx12)
+        endif()
+        add_test(NAME slang_headless_${api} COMMAND headless ${argument})
+    endif()
+endforeach()

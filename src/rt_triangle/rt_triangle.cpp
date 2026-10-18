@@ -29,6 +29,7 @@
 #include <donut/core/vfs/VFS.h>
 #include <donut/core/math/math.h>
 #include <nvrhi/utils.h>
+#include "../SlangRenderTest.h"
 
 
 using namespace donut;
@@ -67,7 +68,7 @@ public:
 		rootFS->mount("/shaders/app", appShaderPath);
 
         nvrhi::AutoPtr<engine::ShaderFactory> shaderFactory = MAKE_RC_OBJ_PTR(engine::ShaderFactory, GetDevice(), rootFS, "/shaders");
-        m_ShaderLibrary = shaderFactory->CreateShaderLibrary("app/rt_triangle.hlsl", nullptr);
+        m_ShaderLibrary = shaderFactory->CreateShaderLibrary("app/rt_triangle.slang", nullptr);
 
         if (!m_ShaderLibrary)
         {
@@ -93,13 +94,16 @@ public:
         m_ShaderLibrary->getShader("RayGen", nvrhi::ShaderType::RayGeneration, &rayGenShader);
         nvrhi::ShaderHandle missShader;
         m_ShaderLibrary->getShader("Miss", nvrhi::ShaderType::Miss, &missShader);
+        // Preserve logical shader-table names even when native entry symbols differ.
+        if (!rayGenShader || !missShader) return false;
         pipelineDesc.shaders = {
-            { "", rayGenShader, nullptr },
-            { "", missShader, nullptr }
+            { "RayGen", rayGenShader, nullptr },
+            { "Miss", missShader, nullptr }
         };
 
         nvrhi::ShaderHandle closestHitShader;
         m_ShaderLibrary->getShader("ClosestHit", nvrhi::ShaderType::ClosestHit, &closestHitShader);
+        if (!closestHitShader) return false;
         pipelineDesc.hitGroups = { { 
             "HitGroup", 
             closestHitShader, 
@@ -113,7 +117,9 @@ public:
 
         GetDevice()->createRayTracingPipeline(pipelineDesc, &m_Pipeline);
 
+        if (!m_Pipeline) return false;
         m_Pipeline->createShaderTable(nvrhi::rt::ShaderTableDesc(), &m_ShaderTable);
+        if (!m_ShaderTable) return false;
         m_ShaderTable->setRayGenerationShader("RayGen");
         m_ShaderTable->addHitGroup("HitGroup");
         m_ShaderTable->addMissShader("Miss");
@@ -248,6 +254,9 @@ int main(int __argc, const char** __argv)
     deviceParams.enableDebugRuntime = true; 
     deviceParams.enableNvrhiValidationLayer = true;
 #endif
+
+    if (slang_render_test::Requested(__argc, __argv))
+        return slang_render_test::Run<RayTracedTriangle>(deviceManager, deviceParams, slang_render_test::Image::RayTracedTriangle);
 
     if (!deviceManager->CreateWindowDeviceAndSwapChain(deviceParams, g_WindowTitle))
     {

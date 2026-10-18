@@ -1,107 +1,181 @@
-// render-kernel (gRenderKernel): load explosion.vbx and render it with the user
-// raycast kernel of RenderCustom.cu (ptx/RenderCustom.ptx) through
-// VolRenderer::renderCustom; writes out_rendkernel.png. Console sample.
-#include <sample-utils/HeadlessContext.h>
-#include <sample-utils/GVDBApp.h>
-#include <sample-utils/VolRenderer.h>
-#include <sample-utils/ImageIO.h>
-#include <sample-utils/SampleTypes.h>
-#include <donut/core/log.h>
-#include <donut/core/vfs/VFS.h>
-#include <nvrhi/core/datablob.h>
+// Render a VBX with the original custom diffuse/reflected-sky surface look on every API.
+// SPDX-License-Identifier: Apache-2.0
+#include "../../tests/PortableFixtures.h"
+#include "ExampleDevice.h"
+#include "RenderCustom.h"
+#include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
+#include <cstring>
+#include <donut/core/math/math.h>
+#include <gvdb/GVDBSlangVolume.h>
+#include <gvdb/slang/GVDBPortableVbx.h>
+#include <stb_image_write.h>
+#include <vector>
 
-using namespace donut;
-using namespace SampleUtils;
-
-int main(int argc, const char **argv) {
-    const int w = 1024, h = 768;
-
-    printf("Starting GVDB.\n");
-    HeadlessContext ctx;
-    if (!createHeadlessContext(ctx)) {
-        printf("Cannot create the CUDA device.\n");
+namespace
+{
+gvdb::slang::Float4 vector4(dm::float3 v, float w = 0)
+{
+    return {v.x, v.y, v.z, w};
+}
+void analyticTest(ethereal::slang::ComputeRuntime &runtime)
+{
+    namespace g = gvdb::slang;
+    namespace f = g::fixtures;
+    auto fixture = f::twoBrickVolume();
+    for (uint32_t z = 0; z < 4; ++z)
+        for (uint32_t y = 0; y < 4; ++y)
+            for (uint32_t x = 0; x < 8; ++x)
+                fixture.atlas[(z * 4 + y) * 8 + x] = (float(x % 4) - .5f + float(x / 4) * 2.f) * .25f;
+    g::PackedVolume packed;
+    std::string error;
+    if (!g::packVolume(f::volumeSource(fixture), packed, error))
+        throw std::runtime_error(error);
+    g::SlangVolume volume(runtime, packed, fixture.atlas.data(), fixture.atlas.size());
+    auto p = f::raycastParameters(fixture);
+    const auto test = [&](g::RaycastParameters settings, g::Float4 expected, float expectedDepth) {
+        auto output = renderCustom(runtime, volume, settings);
+        g::Float4 result{};
+        float depth = 0;
+        runtime.read(output.color, &result, sizeof(result));
+        runtime.read(output.depth, &depth, sizeof(depth));
+        const float actual[] = {result.x, result.y, result.z, result.w},
+                    reference[] = {expected.x, expected.y, expected.z, expected.w};
+        for (unsigned i = 0; i < 4; ++i)
+            if (!std::isfinite(actual[i]) || std::abs(actual[i] - reference[i]) > .002f)
+            {
+                std::fprintf(stderr, "channel %u: expected %f actual %f\n", i, reference[i], actual[i]);
+                throw std::runtime_error("Custom diffuse/reflection color differs from analytic reference");
+            }
+        if (std::isinf(expectedDepth) ? !std::isinf(depth) : std::abs(depth - expectedDepth) > .002f)
+            throw std::runtime_error("Custom surface depth differs from analytic reference");
+    };
+    test(p, {.6f, .6f, .6f, 1}, 3);
+    p.rayOrigin = {-1, 4, 1, 0};
+    p.direction00 = {1, -1, 0, 0};
+    p.march.x = std::sqrt(2.f) * .25f;
+    p.valueRange.z = .49f; // Keep the analytic sample away from floating-point threshold ties.
+    const float sky = 1 / std::sqrt(2.f);
+    test(p, {.6f, .6f + .3f * sky, .6f + .7f * sky, 1}, 3 * std::sqrt(2.f));
+    p = f::raycastParameters(fixture);
+    p.rayOrigin.y = 3;
+    test(p, {0, 0, .1f, 1}, INFINITY);
+    std::puts("PASS custom threshold surface, diffuse/reflected sky and miss color analytic references");
+}
+} // namespace
+int main(int argc, const char **argv)
+{
+    try
+    {
+        int width = 1024, height = 768;
+        float step = 0.25f, threshold = 0.1f;
+        bool selfTest = false;
+        std::filesystem::path input = std::filesystem::path(GVDB_SAMPLES_ASSETS_DIR) / "explosion.vbx",
+                              output = "out_rendkernel.png";
+        for (int i = 1; i < argc; ++i)
+        {
+            const auto argument = [&]() -> const char * {
+                if (++i >= argc)
+                    throw std::invalid_argument("Missing option value");
+                return argv[i];
+            };
+            if (!std::strcmp(argv[i], "--help"))
+            {
+                std::puts("render-kernel [-dx11|-dx12|-vk|-cuda] [--adapter N] [--validation]\n"
+                          "  [--input volume.vbx] [--output image.png] [--width N] [--height N] [--step N] "
+                          "[--threshold N] [--self-test]");
+                return 0;
+            }
+            if (!std::strcmp(argv[i], "--input"))
+                input = argument();
+            else if (!std::strcmp(argv[i], "--output"))
+                output = argument();
+            else if (!std::strcmp(argv[i], "--width"))
+                width = std::stoi(argument());
+            else if (!std::strcmp(argv[i], "--height"))
+                height = std::stoi(argument());
+            else if (!std::strcmp(argv[i], "--step"))
+                step = std::stof(argument());
+            else if (!std::strcmp(argv[i], "--threshold"))
+                threshold = std::stof(argument());
+            else if (!std::strcmp(argv[i], "--self-test"))
+                selfTest = true;
+        }
+        if (width < 1 || height < 1 || uint64_t(width) * height > 16 * 1024 * 1024 || !std::isfinite(step) ||
+            step <= 0 || !std::isfinite(threshold))
+            throw std::invalid_argument("Invalid image dimensions or ray step");
+        ethereal::slang::ExampleDevice device(argc, argv);
+        const auto shaderPath =
+            device.shaderPath().parent_path().parent_path() / "render_kernel" / device.shaderPath().filename();
+        ethereal::slang::ComputeRuntime runtime(device.get(), shaderPath);
+        if (selfTest)
+        {
+            analyticTest(runtime);
+            return 0;
+        }
+        gvdb::slang::VbxVolume loaded;
+        std::string error;
+        if (!gvdb::slang::loadVBXFile(input, loaded, error))
+            throw std::runtime_error(error);
+        gvdb::slang::SlangVolume volume(runtime, loaded.packed, loaded.atlas.data(), loaded.atlas.size());
+        const auto &info = volume.info();
+        const dm::float3 lower(info.boundsMin.x, info.boundsMin.y, info.boundsMin.z);
+        const dm::float3 upper(info.boundsMax.x, info.boundsMax.y, info.boundsMax.z);
+        const dm::float3 center = (lower + upper) * 0.5f;
+        // Frame index-space bounds, so differently transformed VBX assets remain visible.
+        const float radius = std::max(1.f, dm::length(upper - lower) * 0.5f);
+        const dm::float3 backwards = dm::normalize(dm::float3(0.296198f, 0.5f, 0.813798f));
+        const dm::float3 forward = -backwards, right = dm::normalize(dm::cross(forward, dm::float3(0, 1, 0)));
+        const dm::float3 up = dm::cross(right, forward);
+        const float horizontal = std::tan(dm::radians(25.f)), vertical = horizontal * float(height) / width;
+        gvdb::slang::RaycastParameters p{};
+        const double maximumSteps = std::ceil(double(radius) * 2 / step) + 8;
+        if (maximumSteps > UINT32_MAX)
+            throw std::invalid_argument("Ray step requires too many samples");
+        p.image = {uint32_t(width), uint32_t(height), 1, uint32_t(maximumSteps)};
+        p.rayOrigin = vector4(center + backwards * radius * 2.8f);
+        p.direction00 = vector4(forward - right * horizontal + up * vertical);
+        p.directionDx = vector4(right * (2 * horizontal / width));
+        p.directionDy = vector4(up * (-2 * vertical / height));
+        p.march = {step, 0, radius * 6, 1.5f};
+        p.valueRange = {0, 1, threshold, 0.995f};
+        p.background = {0, 0, 0.1f, 1};
+        p.light = vector4(center + dm::float3(-radius, radius * 2, -radius), 0.1f);
+        runtime.flush(); // Exclude asset upload from GPU render timing.
+        const auto start = std::chrono::steady_clock::now();
+        auto rendered = renderCustom(runtime, volume, p);
+        std::vector<gvdb::slang::Float4> color(size_t(width) * height);
+        runtime.read(rendered.color, color.data(), color.size() * sizeof(color[0]));
+        const double milliseconds =
+            std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+        std::vector<uint8_t> rgba(color.size() * 4);
+        size_t changed = 0;
+        for (size_t i = 0; i < color.size(); ++i)
+        {
+            const auto &c = color[i];
+            if (!std::isfinite(c.x) || !std::isfinite(c.y) || !std::isfinite(c.z) || !std::isfinite(c.w))
+                throw std::runtime_error("Renderer produced nonfinite pixels");
+            if (std::abs(c.x - p.background.x) + std::abs(c.y - p.background.y) + std::abs(c.z - p.background.z) >
+                0.03f)
+                ++changed;
+            const float channels[4] = {c.x, c.y, c.z, c.w};
+            for (unsigned j = 0; j < 4; ++j)
+                rgba[i * 4 + j] = uint8_t(std::clamp(channels[j], 0.f, 1.f) * 255 + 0.5f);
+        }
+        if (!changed)
+            throw std::runtime_error("No volume samples contributed to the image");
+        if (!stbi_write_png(output.string().c_str(), width, height, 4, rgba.data(), width * 4))
+            throw std::runtime_error("Cannot write output image");
+        std::printf("%u leaves, %zu voxels, %zu non-background pixels; render/readback %.3f ms\n",
+                    loaded.packed.levels[0].nodes.z, loaded.atlas.size(), changed, milliseconds);
+        std::printf("Wrote %s\n", output.string().c_str());
+        return 0;
+    }
+    catch (const std::exception &error)
+    {
+        std::fprintf(stderr, "render-kernel: %s\n", error.what());
         return 1;
     }
-
-    // ---- volume from VBX ----
-    std::filesystem::path vbxPath = ctx.getAssetPath("explosion.vbx");
-    printf("Loading VBX. %s\n", vbxPath.string().c_str());
-    nvrhi::AutoPtr<nvrhi::IDataBlob> vbx;
-    {
-        auto fs = MAKE_RC_OBJ_PTR(vfs::NativeFileSystem);
-        if (NVRHI_FAILED(fs->readFile(vbxPath, &vbx)) || !vbx) {
-            printf("Cannot find vbx file.\n");
-            return 1;
-        }
-    }
-    auto volume = ctx.createVolume();
-    if (!volume) return 1;
-    nvrhi::AutoPtr<gvdb::IGVDBSerializer> serializer;
-    if (NVRHI_FAILED(gvdb::createGVDBSerializer(volume, &serializer))) return 1;
-    gvdb::VBXTransform vbxTransform;
-    if (NVRHI_FAILED(serializer->loadVBX(vbx, &vbxTransform))) {
-        printf("Failed to load the VBX file.\n");
-        return 1;
-    }
-
-    auto instance = attachVolumeInstance(ctx.sceneGraph, volume, vbxTransformToAffine(vbxTransform), "explosion");
-    gvdb::VolumeRenderAttributes &attrs = instance->GetRenderAttributes();
-    attrs.channel = 0;
-    attrs.shading = gvdb::VolumeShading::Trilinear;
-    attrs.steps = {0.25f, 16.f, 0.25f};
-    attrs.threshold = {0.1f, 0.0f, 1.0f};
-
-    // ---- camera and light ----
-    ctx.camera->verticalFov = verticalFovFromHorizontal(dm::radians(50.f), float(w) / float(h));
-    OrbitController cam;
-    cam.setOrbit({20.f, 30.f, 0.f}, {125.f, 160.f, 125.f}, 800.f);
-    cam.apply(ctx.cameraNode);
-    OrbitController light;
-    light.setOrbit({50.f, 65.f, 0.f}, {125.f, 140.f, 125.f}, 200.f);
-    light.apply(ctx.lightNode);
-    ctx.sceneGraph->Refresh(0);
-
-    // ---- user kernel ----
-    printf("Loading module: RenderCustom.ptx\n");
-    nvrhi::AutoPtr<gp::IModule> module;
-    nvrhi::AutoPtr<gp::IKernel> kernel;
-    {
-        nvrhi::AutoPtr<nvrhi::IDataBlob> ptx;
-        if (NVRHI_FAILED(ctx.vfs->readFile("ptx/RenderCustom.ptx", &ptx)) || !ptx) {
-            printf("Cannot read ptx/RenderCustom.ptx\n");
-            return 1;
-        }
-        size_t len = ptx->GetSize();
-        ptx->Resize(len + 1);
-        static_cast<char *>(ptx->GetDataPtr())[len] = 0;
-        UT_V_GP(ctx.gpDevice->createModule({}, ptx->GetDataPtr(), len + 1, &module));
-        UT_V_GP(module->getKernel("raycast_kernel", &kernel));
-    }
-
-    // ---- render ----
-    printf("Creating screen buffer. %d x %d\n", w, h);
-    nvrhi::AutoPtr<gp::IBuffer> renderBuffer;
-    {
-        gp::BufferDesc desc;
-        desc.byteSize = size_t(w) * h * 4;
-        UT_V_GP(ctx.gpDevice->createBuffer(desc, &renderBuffer));
-    }
-    VolRenderer renderer(ctx.gpDevice, ctx.gpQueue, ctx.vfs);
-    RenderView view = makeRenderView(ctx.camera, ctx.light, w, h);
-
-    printf("Render custom kernel.\n");
-    auto t0 = std::chrono::high_resolution_clock::now();
-    renderer.renderCustom(kernel, instance, view, renderBuffer);
-    ctx.sync();
-    float ms = std::chrono::duration<float, std::milli>(std::chrono::high_resolution_clock::now() - t0).count();
-    printf("Render custom. %6.3f ms\n", ms);
-
-    std::filesystem::path outPath = "out_rendkernel.png";
-    printf("Writing %s\n", outPath.string().c_str());
-    if (!saveRenderBufferPNG(outPath, ctx.gpDevice, ctx.gpQueue, renderBuffer, w, h)) return 1;
-
-    printf("Done.\n");
-    return 0;
 }

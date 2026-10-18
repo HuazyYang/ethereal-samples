@@ -26,6 +26,7 @@
 #include <donut/core/log.h>
 #include <donut/core/vfs/VFS.h>
 #include <nvrhi/utils.h>
+#include "../SlangRenderTest.h"
 
 using namespace donut;
 
@@ -50,8 +51,8 @@ public:
         std::filesystem::path appShaderPath = app::GetDirectoryWithExecutable() / "shaders/shader_specializations" / app::GetShaderTypeName(GetDevice()->getGraphicsAPI());
 
         engine::ShaderFactory shaderFactory(GetDevice(), nativeFS, appShaderPath);
-        m_VertexShader = shaderFactory.CreateShader("shaders.hlsl", "main_vs", nullptr, nvrhi::ShaderType::Vertex);
-        m_PixelShader = shaderFactory.CreateShader("shaders.hlsl", "main_ps", nullptr, nvrhi::ShaderType::Pixel);
+        m_VertexShader = shaderFactory.CreateShader("shaders.slang", "main_vs", nullptr, nvrhi::ShaderType::Vertex);
+        m_PixelShader = shaderFactory.CreateShader("shaders.slang", "main_ps", nullptr, nvrhi::ShaderType::Pixel);
 
         if (!m_VertexShader || !m_PixelShader)
         {
@@ -122,7 +123,7 @@ public:
         nvrhi::utils::ClearColorAttachment(m_CommandList, framebuffer, 0, nvrhi::Color(0.f));
 
         // Render triangles, one with each pipeline.
-        // Expected output: 4 triangles side-by-side; red, green, blue, cyan.
+        // Expected output: 4 triangles side-by-side; red, green, blue, magenta.
 
         for (const auto& pipeline : m_Pipelines)
         {
@@ -157,6 +158,9 @@ int main(int __argc, const char** __argv)
     deviceParams.enableDebugRuntime = true; 
     deviceParams.enableNvrhiValidationLayer = true;
 #endif
+
+    if (slang_render_test::Requested(__argc, __argv))
+        return slang_render_test::Run<ShaderSpecializations>(deviceManager, deviceParams, slang_render_test::Image::Specializations);
 
     if (!deviceManager->CreateWindowDeviceAndSwapChain(deviceParams, g_WindowTitle))
     {

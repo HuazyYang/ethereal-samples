@@ -1,0 +1,19 @@
+﻿{
+  "version": 1,
+  "source": "GVDBRayTracing.slang",
+  "profile": "lib_6_5",
+  "targets": ["slang-dxil", "slang-spirv", "slang-optix"],
+  "maxPayloadBytes": 32,
+  "maxAttributeBytes": 16,
+  "maxRecursionDepth": 2,
+  "rayGeneration": "rayGeneration",
+  "missShaders": ["radianceMiss", "shadowMiss"],
+  "rayTypeCount": 2,
+  "hitGroups": [
+    {"name": "volumeRadiance", "intersection": "volumeIntersection", "closestHit": "volumeClosestHit"},
+    {"name": "volumeShadow", "intersection": "volumeIntersection", "anyHit": "volumeShadowAnyHit"},
+    {"name": "surfaceRadiance", "intersection": "surfaceIntersection", "closestHit": "surfaceClosestHit"},
+    {"name": "surfaceShadow", "intersection": "surfaceIntersection", "anyHit": "surfaceShadowAnyHit"}
+  ],
+  "spirvBindingOffsets": {"t": 0, "s": 128, "b": 256, "u": 384}
+}

@@ -26,6 +26,7 @@
 #include <donut/core/log.h>
 #include <donut/core/vfs/VFS.h>
 #include <nvrhi/utils.h>
+#include "../SlangRenderTest.h"
 
 using namespace donut;
 
@@ -50,8 +51,8 @@ public:
         auto nativeFS = MAKE_RC_OBJ_PTR(vfs::NativeFileSystem);
         engine::ShaderFactory shaderFactory(GetDevice(), nativeFS, appShaderPath);
 
-        m_VertexShader = shaderFactory.CreateShader("shaders.hlsl", "main_vs", nullptr, nvrhi::ShaderType::Vertex);
-        m_PixelShader = shaderFactory.CreateShader("shaders.hlsl", "main_ps", nullptr, nvrhi::ShaderType::Pixel);
+        m_VertexShader = shaderFactory.CreateShader("shaders.slang", "main_vs", nullptr, nvrhi::ShaderType::Vertex);
+        m_PixelShader = shaderFactory.CreateShader("shaders.slang", "main_ps", nullptr, nvrhi::ShaderType::Pixel);
 
         if (!m_VertexShader || !m_PixelShader)
         {
@@ -121,6 +122,9 @@ int main(int __argc, const char** __argv)
     deviceParams.enableDebugRuntime = true; 
     deviceParams.enableNvrhiValidationLayer = true;
 #endif
+
+    if (slang_render_test::Requested(__argc, __argv))
+        return slang_render_test::Run<BasicTriangle>(deviceManager, deviceParams, slang_render_test::Image::Triangle);
 
     if (!deviceManager->CreateWindowDeviceAndSwapChain(deviceParams, g_WindowTitle))
     {

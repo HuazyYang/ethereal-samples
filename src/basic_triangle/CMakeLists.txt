@@ -20,13 +20,14 @@
 # DEALINGS IN THE SOFTWARE.
 
 
-file(GLOB shaders "*.hlsl")
+file(GLOB shaders "*.slang")
 file(GLOB sources "*.cpp" "*.h")
 
 set(project basic_triangle)
 set(folder "Examples/Basic Triangle")
 
 ethereal_compile_shaders(
+    SLANG
     ALL_PLATFORMS
     TARGET ${project}_shaders
     CONFIG ${CMAKE_CURRENT_SOURCE_DIR}/shaders.cfg
@@ -40,4 +41,18 @@ set_target_properties(${project} PROPERTIES FOLDER ${folder})
 
 if (MSVC)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /W3 /MP")
+endif()
+
+# Run the sample renderer into an offscreen texture and validate GPU readback.
+if (NVRHI_WITH_DX11)
+    add_test(NAME slang_render_basic_triangle_DX11 COMMAND $<TARGET_FILE:${project}> -dx11 --test-headless)
+    set_tests_properties(slang_render_basic_triangle_DX11 PROPERTIES TIMEOUT 60 SKIP_RETURN_CODE 77)
+endif()
+if (NVRHI_WITH_DX12)
+    add_test(NAME slang_render_basic_triangle_DX12 COMMAND $<TARGET_FILE:${project}> -dx12 --test-headless)
+    set_tests_properties(slang_render_basic_triangle_DX12 PROPERTIES TIMEOUT 60 SKIP_RETURN_CODE 77)
+endif()
+if (NVRHI_WITH_VULKAN)
+    add_test(NAME slang_render_basic_triangle_VULKAN COMMAND $<TARGET_FILE:${project}> -vk --test-headless)
+    set_tests_properties(slang_render_basic_triangle_VULKAN PROPERTIES TIMEOUT 60 SKIP_RETURN_CODE 77)
 endif()

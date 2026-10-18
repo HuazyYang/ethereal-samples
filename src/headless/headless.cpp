@@ -26,17 +26,20 @@
 #include <donut/core/log.h>
 #include <donut/core/vfs/VFS.h>
 #include <nvrhi/utils.h>
+#if ETHEREAL_TEST_CUDA
+#include <nvrhi/cuda.h>
+#endif
 
 using namespace donut;
 
 bool RunTest(nvrhi::IDevice* device)
 {
     std::filesystem::path appShaderPath = app::GetDirectoryWithExecutable() / "shaders/headless" /  app::GetShaderTypeName(device->getGraphicsAPI());
-    
+
     auto nativeFS = MAKE_RC_OBJ_PTR(vfs::NativeFileSystem);
     engine::ShaderFactory shaderFactory(device, nativeFS, appShaderPath);
 
-    nvrhi::ShaderHandle computeShader = shaderFactory.CreateShader("shaders.hlsl", "main", nullptr, nvrhi::ShaderType::Compute);
+    nvrhi::ShaderHandle computeShader = shaderFactory.CreateShader("shaders.slang", "main", nullptr, nvrhi::ShaderType::Compute);
 
     if (!computeShader)
         return false;
@@ -49,17 +52,17 @@ bool RunTest(nvrhi::IDevice* device)
 
     auto inputBufferDesc = nvrhi::BufferDesc()
         .setByteSize(sizeof(uint32_t) * numInputValues)
-        .setCanHaveTypedViews(true)
-        .setFormat(nvrhi::Format::R32_UINT)
+        .setStructStride(sizeof(uint32_t))
+
         .setDebugName("InputBuffer")
         .setInitialState(nvrhi::ResourceStates::CopyDest)
         .setKeepInitialState(true);
 
     auto outputBufferDesc = nvrhi::BufferDesc()
         .setByteSize(sizeof(uint32_t))
-        .setCanHaveTypedViews(true)
+        .setStructStride(sizeof(uint32_t))
         .setCanHaveUAVs(true)
-        .setFormat(nvrhi::Format::R32_UINT)
+
         .setDebugName("OutputBuffer")
         .setInitialState(nvrhi::ResourceStates::UnorderedAccess)
         .setKeepInitialState(true);
@@ -81,8 +84,8 @@ bool RunTest(nvrhi::IDevice* device)
     // Create the binding layout and binding set...
 
     auto bindingSetDesc = nvrhi::BindingSetDesc()
-        .addItem(nvrhi::BindingSetItem::TypedBuffer_SRV(0, inputBuffer))
-        .addItem(nvrhi::BindingSetItem::TypedBuffer_UAV(0, outputBuffer));
+        .addItem(nvrhi::BindingSetItem::StructuredBuffer_SRV(0, inputBuffer))
+        .addItem(nvrhi::BindingSetItem::StructuredBuffer_UAV(0, outputBuffer));
 
     nvrhi::BindingSetHandle bindingSet;
     nvrhi::BindingLayoutHandle bindingLayout;
@@ -97,7 +100,7 @@ bool RunTest(nvrhi::IDevice* device)
 
     nvrhi::ComputePipelineHandle computePipeline;
     device->createComputePipeline(computePipelineDesc, &computePipeline);
-    
+
     // Create a command list and begin recording
 
     nvrhi::CommandListHandle commandList;
@@ -136,6 +139,7 @@ bool RunTest(nvrhi::IDevice* device)
     // Read the shader output
 
     uint32_t const* outputData = static_cast<uint32_t const*>(device->mapBuffer(readbackBuffer, nvrhi::CpuAccessMode::Read));
+    if (!outputData) return false;
     uint32_t computedResult = *outputData;
     device->unmapBuffer(readbackBuffer);
 
@@ -162,15 +166,30 @@ int main(int argc, const char** argv)
     log::SetMinSeverity(log::Severity::Warning);
 #endif
 
+#if ETHEREAL_TEST_CUDA
+    for (int i = 1; i < argc; ++i)
+    {
+        if (strcmp(argv[i], "-cuda") == 0)
+        {
+            nvrhi::cuda::DeviceDesc desc;
+            desc.enableOptiX = false;
+            for (int j = 1; j + 1 < argc; ++j)
+                if (strcmp(argv[j], "--adapter") == 0) desc.deviceOrdinal = atoi(argv[j + 1]);
+            auto device = nvrhi::cuda::createDevice(desc);
+            return device && RunTest(device) ? 0 : 1;
+        }
+    }
+#endif
     nvrhi::GraphicsAPI api = app::GetGraphicsAPIFromCommandLine(argc, argv);
     auto deviceManager = nvrhi::TakeOver(app::DeviceManager::Create(api));
 
+    if (!deviceManager) return 1;
     app::DeviceCreationParameters deviceParams;
 #ifdef _DEBUG
     deviceParams.enableDebugRuntime = true; 
     deviceParams.enableNvrhiValidationLayer = true;
 #endif
-    
+
     for (int i = 1; i < argc; ++i)
     {
         if (strcmp(argv[i], "--help") == 0)
@@ -179,6 +198,7 @@ int main(int argc, const char** argv)
                 " -dx11            Use DX11 API\n"
                 " -dx12            Use DX12 API (default)\n"
                 " -vk              Use Vulkan API\n"
+                " -cuda            Use CUDA Driver API (when built)\n"
                 " --list-adapters  Enumerate the graphics adapters present in the system\n"
                 " --adapter <n>    Use graphics adapter with index <n> as reported by --list-adapters\n",
                 argv[0]);
@@ -218,7 +238,7 @@ int main(int argc, const char** argv)
             ++i;
         }
     }
-    
+
     if (!deviceManager->CreateHeadlessDevice(deviceParams))
     {
         log::error("Cannot initialize a graphics device with the requested parameters");
@@ -226,7 +246,7 @@ int main(int argc, const char** argv)
     }
 
     printf("Using %s API with %s.\n", nvrhi::utils::GraphicsAPIToString(api), deviceManager->GetRendererString());
-    
+
     if (!RunTest(deviceManager->GetDevice()))
         return 1;
 

@@ -41,7 +41,7 @@ endforeach()
 # --- ethereal samples -----------------------------------------------------------
 add_subdirectory(ddgi_samples)
 add_subdirectory(vxgi_samples)
-if (ETHEREAL_BUILD_GVDB)
+if (ETHEREAL_BUILD_GVDB_LEGACY)
 	add_subdirectory(gvdb_samples)
 endif()
 
@@ -83,4 +83,8 @@ endif()
 
 if (DONUT_WITH_AFTERMATH AND NVRHI_WITH_AFTERMATH)
 	add_subdirectory(aftermath)
+endif()
+
+if(ETHEREAL_WITH_SLANG AND ETHEREAL_BUILD_GVDB)
+    add_subdirectory(slang_compute)
 endif()

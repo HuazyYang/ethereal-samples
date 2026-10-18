@@ -1,0 +1,551 @@
+﻿{
+    "version":  1,
+    "spirvBindingOffsets":  {
+                                "t":  0,
+                                "s":  128,
+                                "b":  256,
+                                "u":  384
+                            },
+    "kernels":  [
+                    {
+                        "source":  "GVDBAlgorithms.slang",
+                        "entry":  "scanBlocks",
+                        "threads":  [
+                                        256,
+                                        1,
+                                        1
+                                    ]
+                    },
+                    {
+                        "source":  "GVDBAlgorithms.slang",
+                        "entry":  "addScanBlockOffsets",
+                        "threads":  [
+                                        256,
+                                        1,
+                                        1
+                                    ]
+                    },
+                    {
+                        "source":  "GVDBAlgorithms.slang",
+                        "entry":  "radixFlags",
+                        "threads":  [
+                                        256,
+                                        1,
+                                        1
+                                    ]
+                    },
+                    {
+                        "source":  "GVDBAlgorithms.slang",
+                        "entry":  "radixScatter",
+                        "threads":  [
+                                        256,
+                                        1,
+                                        1
+                                    ]
+                    },
+                    {
+                        "source":  "GVDBAlgorithms.slang",
+                        "entry":  "reduceFloatBlocks",
+                        "threads":  [
+                                        256,
+                                        1,
+                                        1
+                                    ]
+                    },
+                    {
+                        "source":  "GVDBAlgorithms.slang",
+                        "entry":  "reducePartialBlocks",
+                        "threads":  [
+                                        256,
+                                        1,
+                                        1
+                                    ]
+                    },
+                    {
+                        "source":  "GVDBOperators.slang",
+                        "entry":  "clearAtlas",
+                        "threads":  [
+                                        8,
+                                        8,
+                                        8
+                                    ]
+                    },
+                    {
+                        "source":  "GVDBOperators.slang",
+                        "entry":  "fillAtlas",
+                        "threads":  [
+                                        8,
+                                        8,
+                                        8
+                                    ]
+                    },
+                    {
+                        "source":  "GVDBOperators.slang",
+                        "entry":  "smoothAtlas",
+                        "threads":  [
+                                        8,
+                                        8,
+                                        8
+                                    ]
+                    },
+                    {
+                        "source":  "GVDBOperators.slang",
+                        "entry":  "noiseAtlas",
+                        "threads":  [
+                                        8,
+                                        8,
+                                        8
+                                    ]
+                    },
+                    {
+                        "source":  "GVDBOperators.slang",
+                        "entry":  "growAtlas",
+                        "threads":  [
+                                        8,
+                                        8,
+                                        8
+                                    ]
+                    },
+                    {
+                        "source":  "GVDBOperators.slang",
+                        "entry":  "cutAtlas",
+                        "threads":  [
+                                        8,
+                                        8,
+                                        8
+                                    ]
+                    },
+                    {
+                        "source":  "GVDBOperators.slang",
+                        "entry":  "updateApron",
+                        "threads":  [
+                                        8,
+                                        8,
+                                        8
+                                    ]
+                    },
+                    {
+                        "source":  "GVDBOperators.slang",
+                        "entry":  "resampleAtlas",
+                        "threads":  [
+                                        8,
+                                        8,
+                                        8
+                                    ]
+                    },
+                    {
+                        "source":  "GVDBOperators.slang",
+                        "entry":  "downsampleDense",
+                        "threads":  [
+                                        8,
+                                        8,
+                                        8
+                                    ]
+                    },
+                    {
+                        "source":  "GVDBOperators.slang",
+                        "entry":  "reduceAtlasColumns",
+                        "threads":  [
+                                        8,
+                                        8,
+                                        1
+                                    ]
+                    },
+                    {
+                        "source":  "GVDBParticles.slang",
+                        "entry":  "clearCellCounts",
+                        "threads":  [
+                                        256,
+                                        1,
+                                        1
+                                    ]
+                    },
+                    {
+                        "source":  "GVDBParticles.slang",
+                        "entry":  "insertPoints",
+                        "threads":  [
+                                        256,
+                                        1,
+                                        1
+                                    ]
+                    },
+                    {
+                        "source":  "GVDBParticles.slang",
+                        "entry":  "insertSupportPoints",
+                        "threads":  [
+                                        256,
+                                        1,
+                                        1
+                                    ]
+                    },
+                    {
+                        "source":  "GVDBParticles.slang",
+                        "entry":  "scatterPoints",
+                        "threads":  [
+                                        256,
+                                        1,
+                                        1
+                                    ]
+                    },
+                    {
+                        "source":  "GVDBParticles.slang",
+                        "entry":  "transformPoints",
+                        "threads":  [
+                                        256,
+                                        1,
+                                        1
+                                    ]
+                    },
+                    {
+                        "source":  "GVDBParticles.slang",
+                        "entry":  "markLinkedLeaves",
+                        "threads":  [
+                                        256,
+                                        1,
+                                        1
+                                    ]
+                    },
+                    {
+                        "source":  "GVDBSph.slang",
+                        "entry":  "clearGrid",
+                        "threads":  [
+                                        256,
+                                        1,
+                                        1
+                                    ]
+                    },
+                    {
+                        "source":  "GVDBSph.slang",
+                        "entry":  "insertGrid",
+                        "threads":  [
+                                        256,
+                                        1,
+                                        1
+                                    ]
+                    },
+                    {
+                        "source":  "GVDBSph.slang",
+                        "entry":  "scatterGrid",
+                        "threads":  [
+                                        256,
+                                        1,
+                                        1
+                                    ]
+                    },
+                    {
+                        "source":  "GVDBSph.slang",
+                        "entry":  "computeDensity",
+                        "threads":  [
+                                        256,
+                                        1,
+                                        1
+                                    ]
+                    },
+                    {
+                        "source":  "GVDBSph.slang",
+                        "entry":  "computeForce",
+                        "threads":  [
+                                        256,
+                                        1,
+                                        1
+                                    ]
+                    },
+                    {
+                        "source":  "GVDBSph.slang",
+                        "entry":  "advanceParticles",
+                        "threads":  [
+                                        256,
+                                        1,
+                                        1
+                                    ]
+                    },
+                    {
+                        "source":  "GVDBTopology.slang",
+                        "entry":  "initializeChildLists",
+                        "threads":  [
+                                        256,
+                                        1,
+                                        1
+                                    ]
+                    },
+                    {
+                        "source":  "GVDBTopology.slang",
+                        "entry":  "applyLeafMarkers",
+                        "threads":  [
+                                        256,
+                                        1,
+                                        1
+                                    ]
+                    },
+                    {
+                        "source":  "GVDBTopology.slang",
+                        "entry":  "delinkLeafBricks",
+                        "threads":  [
+                                        256,
+                                        1,
+                                        1
+                                    ]
+                    },
+                    {
+                        "source":  "GVDBTopology.slang",
+                        "entry":  "delinkInternalBricks",
+                        "threads":  [
+                                        256,
+                                        1,
+                                        1
+                                    ]
+                    },
+                    {
+                        "source":  "GVDBTopology.slang",
+                        "entry":  "linkBricks",
+                        "threads":  [
+                                        256,
+                                        1,
+                                        1
+                                    ]
+                    },
+                    {
+                        "source":  "GVDBRaycast.slang",
+                        "entry":  "raycastVolume",
+                        "threads":  [
+                                        8,
+                                        8,
+                                        1
+                                    ]
+                    },
+                    {
+                        "source":  "GVDBRaycast.slang",
+                        "entry":  "raycastSurface",
+                        "threads":  [
+                                        8,
+                                        8,
+                                        1
+                                    ]
+                    },
+                    {
+                        "source":  "GVDBRawOperators.slang",
+                        "entry":  "clearRawAtlas",
+                        "threads":  [
+                                        256,
+                                        1,
+                                        1
+                                    ]
+                    },
+                    {
+                        "source":  "GVDBRawOperators.slang",
+                        "entry":  "fillRawAtlas",
+                        "threads":  [
+                                        256,
+                                        1,
+                                        1
+                                    ]
+                    },
+                    {
+                        "source":  "GVDBRawOperators.slang",
+                        "entry":  "updateRawApron",
+                        "threads":  [
+                                        256,
+                                        1,
+                                        1
+                                    ]
+                    },
+                    {
+                        "source":  "GVDBRawOperators.slang",
+                        "entry":  "smoothRawAtlas",
+                        "threads":  [
+                                        256,
+                                        1,
+                                        1
+                                    ]
+                    },
+                    {
+                        "source":  "GVDBRawOperators.slang",
+                        "entry":  "expandByteAtlas",
+                        "threads":  [
+                                        256,
+                                        1,
+                                        1
+                                    ]
+                    },
+                    {
+                        "source":  "GVDBRawOperators.slang",
+                        "entry":  "expandColorAtlas",
+                        "threads":  [
+                                        256,
+                                        1,
+                                        1
+                                    ]
+                    },
+                    {
+                        "source":  "GVDBPointKeys.slang",
+                        "entry":  "calculateBrickKeys",
+                        "threads":  [
+                                        256,
+                                        1,
+                                        1
+                                    ]
+                    },
+                    {
+                        "source":  "GVDBPointKeys.slang",
+                        "entry":  "findActiveBricks",
+                        "threads":  [
+                                        256,
+                                        1,
+                                        1
+                                    ]
+                    },
+                    {
+                        "source":  "GVDBPointKeys.slang",
+                        "entry":  "clearUniqueCounts",
+                        "threads":  [
+                                        256,
+                                        1,
+                                        1
+                                    ]
+                    },
+                    {
+                        "source":  "GVDBPointKeys.slang",
+                        "entry":  "markUniqueKeys",
+                        "threads":  [
+                                        256,
+                                        1,
+                                        1
+                                    ]
+                    },
+                    {
+                        "source":  "GVDBPointKeys.slang",
+                        "entry":  "compactUniqueKeys",
+                        "threads":  [
+                                        256,
+                                        1,
+                                        1
+                                    ]
+                    },
+                    {
+                        "source":  "GVDBGather.slang",
+                        "entry":  "initializeGather",
+                        "threads":  [
+                                        256,
+                                        1,
+                                        1
+                                    ]
+                    },
+                    {
+                        "source":  "GVDBGather.slang",
+                        "entry":  "gatherDensity",
+                        "threads":  [
+                                        8,
+                                        8,
+                                        8
+                                    ]
+                    },
+                    {
+                        "source":  "GVDBGather.slang",
+                        "entry":  "gatherLevelSet",
+                        "threads":  [
+                                        8,
+                                        8,
+                                        8
+                                    ]
+                    },
+                    {
+                        "source":  "GVDBVoxelize.slang",
+                        "entry":  "clearTriangleBins",
+                        "threads":  [
+                                        256,
+                                        1,
+                                        1
+                                    ]
+                    },
+                    {
+                        "source":  "GVDBVoxelize.slang",
+                        "entry":  "countTriangleBins",
+                        "threads":  [
+                                        256,
+                                        1,
+                                        1
+                                    ]
+                    },
+                    {
+                        "source":  "GVDBVoxelize.slang",
+                        "entry":  "scatterTriangleBins",
+                        "threads":  [
+                                        256,
+                                        1,
+                                        1
+                                    ]
+                    },
+                    {
+                        "source":  "GVDBVoxelize.slang",
+                        "entry":  "solidVoxelize",
+                        "threads":  [
+                                        256,
+                                        1,
+                                        1
+                                    ]
+                    },
+                    {
+                        "source":  "GVDBVelocity.slang",
+                        "entry":  "sampleGridVelocity",
+                        "threads":  [
+                                        256,
+                                        1,
+                                        1
+                                    ]
+                    },
+                    {
+                        "source":  "GVDBVelocity.slang",
+                        "entry":  "updateFlipParticles",
+                        "threads":  [
+                                        256,
+                                        1,
+                                        1
+                                    ]
+                    },
+                    {
+                        "source":  "GVDBSubcells.slang",
+                        "entry":  "clearSubcellCounts",
+                        "threads":  [
+                                        256,
+                                        1,
+                                        1
+                                    ]
+                    },
+                    {
+                        "source":  "GVDBSubcells.slang",
+                        "entry":  "countSubcellPoints",
+                        "threads":  [
+                                        256,
+                                        1,
+                                        1
+                                    ]
+                    },
+                    {
+                        "source":  "GVDBSubcells.slang",
+                        "entry":  "scatterSubcellPoints",
+                        "threads":  [
+                                        256,
+                                        1,
+                                        1
+                                    ]
+                    },
+                    {
+                        "source":  "GVDBPointConversion.slang",
+                        "entry":  "convertPointPositions",
+                        "threads":  [
+                                        256,
+                                        1,
+                                        1
+                                    ]
+                    },
+                    {
+                        "source":  "GVDBPointConversion.slang",
+                        "entry":  "quantizePointPositions",
+                        "threads":  [
+                                        256,
+                                        1,
+                                        1
+                                    ]
+                    }
+                ]
+}

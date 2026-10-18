@@ -1,17 +1,31 @@
-# sph_fluid_pool: port of fluids5.0 (SPH fluid, "wave pool" scene). The fluid
-# is simulated by CUDA kernels through the gp abstraction (ISPHParticles +
-# ISPHSolver, SPHFluid.h) and drawn as points by nvrhi from vertex buffers
-# shared with the compute device. Uses the sample framework of the GVDB port
-# (GVDBApp, scene graph, ImGui, --screenshot).
-gvdb_add_sample(sph_fluid_pool
-    SOURCES
-        main.cpp
-        SPHFluid.h
-        SPHFluidParams.h
-        SPHFluidScene.h
-        SPHFluidScene.cpp
-        SPHParticles.cpp
-        SPHSolver.cpp
-    PTX kernels/SPHFluidKernels.cu
-    SHADERS "${CMAKE_CURRENT_LIST_DIR}/shaders/shaders.cfg")
-target_include_directories(sph_fluid_pool PRIVATE "${CMAKE_CURRENT_LIST_DIR}")
+if(ETHEREAL_WITH_SLANG AND ETHEREAL_BUILD_GVDB)
+    add_executable(sph_fluid_pool main.cpp PortablePool.h)
+    target_link_libraries(sph_fluid_pool PRIVATE gvdb_slang_runtime donut_app donut_engine stb)
+    target_include_directories(sph_fluid_pool PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/..")
+    ethereal_compile_shaders(TARGET sph_fluid_pool_shaders SLANG ALL_PLATFORMS
+        CONFIG "${CMAKE_CURRENT_SOURCE_DIR}/shaders/portable.cfg"
+        OUTPUT_DIRECTORY "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/shaders/sph_fluid_pool")
+    add_dependencies(sph_fluid_pool gvdb_slang_shaders sph_fluid_pool_shaders)
+    if(NVRHI_WITH_CUDA)
+        target_link_libraries(sph_fluid_pool PRIVATE nvrhi::cuda)
+        target_compile_definitions(sph_fluid_pool PRIVATE ETHEREAL_TEST_CUDA=1)
+    endif()
+    foreach(api DX11 DX12 VULKAN CUDA)
+        if(NVRHI_WITH_${api})
+            if(api STREQUAL "VULKAN")
+                set(argument -vk)
+            elseif(api STREQUAL "DX11")
+                set(argument -dx11)
+            elseif(api STREQUAL "DX12")
+                set(argument -dx12)
+            else()
+                set(argument -cuda)
+            endif()
+            add_test(NAME gvdb_sph_pool_${api} COMMAND sph_fluid_pool ${argument}
+                --headless --particles 257 --example 3 --frames 8)
+            set_tests_properties(gvdb_sph_pool_${api} PROPERTIES TIMEOUT 180)
+        endif()
+    endforeach()
+else()
+    include(legacy-CMakeLists.txt)
+endif()
