@@ -170,3 +170,5 @@ endif()
 if(NOT TARGET fluid-surface)
     add_subdirectory(../gvdb_samples/samples/fluid-surface gvdb-fluid-surface)
 endif()
+
+include("${CMAKE_CURRENT_SOURCE_DIR}/../gvdb_samples/gvdb/GVDBHostVolume.cmake")
