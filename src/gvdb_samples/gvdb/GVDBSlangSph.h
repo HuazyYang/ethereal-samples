@@ -1,4 +1,4 @@
-﻿// Explicit NVRHI resource orchestration for the portable SPH kernels.
+// Explicit NVRHI resource orchestration for the portable SPH kernels.
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 #include "slang/GVDBPortable.h"
@@ -24,6 +24,8 @@ public:
     nvrhi::IBuffer* velocities() const { return m_velocities; }
     nvrhi::IBuffer* densities() const { return m_densities; }
     nvrhi::IBuffer* forces() const { return m_forces; }
+    // Both modes clamp the actual incoming velocity magnitude (correcting the
+    // retained FLUIDS-v3 kernel's ineffective overwritten-speed clamp).
     // Enqueues complete steps. Flush the shared runtime before external GPU use.
     void step(uint32_t count = 1);
     std::vector<Float4> readPositions();

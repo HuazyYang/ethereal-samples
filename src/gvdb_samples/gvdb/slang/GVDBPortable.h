@@ -124,6 +124,8 @@ struct alignas(16) SphParameters {
     Float4 boundary;
     Float4 integration;
     Float4 gravityAndSlope;
+    // frequency, left force, right force, mode: 0 preserves pool phase/stiffness;
+    // 1 uses FLUIDS-v3 moving walls and interior insertion cells [1,resolution-3].
     Float4 wall;
 };
 static_assert(sizeof(ParticleParameters) == 112 && sizeof(SphParameters) == 160);

@@ -1,4 +1,4 @@
-﻿// Original Lucy solid-voxelization and cross-section example on portable Slang.
+// Original Lucy solid-voxelization and cross-section example on portable Slang.
 // SPDX-License-Identifier: Apache-2.0
 #include "PrintVolume.h"
 #include "PrintTests.h"
@@ -9,6 +9,8 @@
 #include <cstdio>
 #include <cstring>
 #include <stdexcept>
+#include <set>
+#include <tuple>
 namespace {
 using ethereal::slang::ComputeRuntime;
 struct Options {
@@ -58,11 +60,36 @@ class PrintScene final : public gvdb::sample::VolumeScene {
         return false;
     }
     void verifyLucy() const {
-        if (std::abs(m_pipeline.voxelSize() - .5f) > 1e-6f || m_pipeline.packed().levels[0].nodes.z != 801 ||
-            m_pipeline.surfaceCount() != 56839 || m_pipeline.interiorCount() != 131750)
+        const auto& packed = m_pipeline.packed();
+        if (std::abs(m_pipeline.voxelSize() - .5f) > 1e-6f || packed.levels[0].nodeExtent.x != 32 ||
+            packed.volume.atlasBrickCountAndWidth.w != 34 || m_pipeline.surfaceCount() != 56839 ||
+            m_pipeline.interiorCount() != 131750)
             throw std::runtime_error(
-                "Lucy 0.5 mm fixture changed: expected 801 bricks, 56839 surface and 131750 interior voxels");
-        std::puts("PASS Lucy 0.5 mm: 801 bricks, 56839 surface / 131750 interior voxels");
+                "Lucy 0.5 mm legacy configuration or geometric voxel classification changed");
+        // Derive expected leaf membership independently from dense occupied voxels,
+        // not from the generated GPU hierarchy or its leaf count.
+        using Cell = std::tuple<int32_t, int32_t, int32_t>;
+        std::set<Cell> expected, actual;
+        const auto resolution = m_pipeline.resolution();
+        const auto origin = m_pipeline.origin();
+        const auto& dense = m_pipeline.dense();
+        for (uint32_t z = 0; z < resolution.z; ++z)
+            for (uint32_t y = 0; y < resolution.y; ++y)
+                for (uint32_t x = 0; x < resolution.x; ++x)
+                    if (dense[(size_t(z) * resolution.y + y) * resolution.x + x] != 0)
+                        expected.emplace(origin.x + int32_t(x / 32) * 32, origin.y + int32_t(y / 32) * 32,
+                                         origin.z + int32_t(z / 32) * 32);
+        for (uint32_t i = 0; i < packed.levels[0].nodes.z; ++i) {
+            const auto* node =
+                packed.nodes.data() + (packed.levels[0].nodes.x + size_t(i) * packed.levels[0].nodes.y) / 4;
+            actual.emplace(int32_t(node[1]), int32_t(node[2]), int32_t(node[3]));
+        }
+        if (expected != actual)
+            throw std::runtime_error("Lucy leaf32 topology differs from independently classified dense voxels");
+        std::printf(
+            "PASS Lucy 0.5 mm: %zu leaf32 bricks independently classified, 56839 surface / 131750 interior "
+            "voxels\n",
+            expected.size());
     }
     std::string describe() const override {
         return std::to_string(m_pipeline.voxelSize()) + " mm; " +

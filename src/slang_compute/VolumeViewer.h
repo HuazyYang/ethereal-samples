@@ -23,6 +23,8 @@ struct VolumeViewOptions {
     VolumeViewMode mode = VolumeViewMode::Volume;
     bool topology = false, sectionInset = false;
     bool explicitCamera = false;
+    bool requestRayTracing = false;
+    bool showUI = false;  // Windowed Inspector only; captures contain the rendered scene.
     // Explicit perspective near/far are view-space Z planes, in index units.
     float horizontalFov = 50, cameraNear = 1, cameraFar = 100000;
     float scalarBackground = 0;
@@ -43,6 +45,15 @@ class VolumeScene {
     virtual const slang::PackedVolume& packed() const = 0;
     virtual std::vector<slang::Float4> transfer() const = 0;
     virtual void animate(float, VolumeViewOptions&) {}
+    // Called inside the windowed Inspector with an active ImGui context.
+    // Controls affect the next frame; headless rendering never calls this hook.
+    virtual void buildUI(VolumeViewOptions&) {}
+    // Optional replacement for volume/surface rendering. Empty output selects the
+    // standard renderer; a replacement must match the requested dimensions and
+    // provide float4 color plus float depth buffers. Presentation/overlays stay shared.
+    virtual slang::RaycastOutput renderCustom(const slang::RaycastParameters&, const VolumeViewOptions&) {
+        return {};
+    }
     virtual nvrhi::IBuffer* colorAtlas() const { return nullptr; }
     // Section2D projects these debug primitives orthographically onto X/Z.
     virtual std::vector<VolumeOverlayLine> overlayLines() const { return {}; }

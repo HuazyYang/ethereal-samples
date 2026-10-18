@@ -153,3 +153,20 @@ include(../gvdb_samples/samples/point-fusion/PointFusionTests.cmake)
 if(NOT TARGET point-fusion)
     add_subdirectory(../gvdb_samples/samples/point-fusion gvdb-point-fusion)
 endif()
+
+include(../gvdb_samples/samples/point-cloud/PointCloudTests.cmake)
+
+include(tests/resource-arrays/ResourceArrays.cmake)
+include(../gvdb_samples/samples/sample-utils/SlangSceneRT.cmake)
+
+if(NOT TARGET point-cloud)
+    add_subdirectory(../gvdb_samples/samples/point-cloud gvdb-point-cloud)
+endif()
+
+if(TARGET gvdb_scene_rt AND NOT TARGET interactive-optix)
+    add_subdirectory(../gvdb_samples/samples/interactive-optix gvdb-interactive-optix)
+endif()
+
+if(NOT TARGET fluid-surface)
+    add_subdirectory(../gvdb_samples/samples/fluid-surface gvdb-fluid-surface)
+endif()

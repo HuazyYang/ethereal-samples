@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: Apache-2.0
 #include "PrintVolume.h"
 #include "ComputeRuntime.h"
 #include <gvdb/slang/GVDBTopologyBuilder.h>
@@ -40,7 +40,7 @@ void PrintVolume::rebuild(float voxelSize) {
     int32_t low[3], high[3];
     uint32_t resolution[3];
     for (int axis = 0; axis < 3; ++axis) {
-        const double a = std::floor(double(lower[axis]) / 8) * 8, b = std::ceil(double(upper[axis]) / 8) * 8;
+        const double a = std::floor(double(lower[axis]) / 32) * 32, b = std::ceil(double(upper[axis]) / 32) * 32;
         if (!std::isfinite(a) || !std::isfinite(b) || a < INT32_MIN || b > INT32_MAX || b <= a ||
             b - a > INT32_MAX)
             throw std::invalid_argument("Print mesh bounds exceed portable signed coordinates");
@@ -71,7 +71,7 @@ void PrintVolume::rebuild(float voxelSize) {
     if (!surface)
         throw std::runtime_error("Print voxelization produced no surface voxels");
     TopologyBuildOptions topology;
-    topology.logDimensions = {3, 3, 3, 3, 5};
+    topology.logDimensions = {5, 3, 3, 3, 3};
     ScalarVolumeData data;
     std::string error;
     const Int4 origin{low[0], low[1], low[2], 0};

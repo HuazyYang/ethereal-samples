@@ -12,6 +12,11 @@ using namespace slang;
 using nvrhi::BindingSetItem;
 namespace {
 using Coordinate = std::tuple<int32_t, int32_t, int32_t>;
+// Legacy fromBranching(r4,r3,r2,r1,r0) ends in 5: 32-voxel leaves.
+constexpr int32_t kLeafWidth = 32;
+constexpr uint32_t kSubcellWidth = 4;
+constexpr uint32_t kCellsPerSide = kLeafWidth / kSubcellWidth;
+constexpr uint32_t kCellsPerLeaf = kCellsPerSide * kCellsPerSide * kCellsPerSide;
 struct alignas(16) UpdateParameters {
     VolumeInfo previous, current;
     UInt4 operation;
@@ -75,13 +80,14 @@ void PointFusionVolume::fuse(const ScanFrame& frame) {
             std::abs(p.x) > 4000000 || std::abs(p.y) > 4000000 || std::abs(p.z) > 4000000)
             throw std::invalid_argument(
                 "Point fusion requires valid positions in the exact half-voxel coordinate domain");
-        const int32_t lo[3] = {floorCell(p.x - support, 8), floorCell(p.y - support, 8),
-                               floorCell(p.z - support, 8)};
-        const int32_t hi[3] = {floorCell(p.x + 1 + support, 8), floorCell(p.y + 1 + support, 8),
-                               floorCell(p.z + 1 + support, 8)};
-        for (int32_t z = lo[2]; z <= hi[2]; z += 8)
-            for (int32_t y = lo[1]; y <= hi[1]; y += 8)
-                for (int32_t x = lo[0]; x <= hi[0]; x += 8)
+        const int32_t lo[3] = {floorCell(p.x - support, kLeafWidth), floorCell(p.y - support, kLeafWidth),
+                               floorCell(p.z - support, kLeafWidth)};
+        const int32_t hi[3] = {floorCell(p.x + 1 + support, kLeafWidth),
+                               floorCell(p.y + 1 + support, kLeafWidth),
+                               floorCell(p.z + 1 + support, kLeafWidth)};
+        for (int32_t z = lo[2]; z <= hi[2]; z += kLeafWidth)
+            for (int32_t y = lo[1]; y <= hi[1]; y += kLeafWidth)
+                for (int32_t x = lo[0]; x <= hi[0]; x += kLeafWidth)
                     leaves.emplace(x, y, z);
     }
     std::vector<Int4> origins;
@@ -91,22 +97,23 @@ void PointFusionVolume::fuse(const ScanFrame& frame) {
     PackedVolume packed;
     std::string error;
     TopologyBuildOptions options;
-    options.logDimensions = {3, 3, 3, 3, 5};
+    options.logDimensions = {5, 3, 3, 3, 3};
     if (!buildTopology(origins, options, packed, error))
         throw std::runtime_error("Point fusion topology: " + error);
     const auto& level = packed.levels[0];
     const auto resolution = packed.volume.atlasResolutionAndApron;
     const uint64_t voxelCount = uint64_t(resolution.x) * resolution.y * resolution.z;
-    if (voxelCount > UINT32_MAX / 4 || uint64_t(level.nodes.z) * 8 > UINT32_MAX / sizeof(GatherCell))
+    if (voxelCount > UINT32_MAX / 4 ||
+        uint64_t(level.nodes.z) * kCellsPerLeaf > UINT32_MAX / sizeof(GatherCell))
         throw std::invalid_argument("Point fusion atlas exceeds portable storage");
-    std::vector<GatherCell> cells(size_t(level.nodes.z) * 8);
+    std::vector<GatherCell> cells(size_t(level.nodes.z) * kCellsPerLeaf);
     std::map<Coordinate, uint32_t> cellIndex;
     for (uint32_t leaf = 0; leaf < level.nodes.z; ++leaf) {
         const uint32_t* node = packed.nodes.data() + (level.nodes.x + size_t(leaf) * level.nodes.y) / 4;
-        for (uint32_t z = 0; z < 2; ++z)
-            for (uint32_t y = 0; y < 2; ++y)
-                for (uint32_t x = 0; x < 2; ++x) {
-                    const uint32_t i = leaf * 8 + (z * 2 + y) * 2 + x;
+        for (uint32_t z = 0; z < kCellsPerSide; ++z)
+            for (uint32_t y = 0; y < kCellsPerSide; ++y)
+                for (uint32_t x = 0; x < kCellsPerSide; ++x) {
+                    const uint32_t i = leaf * kCellsPerLeaf + (z * kCellsPerSide + y) * kCellsPerSide + x;
                     auto& cell = cells[i];
                     cell.worldOriginAndWidth = {int32_t(node[1]) + int32_t(x * 4),
                                                 int32_t(node[2]) + int32_t(y * 4),

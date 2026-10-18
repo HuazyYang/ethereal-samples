@@ -131,9 +131,20 @@ std::vector<float> downsampleRegion(ethereal::slang::ComputeRuntime& runtime,nvr
     OperatorParameters p{};p.volume.atlasResolutionAndApron=d;p.sourceResolution=sourceResolution;p.remap=remap;p.value=destinationExtent;
     for(size_t i=0;i<3;++i)p.transformRows[i]=transform[i];
     const size_t count=size_t(d.x)*d.y*d.z;auto output=runtime.buffer(count*4,4);
-    runtime.dispatch("GVDBResample","downsampleRegion",&p,sizeof(p),{
-        BindingSetItem::StructuredBuffer_SRV(0,source),BindingSetItem::StructuredBuffer_UAV(0,output)},groups8(d.x),groups8(d.y),groups8(d.z));
-    std::vector<float> result(count);runtime.read(output,result.data(),count*4);return result;
+    auto sampleCounts=runtime.buffer(count*4,4);
+    runtime.dispatch("GVDBResampleStats","downsampleRegionStats",&p,sizeof(p),{
+        BindingSetItem::StructuredBuffer_SRV(0,source),BindingSetItem::StructuredBuffer_UAV(0,output),
+        BindingSetItem::StructuredBuffer_UAV(1,sampleCounts)},groups8(d.x),groups8(d.y),groups8(d.z));
+    std::vector<float> result(count);std::vector<uint32_t> counts(count);
+    runtime.read(output,result.data(),count*4);runtime.read(sampleCounts,counts.data(),count*4);
+    // This API already returns CPU data for topology classification. Perform
+    // its final division here so approximate graphics-shader reciprocals do
+    // not turn equality at a strict activation threshold into greater-than.
+    for(size_t i=0;i<count;++i) {
+        if(!counts[i])throw std::runtime_error("GVDB region downsample returned an empty sample range");
+        result[i]=float(double(result[i])/double(counts[i]));
+    }
+    return result;
 }
 void validateRaycastParameters(const RaycastParameters& p,const std::vector<Float4>& transfer) {
     if(!p.image.x || !p.image.y || uint64_t(p.image.x)*p.image.y>UINT32_MAX || !p.image.w || transfer.empty() || transfer.size()>UINT32_MAX)

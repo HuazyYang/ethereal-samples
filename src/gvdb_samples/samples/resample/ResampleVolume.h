@@ -1,4 +1,4 @@
-﻿// Dense RAW data -> dense/sparse/halo GVDB topology through the shared runtime.
+// Dense RAW data -> dense/sparse/halo GVDB topology through the shared runtime.
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 #include <gvdb/GVDBSlangVolume.h>
@@ -9,7 +9,7 @@ namespace gvdb::samples {
 struct ResampleConfiguration {
     slang::UInt4 sourceResolution{128, 256, 256, 0};
     slang::UInt4 destinationResolution{256, 256, 256, 0};
-    std::vector<uint32_t> logDimensions{3, 3, 3, 3, 4};
+    std::vector<uint32_t> logDimensions{4, 3, 3, 3, 3};
     std::array<slang::Float4, 3> transform = {
         slang::Float4{.5f, 0,  0, 0  },
         slang::Float4{0,   0,  1, 0  },

@@ -81,11 +81,18 @@ void verifyAtlas(ResampleVolume& scene,const std::vector<float>& source) {
 }
 void verifyResampleModes(ResampleVolume& scene,const std::vector<float>& source,bool originalHeadAsset) {
     const auto coarse=coarseReference(source,scene.configuration(),scene.coarseResolution());
-    const uint32_t golden[]={32768,17609,20616};
+    const uint32_t golden[]={4096,2472,2997};
+    if(originalHeadAsset&&(scene.configuration().logDimensions!=std::vector<uint32_t>{4,3,3,3,3}||scene.coarseResolution().x!=16))throw std::runtime_error("Legacy resample configuration requires leaf16 and16cubed coarse cells");
     for(uint32_t mode=0;mode<3;++mode) {
         const bool sparse=mode!=0,halo=mode==2;scene.rebuild(sparse,halo);
         const auto active=activationReference(coarse,scene.coarseResolution(),scene.configuration().threshold,sparse,halo);
-        if(active!=scene.activeCells())throw std::runtime_error("Resample dense/sparse/six-face-halo activation differs from CPU");
+        if(active!=scene.activeCells()) {
+            for(size_t i=0;i<active.size();++i)if(active[i]!=scene.activeCells()[i]) {
+                std::fprintf(stderr,"activation index %zu CPU=%.9g GPU=%.9g threshold=%.9g (CPU=%u GPU=%u)\n",i,double(coarse[i]),double(scene.coarseValues()[i]),double(scene.configuration().threshold),unsigned(active[i]),unsigned(scene.activeCells()[i]));
+                break;
+            }
+            throw std::runtime_error("Resample dense/sparse/six-face-halo activation differs from CPU");
+        }
         const uint32_t leaves=uint32_t(std::count(active.begin(),active.end(),uint8_t(1)));
         if(scene.packed().levels[0].nodes.z!=leaves||(originalHeadAsset&&leaves!=golden[mode]))
             throw std::runtime_error("Resample topology leaf count differs from reference");
@@ -99,6 +106,47 @@ void verifyResampleModes(ResampleVolume& scene,const std::vector<float>& source,
     }
 }
 void runResampleSelfTests(ethereal::slang::ComputeRuntime& runtime) {
+    // Both exact sums divided by their sample counts round to the threshold.
+    // A graphics-shader reciprocal used to round these one float ULP upward,
+    // incorrectly activating sparse cells. Keep the strict comparison exact.
+    const std::array<Float4,3> identity={Float4{1,0,0,0},Float4{0,1,0,0},Float4{0,0,1,0}};
+    for(const uint32_t count:{105u,120u}) {
+        std::vector<float> values(count,0);
+        std::fill_n(values.begin(),count/5,.25f);
+        const double sum=double(count/5)*.25;
+        const float expected=float(sum/double(count));
+        auto source=runtime.buffer(values.size()*sizeof(float),sizeof(float),values.data());
+        OperatorParameters parameters{};
+        parameters.volume.atlasResolutionAndApron={1,1,1,0};
+        parameters.sourceResolution={count,1,1,0};
+        parameters.value={float(count*2),2,2,0};parameters.remap={0,1,0,1};
+        for(size_t i=0;i<3;++i)parameters.transformRows[i]=identity[i];
+        auto sumBuffer=runtime.buffer(sizeof(float),sizeof(float));
+        auto countBuffer=runtime.buffer(sizeof(uint32_t),sizeof(uint32_t));
+        runtime.dispatch("GVDBResampleStats","downsampleRegionStats",&parameters,sizeof(parameters),{
+            nvrhi::BindingSetItem::StructuredBuffer_SRV(0,source),
+            nvrhi::BindingSetItem::StructuredBuffer_UAV(0,sumBuffer),
+            nvrhi::BindingSetItem::StructuredBuffer_UAV(1,countBuffer)},1,1,1);
+        float gpuSum=0;uint32_t gpuCount=0;
+        runtime.read(sumBuffer,&gpuSum,sizeof(gpuSum));runtime.read(countBuffer,&gpuCount,sizeof(gpuCount));
+        if(gpuSum!=float(sum)||gpuCount!=count)
+            throw std::runtime_error("Region downsample GPU sum/count differs from the exact independent reference");
+        // Preserve the original GPU-average entry and its b0/t0/u0 callers.
+        // Its approximate division is allowed here; only CPU topology
+        // classification uses the exact readback division below.
+        runtime.dispatch("GVDBResample","downsampleRegion",&parameters,sizeof(parameters),{
+            nvrhi::BindingSetItem::StructuredBuffer_SRV(0,source),
+            nvrhi::BindingSetItem::StructuredBuffer_UAV(0,sumBuffer)},1,1,1);
+        float directAverage=0;runtime.read(sumBuffer,&directAverage,sizeof(directAverage));
+        if(!std::isfinite(directAverage)||std::abs(directAverage-expected)>2e-8f)
+            throw std::runtime_error("Original GPU downsample entry/bindings changed");
+        const auto result=downsampleRegion(runtime,source,{count,1,1,0},{1,1,1,0},
+            {float(count*2),2,2,0},identity,{0,1,0,1});
+        if(result.size()!=1||result[0]!=expected||result[0]>.05f||expected!=.05f)
+            throw std::runtime_error("Region downsample changed equality at the strict activation threshold");
+    }
+    std::puts("PASS exact activation-threshold averages (5.25/105 and 6/120)");
+    if(ResampleConfiguration{}.logDimensions!=std::vector<uint32_t>{4,3,3,3,3})throw std::runtime_error("Legacy fromBranching(...,4) order changed");
     ResampleConfiguration c;c.sourceResolution={12,24,24,0};c.destinationResolution={24,24,24,0};c.logDimensions={2,2,2};c.transform[2].w=20;
     std::vector<float> source(12*24*24,0);
     for(uint32_t z=5;z<18;++z)for(uint32_t y=7;y<17;++y)for(uint32_t x=3;x<8;++x)

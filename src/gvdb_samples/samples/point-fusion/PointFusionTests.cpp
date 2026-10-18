@@ -186,14 +186,14 @@ int floorMultiple(double value, int width) { return int(std::floor(value / width
 void updateReference(FusionReference& ref, const std::vector<Float4>& points,
                      const std::vector<uint32_t>& colors) {
     for (const auto& p : points)
-        for (int z = floorMultiple(p.z - 2, 8); z <= floorMultiple(p.z + 3, 8); z += 8)
-            for (int y = floorMultiple(p.y - 2, 8); y <= floorMultiple(p.y + 3, 8); y += 8)
-                for (int x = floorMultiple(p.x - 2, 8); x <= floorMultiple(p.x + 3, 8); x += 8)
+        for (int z = floorMultiple(p.z - 2, 32); z <= floorMultiple(p.z + 3, 32); z += 32)
+            for (int y = floorMultiple(p.y - 2, 32); y <= floorMultiple(p.y + 3, 32); y += 32)
+                for (int x = floorMultiple(p.x - 2, 32); x <= floorMultiple(p.x + 3, 32); x += 32)
                     ref.leaves.emplace(x, y, z);
     for (const auto& origin : ref.leaves)
-        for (int z = 0; z < 8; ++z)
-            for (int y = 0; y < 8; ++y)
-                for (int x = 0; x < 8; ++x)
+        for (int z = 0; z < 32; ++z)
+            for (int y = 0; y < 32; ++y)
+                for (int x = 0; x < 32; ++x)
                     ref.voxels.emplace(
                         Coordinate{std::get<0>(origin) + x, std::get<1>(origin) + y, std::get<2>(origin) + z},
                         Voxel{});
@@ -239,6 +239,13 @@ ScanFrame upload(ComputeRuntime& runtime, const std::vector<Float4>& positions,
 }
 void compareFusion(PointFusionVolume& fusion, const FusionReference& ref) {
     const auto& packed = fusion.packed();
+    // Independently lock the legacy fromBranching(3,3,3,3,5) contract:
+    // r0 is the last argument, so leaf width is 32, with a one-voxel apron.
+    require(packed.levels.size() == 5 && packed.levels[0].nodes.w == 5 &&
+                packed.volume.atlasBrickCountAndWidth.w == 34,
+            "Fusion topology differs from the legacy 32-voxel leaf configuration");
+    for (size_t level = 1; level < packed.levels.size(); ++level)
+        require(packed.levels[level].nodes.w == 3, "Fusion parent branching differs from legacy");
     require(packed.levels[0].nodes.z == ref.leaves.size(),
             "Incremental fusion leaf union differs from reference");
     const auto values = fusion.volume().readAtlas();
@@ -274,9 +281,9 @@ void fusionTests(ComputeRuntime& runtime) {
     PointFusionVolume fusion(runtime, {1, 2, true});
     FusionReference reference;
     const std::vector<std::vector<Float4>> batches = {
-        {{2.25f, 2.5f, 2.75f, 1},    {2.75f, 2.5f, 2.25f, 1}  },
-        {{-17.25f, 1.5f, -9.75f, 1}, {10.25f, 3.75f, 1.25f, 1}},
-        {{0, 0, 0, 1},               {2.25f, 2.5f, 2.75f, 1}  }
+        {{2.25f, 2.5f, 2.75f, 1},     {30.75f, 30.5f, 30.25f, 1}},
+        {{-65.25f, 1.5f, -33.75f, 1}, {42.25f, 3.75f, 1.25f, 1} },
+        {{0, 0, 0, 1},                {2.25f, 2.5f, 2.75f, 1}   }
     };
     const std::vector<std::vector<uint32_t>> colors = {
         {0xff204080u, 0xff80c020u},

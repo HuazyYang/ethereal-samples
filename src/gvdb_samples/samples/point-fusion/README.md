@@ -30,7 +30,9 @@ scanner angles, middle dragging changes its height in `[0,500]` and stops it,
 and right dragging changes speed. In orbit mode, those buttons orbit, pan and
 change distance. The wheel adjusts speed in FPV and distance in orbit.
 
-Topology is a CPU-managed union of support leaves. Subcell lists are built in
+Topology is a CPU-managed union of 32-voxel support leaves, matching the
+legacy `fromBranching(3,3,3,3,5)` argument order (root to leaf). Each leaf
+contains 512 subcells of width 4. Subcell lists are built in
 stable scan order on the CPU, while scalar/color fusion runs in Slang. A GPU
 remap preserves prior scalar and raw RGBA values when the root or atlas layout
 changes. New voxels start at distance 3 and transparent black. All channels

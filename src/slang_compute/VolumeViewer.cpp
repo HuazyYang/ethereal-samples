@@ -3,6 +3,7 @@
 #include "VolumeSurface.h"
 #include <donut/app/DeviceManager.h>
 #include <donut/app/ApplicationBase.h>
+#include <donut/app/ImGuiRenderPass.h>
 #include <donut/engine/ShaderFactory.h>
 #include <donut/core/vfs/VFS.h>
 #include <donut/core/math/math.h>
@@ -357,6 +358,20 @@ class VolumePass : public app::IRenderPass {
         check(GetDevice()->createCommandList(nvrhi::CommandListParameters(), &m_commands),
               "create display commands");
     }
+    bool uiVisible() const { return m_options.showUI; }
+    void flushScene() { m_runtime.flush(); }
+    void buildUI() {
+        m_scene->buildUI(m_options);
+        // Inspector edits can rebuild a scene using the shared immediate list.
+        // Close it before ImGui records its own graphics list.
+        flushScene();
+    }
+    void cancelDrag() { m_drag = -1; }
+    void capturedPointer(double x, double y) {
+        cancelDrag();
+        m_mouseX = x;
+        m_mouseY = y;
+    }
     bool KeyboardUpdate(int key, int, int action, int) override {
         if (action != GLFW_PRESS && action != GLFW_REPEAT)
             return false;
@@ -485,6 +500,134 @@ class VolumePass : public app::IRenderPass {
         }
     }
 };
+class VolumeGuiPass : public app::ImGuiRenderPass {
+    NVRHI_INHERIT_INTERFACE_TABLE()
+    VolumePass& m_view;
+
+ public:
+    VolumeGuiPass(app::DeviceManager* manager, VolumePass& view)
+        : ImGuiRenderPass(manager), m_view(view) {}
+    bool MousePosUpdate(double x, double y) override {
+        const bool captured = ImGuiRenderPass::MousePosUpdate(x, y) && m_view.uiVisible();
+        if (captured)
+            m_view.capturedPointer(x, y);
+        return captured;
+    }
+    bool MouseButtonUpdate(int button, int action, int mods) override {
+        const bool captured = ImGuiRenderPass::MouseButtonUpdate(button, action, mods) && m_view.uiVisible();
+        // A release over the Inspector must not leave a scene drag active.
+        if (captured || action == GLFW_RELEASE)
+            m_view.cancelDrag();
+        return captured;
+    }
+    bool MouseScrollUpdate(double x, double y) override {
+        return ImGuiRenderPass::MouseScrollUpdate(x, y) && m_view.uiVisible();
+    }
+    bool KeyboardUpdate(int key, int scancode, int action, int mods) override {
+        return ImGuiRenderPass::KeyboardUpdate(key, scancode, action, mods) && m_view.uiVisible();
+    }
+    bool KeyboardCharInput(unsigned int character, int mods) override {
+        return ImGuiRenderPass::KeyboardCharInput(character, mods) && m_view.uiVisible();
+    }
+
+ protected:
+    void BuildUI() override {
+        // Keep ImGui's frame and input state current while hiding both its window
+        // and input capture. Visibility may change after the pass is registered.
+        if (!m_view.uiVisible())
+            return;
+        ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowSize(ImVec2(320, 0), ImGuiCond_FirstUseEver);
+        if (ImGui::Begin("Inspector"))
+            m_view.buildUI();
+        ImGui::End();
+    }
+};
+// Registered passes are borrowed by this guard but retained by DeviceManager.
+// Declare it after pass owners so cleanup runs before their destruction.
+struct RegisteredPasses {
+    app::DeviceManager* manager;
+    app::IRenderPass* view;
+    app::IRenderPass* gui;
+    ~RegisteredPasses() {
+        if (gui)
+            manager->RemoveRenderPass(gui);
+        manager->RemoveRenderPass(view);
+        manager->GetDevice()->waitForIdle();
+    }
+};
+struct ShutdownDevice {
+    app::DeviceManager* manager;
+    ~ShutdownDevice() { manager->Shutdown(); }
+};
+// Native-window regression used by gvdb_volume_view_tests. It exercises the real
+// ImGui pass and event forwarding, without treating scene screenshots as UI proof.
+void exerciseGuiInput(VolumePass& view, VolumeGuiPass& gui, app::DeviceManager& manager) {
+    const auto require = [](bool condition, const char* message) {
+        if (!condition)
+            throw std::runtime_error(message);
+    };
+    // Pre-loop checks must not touch an unacquired swapchain image. Use the
+    // window's format and dimensions with independently owned render storage.
+    const auto& windowInfo = manager.GetFramebuffer(0)->getFramebufferInfo();
+    const auto viewport = windowInfo.getViewport();
+    nvrhi::TextureDesc targetDesc;
+    targetDesc.width = uint32_t(viewport.width());
+    targetDesc.height = uint32_t(viewport.height());
+    targetDesc.format = windowInfo.colorFormats[0];
+    targetDesc.isRenderTarget = true;
+    targetDesc.initialState = nvrhi::ResourceStates::RenderTarget;
+    targetDesc.keepInitialState = true;
+    nvrhi::TextureHandle target;
+    check(manager.GetDevice()->createTexture(targetDesc, &target), "create GUI test target");
+    nvrhi::FramebufferHandle framebuffer;
+    check(manager.GetDevice()->createFramebuffer(nvrhi::FramebufferDesc().addColorAttachment(target), &framebuffer),
+          "create GUI test framebuffer");
+    const auto draw = [&]() {
+        gui.Animate(0);
+        gui.Render(framebuffer);
+        return ImGui::GetDrawData()->TotalVtxCount;
+    };
+    view.flushScene();
+    nvrhi::CommandListHandle clear;
+    check(manager.GetDevice()->createCommandList(nvrhi::CommandListParameters(), &clear), "create GUI test clear");
+    clear->open();
+    clear->clearTextureFloat(target, nvrhi::AllSubresources, nvrhi::Color(0.f));
+    clear->close();
+    manager.GetDevice()->executeCommandList(clear);
+    (void)draw(); // ImGui sizes a newly created window on its first frame.
+    require(draw() > 0, "Visible Inspector has no draw geometry");
+    auto& io = ImGui::GetIO();
+    io.WantCaptureKeyboard = io.WantCaptureMouse = true;
+    require(gui.KeyboardUpdate(GLFW_KEY_G, 0, GLFW_PRESS, 0) &&
+                gui.KeyboardCharInput('g', 0) && gui.MousePosUpdate(40, 40) &&
+                gui.MouseButtonUpdate(GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS, 0) &&
+                gui.MouseScrollUpdate(0, 1),
+            "Visible Inspector did not capture requested input");
+    gui.KeyboardUpdate(GLFW_KEY_G, 0, GLFW_RELEASE, 0);
+    gui.MouseButtonUpdate(GLFW_MOUSE_BUTTON_LEFT, GLFW_RELEASE, 0);
+    view.KeyboardUpdate(GLFW_KEY_GRAVE_ACCENT, 0, GLFW_PRESS, 0);
+    require(!view.uiVisible(), "Fixture did not hide the Inspector");
+    // Test the transition before a new ImGui frame updates its stale capture flags.
+    io.WantCaptureKeyboard = io.WantCaptureMouse = true;
+    require(!gui.KeyboardUpdate(GLFW_KEY_G, 0, GLFW_PRESS, 0), "Hidden Inspector captured a key");
+    view.KeyboardUpdate(GLFW_KEY_G, 0, GLFW_PRESS, 0);
+    require(!gui.KeyboardCharInput('g', 0), "Hidden Inspector captured character input");
+    require(!gui.MouseButtonUpdate(GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS, 0),
+            "Hidden Inspector captured a mouse press");
+    view.MouseButtonUpdate(GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS, 0);
+    require(!gui.MousePosUpdate(48, 43), "Hidden Inspector captured mouse movement");
+    view.MousePosUpdate(48, 43);
+    require(!gui.MouseScrollUpdate(0, 1), "Hidden Inspector captured scrolling");
+    view.MouseScrollUpdate(0, 1);
+    gui.KeyboardUpdate(GLFW_KEY_G, 0, GLFW_RELEASE, 0);
+    gui.MouseButtonUpdate(GLFW_MOUSE_BUTTON_LEFT, GLFW_RELEASE, 0);
+    view.MouseButtonUpdate(GLFW_MOUSE_BUTTON_LEFT, GLFW_RELEASE, 0);
+    require(draw() == 0, "Hidden Inspector still emits draw geometry");
+    view.KeyboardUpdate(GLFW_KEY_GRAVE_ACCENT, 0, GLFW_PRESS, 0);
+    require(view.uiVisible() && draw() > 0, "Inspector did not return after showing it");
+    manager.GetDevice()->waitForIdle();
+}
 }  // namespace
 g::RaycastOutput renderVolumeView(es::ComputeRuntime& runtime, VolumeScene& scene, const VolumeViewOptions& o) {
     if (!o.width || !o.height || uint64_t(o.width) * o.height > 16 * 1024 * 1024 || !std::isfinite(o.step) ||
@@ -525,7 +668,16 @@ g::RaycastOutput renderVolumeView(es::ComputeRuntime& runtime, VolumeScene& scen
     const auto overlayPoints = scene.overlayPoints();
     g::RaycastOutput output;
     if (o.mode == VolumeViewMode::Volume || o.mode == VolumeViewMode::Surface) {
-        if (o.mode == VolumeViewMode::Surface && (o.scalarBackground != 0 || scene.colorAtlas()))
+        output = scene.renderCustom(p, o);
+        if (output.color || output.depth) {
+            const uint64_t pixels = uint64_t(o.width) * o.height;
+            if (!output.color || !output.depth || output.width != o.width || output.height != o.height ||
+                output.color->getDesc().structStride != sizeof(g::Float4) ||
+                output.depth->getDesc().structStride != sizeof(float) ||
+                output.color->getDesc().byteSize < pixels * sizeof(g::Float4) ||
+                output.depth->getDesc().byteSize < pixels * sizeof(float))
+                throw std::invalid_argument("Custom scene output does not match the viewer image");
+        } else if (o.mode == VolumeViewMode::Surface && (o.scalarBackground != 0 || scene.colorAtlas()))
             output = renderVolumeSurface(runtime, volume, p, transfer, scene.colorAtlas(), o.scalarBackground);
         else
             output = volume.raycast(p, transfer, o.mode == VolumeViewMode::Surface);
@@ -614,10 +766,12 @@ std::vector<uint8_t> renderVolumeOffscreen(int argc, const char** argv, const Sc
     auto manager = nvrhi::TakeOver(app::DeviceManager::Create(app::GetGraphicsAPIFromCommandLine(argc, argv)));
     if (!manager)
         throw std::runtime_error("Requested graphics API is unavailable");
+    ShutdownDevice shutdown{manager.Get()};
     app::DeviceCreationParameters params;
     params.adapterIndex = adapter;
     params.enableDebugRuntime = validation;
     params.enableNvrhiValidationLayer = true;
+    params.enableRayTracingExtensions = options.requestRayTracing;
     if (!manager->CreateHeadlessDevice(params))
         throw std::runtime_error("Cannot create volume display device");
     std::vector<uint8_t> result(size_t(options.width) * options.height * 4);
@@ -663,7 +817,6 @@ std::vector<uint8_t> renderVolumeOffscreen(int argc, const char** argv, const Sc
                         size_t(options.width) * 4);
         device->unmapStagingTexture(staging);
     }
-    manager->Shutdown();
     return result;
 }
 
@@ -673,12 +826,14 @@ int runVolumeWindow(int argc, const char** argv, const char* title, const SceneF
         throw std::invalid_argument("Invalid volume display dimensions");
     log::ConsoleApplicationMode();
     int adapter = -1;
-    bool validation = false;
+    bool validation = false, guiInputTest = false;
     for (int i = 1; i < argc; ++i) {
         if (!std::strcmp(argv[i], "-cuda"))
             throw std::invalid_argument("CUDA volume rendering requires --headless");
         if (!std::strcmp(argv[i], "--validation"))
             validation = true;
+        if (!std::strcmp(argv[i], "--gui-input-test"))
+            guiInputTest = true;
         if (!std::strcmp(argv[i], "--adapter")) {
             if (++i == argc)
                 throw std::invalid_argument("Missing adapter");
@@ -690,22 +845,41 @@ int runVolumeWindow(int argc, const char** argv, const char* title, const SceneF
     auto manager = nvrhi::TakeOver(app::DeviceManager::Create(app::GetGraphicsAPIFromCommandLine(argc, argv)));
     if (!manager)
         throw std::runtime_error("Requested graphics API is unavailable");
+    ShutdownDevice shutdown{manager.Get()};
     app::DeviceCreationParameters p;
     p.adapterIndex = adapter;
     p.enableDebugRuntime = validation;
     p.enableNvrhiValidationLayer = true;
+    p.enableRayTracingExtensions = options.requestRayTracing;
     p.backBufferWidth = options.width;
     p.backBufferHeight = options.height;
     if (!manager->CreateWindowDeviceAndSwapChain(p, title))
         throw std::runtime_error("Cannot create volume window");
     {
         VolumePass view(manager, factory, options, title);
+        auto fs = MAKE_RC_OBJ_PTR(vfs::RootFileSystem);
+        fs->mount("donut", app::GetDirectoryWithExecutable() / "shaders/framework" /
+                               app::GetShaderTypeName(manager->GetDevice()->getGraphicsAPI()));
+        engine::ShaderFactory guiShaders(manager->GetDevice(), fs, "");
+        nvrhi::AutoPtr<VolumeGuiPass> gui;
+        if (options.showUI) {
+            gui = MAKE_RC_OBJ_PTR(VolumeGuiPass, manager.Get(), view);
+            if (!gui->Init(&guiShaders))
+                throw std::runtime_error("Cannot initialize the volume Inspector");
+            // Keep bounded tests and captures independent of a previous window layout.
+            ImGui::GetIO().IniFilename = nullptr;
+        }
+        RegisteredPasses registered{manager.Get(), &view, gui.Get()};
         manager->AddRenderPassToBack(&view);
+        if (gui)
+            manager->AddRenderPassToBack(gui.Get());
+        if (guiInputTest) {
+            if (!gui)
+                throw std::invalid_argument("GUI input test requires an enabled Inspector");
+            exerciseGuiInput(view, *gui, *manager);
+        }
         manager->RunMessageLoop();
-        manager->RemoveRenderPass(&view);
-        manager->GetDevice()->waitForIdle();
     }
-    manager->Shutdown();
     return 0;
 }
 }  // namespace gvdb::sample

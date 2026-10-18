@@ -7,6 +7,8 @@
 #include <cmath>
 #include <cstdio>
 #include <stdexcept>
+#include <cstring>
+#include <imgui.h>
 namespace g = gvdb::slang;
 namespace v = gvdb::sample;
 namespace es = ethereal::slang;
@@ -26,6 +28,10 @@ class Fixture : public v::VolumeScene {
     std::unique_ptr<g::SlangVolume> m_volume;
 
  public:
+    std::function<g::RaycastOutput(const g::RaycastParameters&, const v::VolumeViewOptions&)> custom;
+    g::RaycastOutput renderCustom(const g::RaycastParameters& p, const v::VolumeViewOptions& o) override {
+        return custom ? custom(p, o) : g::RaycastOutput{};
+    }
     std::vector<v::VolumeOverlayLine> lines;
     std::vector<v::VolumeOverlayPoint> points;
     std::vector<v::VolumeOverlayLine> overlayLines() const override { return lines; }
@@ -53,6 +59,71 @@ class Fixture : public v::VolumeScene {
         };
     }
 };
+struct GuiState {
+    bool failAnimation = false;
+    unsigned toggles = 0, keys = 0, drags = 0, scrolls = 0, uiCalls = 0;
+};
+class GuiFixture : public Fixture {
+    GuiState& m_state;
+ public:
+    GuiFixture(es::ComputeRuntime& runtime, GuiState& state) : Fixture(runtime), m_state(state) {}
+    void animate(float, v::VolumeViewOptions&) override {
+        if (m_state.failAnimation)
+            throw std::runtime_error("Injected GUI animation failure");
+    }
+    void buildUI(v::VolumeViewOptions&) override {
+        ++m_state.uiCalls;
+        ImGui::TextUnformatted("Native Inspector regression");
+    }
+    bool key(int key, v::VolumeViewOptions& options) override {
+        if (key == '`') {
+            ++m_state.toggles;
+            options.showUI = !options.showUI;
+            return true;
+        }
+        if (key == 'G') {
+            ++m_state.keys;
+            return true;
+        }
+        return false;
+    }
+    bool mouseDrag(int, float, float, int, v::VolumeViewOptions&) override {
+        ++m_state.drags;
+        return true;
+    }
+    bool mouseScroll(float, v::VolumeViewOptions&) override {
+        ++m_state.scrolls;
+        return true;
+    }
+};
+int guiInputTests(int argc, const char** argv) {
+    v::VolumeViewOptions options;
+    options.width = 320;
+    options.height = 240;
+    options.showUI = true;
+    options.frameLimit = 1;
+    GuiState failed;
+    failed.failAnimation = true;
+    bool caught = false;
+    try {
+        v::runVolumeWindow(argc, argv, "GUI exception regression",
+            [&](es::ComputeRuntime& runtime) { return std::make_unique<GuiFixture>(runtime, failed); }, options);
+    } catch (const std::runtime_error& e) {
+        caught = std::strcmp(e.what(), "Injected GUI animation failure") == 0;
+        if (!caught)
+            throw;
+    }
+    require(caught && ImGui::GetCurrentContext() == nullptr,
+            "Exception left the native ImGui context or pass alive");
+    GuiState state;
+    v::runVolumeWindow(argc, argv, "GUI visibility/input regression",
+        [&](es::ComputeRuntime& runtime) { return std::make_unique<GuiFixture>(runtime, state); }, options);
+    require(state.toggles == 2 && state.keys == 1 && state.drags == 1 && state.scrolls == 1 && state.uiCalls >= 2,
+            "Hidden GUI did not forward input exactly once to the scene");
+    require(ImGui::GetCurrentContext() == nullptr, "Normal GUI shutdown leaked its context");
+    std::puts("Native Inspector visible/hidden draw geometry, input routing, and exception cleanup PASS");
+    return 0;
+}
 std::vector<g::Float4> colors(es::ComputeRuntime& runtime, const g::RaycastOutput& image) {
     std::vector<g::Float4> result(size_t(image.width) * image.height);
     runtime.read(image.color, result.data(), result.size() * sizeof(result[0]));
@@ -82,6 +153,9 @@ float denseSample(float x, float y, float z) {
 }  // namespace
 int main(int argc, const char** argv) {
     try {
+        for (int i = 1; i < argc; ++i)
+            if (std::strcmp(argv[i], "--gui-input-test") == 0)
+                return guiInputTests(argc, argv);
         es::ExampleDevice device(argc, argv);
         es::ComputeRuntime runtime(device.get(), device.shaderPath());
         Fixture scene(runtime);
@@ -107,6 +181,39 @@ int main(int argc, const char** argv) {
                 expectNear(c.z, value * .25f, 5e-6f, "section blue");
                 expectNear(c.w, 1, 1e-6f, "section alpha");
             }
+        // A scene renderer's GPU output must reach presentation without being
+        // replaced by the generic volume shader. Validate dimensions before overlays.
+        scene.custom = [&](const g::RaycastParameters& p, const v::VolumeViewOptions& o) {
+            require(p.image.x == o.width && p.image.y == o.height, "Custom renderer camera dimensions");
+            std::vector<g::Float4> pixels(size_t(o.width) * o.height);
+            std::vector<float> depth(pixels.size(), 7);
+            for (size_t i = 0; i < pixels.size(); ++i)
+                pixels[i] = {float(i) / pixels.size(), .2f, .7f, 1};
+            return g::RaycastOutput{
+                runtime.buffer(pixels.size() * sizeof(g::Float4), sizeof(g::Float4), pixels.data()),
+                runtime.buffer(depth.size() * sizeof(float), sizeof(float), depth.data()), o.width, o.height};
+        };
+        options.mode = v::VolumeViewMode::Surface;
+        options.step = .25f;
+        output = v::renderVolumeView(runtime, scene, options);
+        image = colors(runtime, output);
+        for (size_t i = 0; i < image.size(); ++i) {
+            expectNear(image[i].x, float(i) / image.size(), 1e-7f, "Custom GPU output preserved");
+            expectNear(image[i].z, .7f, 1e-7f, "Custom GPU output color");
+        }
+        scene.custom = [&](const g::RaycastParameters&, const v::VolumeViewOptions&) {
+            auto malformed = output;
+            ++malformed.width;
+            return malformed;
+        };
+        bool malformedRejected = false;
+        try {
+            v::renderVolumeView(runtime, scene, options);
+        } catch (const std::invalid_argument&) {
+            malformedRejected = true;
+        }
+        require(malformedRejected, "Custom renderer dimensions rejected before presentation");
+        scene.custom = {};
         const size_t center = (options.height / 2) * options.width + options.width / 2;
         options.step = .25f;
         options.mode = v::VolumeViewMode::Voxel;

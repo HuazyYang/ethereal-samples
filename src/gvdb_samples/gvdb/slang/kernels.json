@@ -1,4 +1,4 @@
-﻿{
+{
     "version":  1,
     "spirvBindingOffsets":  {
                                 "t":  0,
@@ -555,6 +555,11 @@
                                     ],
                         "entry":  "downsampleRegion",
                         "source":  "GVDBResample.slang"
+                    },
+                    {
+                        "threads": [8, 8, 8],
+                        "entry": "downsampleRegionStats",
+                        "source": "GVDBResampleStats.slang"
                     }
                 ]
 }

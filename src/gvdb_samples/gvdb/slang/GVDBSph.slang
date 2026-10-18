@@ -1,4 +1,4 @@
-﻿// SPH fluid pool kernels using NVRHI-compatible explicit resources.
+// SPH fluid pool kernels using NVRHI-compatible explicit resources.
 // Adapted from SPHFluidKernels.cu. SPDX-License-Identifier: Apache-2.0
 #include "GVDBTypes.slang"
 struct SphParameters {
@@ -11,7 +11,7 @@ struct SphParameters {
     float4 boundary;        // particle radius, stiffness, damping, friction
     float4 integration;     // time, delta time, acceleration limit, velocity limit
     float4 gravityAndSlope;
-    float4 wall;            // frequency, force, reserved, reserved
+    float4 wall;            // frequency, left force, right force, mode (0 pool, 1 FLUIDS-v3)
 };
 ConstantBuffer<SphParameters> g_Parameters : register(b0);
 StructuredBuffer<float4> g_Positions : register(t0);
@@ -50,7 +50,10 @@ void insertGrid(uint3 id : SV_DispatchThreadID) {
     uint offset = 0;
     if (all(isfinite(position))) {
         int3 cell = int3(floor((position - g_Parameters.gridMinimumAndCellWidth.xyz) / g_Parameters.gridMinimumAndCellWidth.w));
-        if (validCell(cell)) {
+        bool accepted = validCell(cell);
+        if (g_Parameters.wall.w == 1)
+            accepted = all(cell >= 1) && all(cell <= int3(g_Parameters.gridResolutionAndCount.xyz) - 3);
+        if (accepted) {
             cellIndex = flatten3(uint3(cell), g_Parameters.gridResolutionAndCount.xyz);
             InterlockedAdd(g_OutputCellCounts[cellIndex], 1, offset);
         }
@@ -162,11 +165,17 @@ void advanceParticles(uint3 id : SV_DispatchThreadID) {
     float3 minimum = g_Parameters.boundaryMinimum.xyz;
     float3 maximum = g_Parameters.boundaryMaximum.xyz;
     float slope = g_Parameters.gravityAndSlope.w;
-    float wave = (sin(g_Parameters.integration.x * g_Parameters.wall.x + position.z / 400.0) * 0.5 + 0.5) * g_Parameters.wall.y;
+    bool fluidsV3 = g_Parameters.wall.w == 1;
+    float phase = g_Parameters.integration.x * g_Parameters.wall.x + (fluidsV3 ? 0.0 : position.z / 400.0);
+    float waveFraction = sin(phase) * 0.5 + 0.5;
+    float wave = waveFraction * g_Parameters.wall.y;
+    float rightWave = fluidsV3 ? waveFraction * g_Parameters.wall.z : 0;
+    float leftStiffness = fluidsV3 ? (g_Parameters.wall.y + 1) * stiffness : wave * stiffness;
+    float rightStiffness = fluidsV3 ? (g_Parameters.wall.z + 1) * stiffness : stiffness;
     acceleration += boundaryForce(radius - (position.y - (minimum.y + (position.x - minimum.x) * slope)) * scale, float3(-slope, 1-slope, 0), evaluatedVelocity, stiffness, friction);
     acceleration += boundaryForce(radius - (maximum.y - position.y) * scale, float3(0,-1,0), evaluatedVelocity, stiffness, friction);
-    acceleration += boundaryForce(radius - (position.x - (minimum.x + wave)) * scale, float3(1,0,0), evaluatedVelocity, wave * stiffness, 0);
-    acceleration += boundaryForce(radius - (maximum.x - position.x) * scale, float3(-1,0,0), evaluatedVelocity, stiffness, 0);
+    acceleration += boundaryForce(radius - (position.x - (minimum.x + wave)) * scale, float3(1,0,0), evaluatedVelocity, leftStiffness, 0);
+    acceleration += boundaryForce(radius - (maximum.x - rightWave - position.x) * scale, float3(-1,0,0), evaluatedVelocity, rightStiffness, 0);
     acceleration += boundaryForce(radius - (position.z - minimum.z) * scale, float3(0,0,1), evaluatedVelocity, stiffness, 0);
     acceleration += boundaryForce(radius - (maximum.z - position.z) * scale, float3(0,0,-1), evaluatedVelocity, stiffness, 0);
     acceleration += g_Parameters.gravityAndSlope.xyz;

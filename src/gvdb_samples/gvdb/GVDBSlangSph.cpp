@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: Apache-2.0
 #include "GVDBSlangSph.h"
 #include "ComputeRuntime.h"
 #include <cmath>
@@ -21,6 +21,9 @@ SlangSphSimulation::SlangSphSimulation(ethereal::slang::ComputeRuntime& runtime,
         p.boundary.x<0 || p.boundary.y<0 || p.boundary.z<0 || p.boundary.w<0 ||
         p.boundaryMinimum.x>=p.boundaryMaximum.x || p.boundaryMinimum.y>=p.boundaryMaximum.y || p.boundaryMinimum.z>=p.boundaryMaximum.z)
         throw std::invalid_argument("SPH physical parameters or neighbor-search cell width are invalid");
+    if((p.wall.w!=0 && p.wall.w!=1) || (p.wall.w==1 &&
+        (p.wall.y<0 || p.wall.z<0 || grid.x<4 || grid.y<4 || grid.z<4)))
+        throw std::invalid_argument("SPH wall mode must be 0 (pool) or 1 (FLUIDS-v3), with valid forces and interior grid");
     for(const auto& v:positions)if(!std::isfinite(v.x)||!std::isfinite(v.y)||!std::isfinite(v.z))
         throw std::invalid_argument("SPH initial positions must be finite");
     for(const auto& v:velocities)if(!std::isfinite(v.x)||!std::isfinite(v.y)||!std::isfinite(v.z))

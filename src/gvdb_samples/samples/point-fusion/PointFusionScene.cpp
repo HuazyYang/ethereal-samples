@@ -39,7 +39,7 @@ PointFusionScene::PointFusionScene(ethereal::slang::ComputeRuntime& runtime, Poi
     if (!std::isfinite(options.speed) || options.speed < 0)
         throw std::invalid_argument("Scanner speed must be finite and nonnegative");
     slang::TopologyBuildOptions topology;
-    topology.logDimensions = {3, 3, 3, 3, 5};
+    topology.logDimensions = {5, 3, 3, 3, 3};
     std::string error;
     if (!slang::buildTopology(
             {
