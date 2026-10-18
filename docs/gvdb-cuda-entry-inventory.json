@@ -30,11 +30,13 @@
       "remaining": "Public retained-snapshot R32 query excludes every inactive slot/apron, preserves legacy float-column order and returns exact voxel count; native Windows validation and CUDA memory checks pass. Broader consumers and Linux remain."
     },
     "resample": {
-      "status": "portable-foundation",
+      "status": "owned-validated",
       "replacementFiles": [
-        "gvdb/slang/GVDBOperators.slang"
+        "gvdb/slang/GVDBAtlasResample.slang",
+        "gvdb/GVDBNvrhiResample.cpp",
+        "gvdb/GVDBNvrhiResampleApi.cpp"
       ],
-      "remaining": "Public owned-channel adapter and source ownership/transform contracts remain."
+      "remaining": "Public R32 dense-to-sparse transform/remap, exact outside preservation, explicit background and caller-owned publication pass four-backend Windows tests, native validation and CUDA memory checking. Coordinate-zero launch coverage and unused-slot zeroing are documented corrections; broader consumers and Linux remain."
     },
     "regional-downsample": {
       "status": "portable-foundation",

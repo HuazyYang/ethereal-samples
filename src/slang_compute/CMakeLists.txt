@@ -187,3 +187,4 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/../gvdb_samples/gvdb/GVDBNvrhiSerializerTes
 include("${CMAKE_CURRENT_SOURCE_DIR}/../gvdb_samples/gvdb/GVDBPointStreamConversion.cmake")
 include("${CMAKE_CURRENT_SOURCE_DIR}/../gvdb_samples/gvdb/GVDBNvrhiPointApi.cmake")
 include("${CMAKE_CURRENT_SOURCE_DIR}/../gvdb_samples/gvdb/GVDBNvrhiReductionApi.cmake")
+include("${CMAKE_CURRENT_SOURCE_DIR}/../gvdb_samples/gvdb/GVDBNvrhiResampleApi.cmake")

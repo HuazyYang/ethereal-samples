@@ -1,0 +1,37 @@
+# Independent GPU fixture; the production resample module owns its CPU ABI target.
+get_target_property(_resample_test_serializer gvdb_nvrhi_api GVDB_SERIALIZER_ADDED)
+if(_resample_test_serializer AND GVDB_NVRHI_BUILD_API_TESTS AND NOT TARGET gvdb_nvrhi_resample_api_tests
+        AND TARGET donut_app AND TARGET gvdb_nvrhi_resample_shaders
+        AND TARGET gvdb_nvrhi_owner_shaders)
+    add_executable(gvdb_nvrhi_resample_api_tests "${CMAKE_CURRENT_LIST_DIR}/tests/GVDBNvrhiResampleApiTests.cpp"
+        "${CMAKE_CURRENT_LIST_DIR}/slang/GVDBPortableData.cpp"
+        "${CMAKE_CURRENT_LIST_DIR}/slang/GVDBPortableVbx.cpp")
+    target_link_libraries(gvdb_nvrhi_resample_api_tests PRIVATE gvdb::nvrhi_api donut_app)
+    add_dependencies(gvdb_nvrhi_resample_api_tests gvdb_nvrhi_resample_shaders gvdb_nvrhi_owner_shaders)
+    ethereal_use_agility_sdk(gvdb_nvrhi_resample_api_tests)
+    if(MSVC)
+        target_compile_options(gvdb_nvrhi_resample_api_tests PRIVATE /utf-8)
+    endif()
+    if(NVRHI_WITH_CUDA)
+        target_link_libraries(gvdb_nvrhi_resample_api_tests PRIVATE nvrhi::cuda)
+        target_compile_definitions(gvdb_nvrhi_resample_api_tests PRIVATE ETHEREAL_TEST_CUDA=1)
+    endif()
+    foreach(api DX11 DX12 VULKAN CUDA)
+        if(NVRHI_WITH_${api})
+            if(api STREQUAL "VULKAN")
+                set(_gvdb_resample_api_argument -vk)
+            elseif(api STREQUAL "DX11")
+                set(_gvdb_resample_api_argument -dx11)
+            elseif(api STREQUAL "DX12")
+                set(_gvdb_resample_api_argument -dx12)
+            else()
+                set(_gvdb_resample_api_argument -cuda)
+            endif()
+            add_test(NAME gvdb_nvrhi_resample_api_${api} COMMAND gvdb_nvrhi_resample_api_tests ${_gvdb_resample_api_argument})
+            set_tests_properties(gvdb_nvrhi_resample_api_${api} PROPERTIES TIMEOUT 120 RUN_SERIAL TRUE
+                ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:gvdb_nvrhi_api>;PATH=path_list_prepend:$<TARGET_FILE_DIR:nvrhi_core>")
+        endif()
+    endforeach()
+    unset(_gvdb_resample_api_argument)
+endif()
+unset(_resample_test_serializer)
