@@ -21,11 +21,13 @@
       "remaining": "Public Windows tests passed; deterministic separate-source scheduling and checked bounds/iteration limit are documented."
     },
     "reduction": {
-      "status": "portable-foundation",
+      "status": "owned-validated",
       "replacementFiles": [
-        "gvdb/slang/GVDBOperators.slang"
+        "gvdb/slang/GVDBAtlasReduction.slang",
+        "gvdb/GVDBNvrhiReduction.cpp",
+        "gvdb/GVDBNvrhiReductionApi.cpp"
       ],
-      "remaining": "Public snapshot-owned reduction must exclude inactive/unused slots; packed-column helper alone does not prove this."
+      "remaining": "Public retained-snapshot R32 query excludes every inactive slot/apron, preserves legacy float-column order and returns exact voxel count; native Windows validation and CUDA memory checks pass. Broader consumers and Linux remain."
     },
     "resample": {
       "status": "portable-foundation",
@@ -48,7 +50,7 @@
         "gvdb/slang/GVDBTopology.slang",
         "gvdb/GVDBHostVolume.cpp"
       ],
-      "remaining": "CPU owner/full rebuild validated; device-authored topology fetch/commit and append acceptance remain separate."
+      "remaining": "CPU owner/full replacement and authenticated append are validated; explicit device-authored topology fetch/commit remains separate."
     },
     "split-positions": {
       "status": "portable-foundation",
@@ -80,11 +82,12 @@
       "remaining": "Replacement bin organization differs; public ownership and complete attribute transport remain."
     },
     "conversion": {
-      "status": "portable-foundation",
+      "status": "owned-validated",
       "replacementFiles": [
-        "gvdb/slang/GVDBPointStreamConversion.slang"
+        "gvdb/slang/GVDBPointStreamConversion.slang",
+        "gvdb/GVDBNvrhiPointApi.cpp"
       ],
-      "remaining": "All encoding/stride pairs pass; public upload/set factory still uncommitted at this checkpoint."
+      "remaining": "Public owned upload/set factories validate strided encodings, exact converted XYZ bounds and velocity/color association on four Windows APIs. External GPU import and broader consumers remain."
     },
     "normalized-ushort": {
       "status": "partial",
@@ -99,15 +102,16 @@
         "gvdb/slang/GVDBPointKeys.slang",
         "gvdb/slang/GVDBAlgorithms.slang"
       ],
-      "remaining": "GPU key helper uses nonnegative 16-bit coordinates; signed public topology must not inherit that restriction silently."
+      "remaining": "GPU key helper still uses nonnegative 16-bit coordinates. Public point topology uses checked signed host candidates from owned converted positions; GPU-key integration and platform/performance gates remain."
     },
     "topology-growth": {
-      "status": "partial",
+      "status": "owned-validated",
       "replacementFiles": [
         "gvdb/GVDBHostVolume.cpp",
-        "gvdb/GVDBNvrhiAdoptionInternal.h"
+        "gvdb/GVDBNvrhiPointApi.cpp",
+        "gvdb/GVDBNvrhiVolume.cpp"
       ],
-      "remaining": "Dense replacement validated; append-preserving candidate and exact point-support orchestration in progress."
+      "remaining": "Public full rebuild and stable-ID accumulation validate asymmetric/symmetric support, signed center union, minimum root level and rollback budgets. Explicit device-authored topology fetch/commit and platform/performance gates remain."
     },
     "deposition": {
       "status": "pending",
@@ -173,9 +177,10 @@
     "custom-raycast": {
       "status": "sample-validated",
       "replacementFiles": [
-        "samples/render-kernel/RenderCustom.slang"
+        "samples/render-kernel/RenderCustom.slang",
+        "samples/sample-utils/OwnedVolumeRaycast.cpp"
       ],
-      "remaining": "Portable custom renderer migrated; owned snapshot adoption remains."
+      "remaining": "Custom renderer adopts public snapshots and strict raw-resource ABI validation. Exact comparison against the previous portable renderer and native Windows/CUDA memory checks pass; broader legacy visual/performance/platform gates remain."
     },
     "raycast-modes": {
       "status": "partial",
@@ -183,7 +188,7 @@
         "gvdb/slang/GVDBRaycast.slang",
         "gvdb/slang/GVDBRaycastCommon.slang"
       ],
-      "remaining": "Shared compute rendering exists; each legacy shading mode still needs explicit controls/equations/visual acceptance and owner adoption."
+      "remaining": "Owned volume/surface rendering binds retained raw snapshots. Each additional legacy shading mode still needs explicit controls/equations/visual acceptance and owned scene adoption."
     },
     "tricubic": {
       "status": "pending",

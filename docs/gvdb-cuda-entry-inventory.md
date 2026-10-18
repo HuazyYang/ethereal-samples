@@ -6,14 +6,14 @@ The grouping records implementation roles, not positional CUDA ABI compatibility
 
 | State | Entries | Meaning |
 | --- | ---: | --- |
-| owned-validated | 18 | Public owner-backed mutation/filter replacements passed the recorded Windows matrix; platform and consumer gates remain. |
+| owned-validated | 24 | Public owner-backed mutation/filter/point/reduction replacements passed recorded Windows tests; platform and consumer gates remain. |
 | sample-validated | 12 | Migrated sample paths exercise these replacement roles; public ownership and broader acceptance remain. |
-| portable-foundation | 37 | A portable helper/program exists; the listed public contract or integration work remains. |
-| partial | 27 | Related functionality exists, but the old behavior is not fully covered. |
+| portable-foundation | 34 | A portable helper/program exists; the listed public contract or integration work remains. |
+| partial | 24 | Related functionality exists, but the old behavior is not fully covered. |
 | pending | 6 | No completed replacement/disposition is claimed. |
 
 The six pending entries are `gvdbScatterPointDensity`, `gvdbScatterPointAvgCol`, `gvdbAddSupportVoxel`, `gvdbMapExtraGVDB`, `gvdbRaySurfaceTricubic`, and OptiX `__exception__main`. The last requires an explicit diagnostic/backend disposition, not necessarily a one-to-one public shader stage.
 
-Other material gaps are explicit in the JSON: normalized-ushort level-set color needs inverse-distance weighting and a zero-distance rule; ordinary gather after quantization does not cover it. Reduction must exclude inactive/unused slots, which the existing packed-column helper alone does not guarantee. Public signed point topology must not silently adopt the helper's nonnegative 16-bit key limit. Section/compositing and individual raycast/RT shading modes need separate legacy-equation/control/visual acceptance. The existing PIC/FLIP transfer utility is not a complete FLIP solver; the retained fluid samples use SPH.
+Other material gaps are explicit in the JSON: normalized-ushort level-set color needs inverse-distance weighting and a zero-distance rule; ordinary gather after quantization does not cover it. Public reduction now excludes inactive/unused slots and aprons, including poisoned imported data. Public point topology uses checked signed host candidates and does not inherit the separate GPU key helper's nonnegative 16-bit limit. Section/compositing and individual raycast/RT shading modes need separate legacy-equation/control/visual acceptance. The existing PIC/FLIP transfer utility is not a complete FLIP solver; the retained fluid samples use SPH.
 
-The public point factory, authenticated append candidate and first owned renderer are uncommitted work at this inventory snapshot. Update the groups only after their acceptance evidence is recorded. The current project execution records and remaining gates live in the aggregate repository's `docs/slang-next-status.md` and `docs/plans/2026-10-18-gvdb-unified-volume-ownership.md`. Keep `ETHEREAL_BUILD_GVDB_LEGACY` and its sources until those gates are satisfied, including Linux, real multi-GPU routes, consumer ownership, visual comparisons and performance checks.
+The public point factory (`f18a6b9`), authenticated append candidate (`ca793cc`), first owned renderer (`b2f1185`) and retained-snapshot reduction (`4d0ee12`) are committed and validated. The custom renderer now also adopts owned snapshots (`8727803`). Other consumer and operator migrations remain active. The current project execution records and remaining gates live in the aggregate repository's `docs/slang-next-status.md` and `docs/plans/2026-10-18-gvdb-unified-volume-ownership.md`. Keep `ETHEREAL_BUILD_GVDB_LEGACY` and its sources until those gates are satisfied, including Linux, real multi-GPU routes, consumer ownership, visual comparisons and performance checks.
