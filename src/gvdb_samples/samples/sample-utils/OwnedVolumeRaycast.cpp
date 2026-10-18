@@ -16,9 +16,10 @@ void raw(const portable::BorrowedBufferBinding& view, uint64_t minimum) {
     require(bool(portable::validateRawView(checked,minimum,false)),"Owned raycast raw buffer range/format");
 }
 }
-slang::RaycastOutput raycastOwnedVolume(ethereal::slang::ComputeRuntime& runtime,
+slang::RaycastOutput dispatchOwnedRaycast(ethereal::slang::ComputeRuntime& runtime,
     portable::SnapshotHandle snapshot, uint32_t channel, slang::RaycastParameters p,
-    const std::vector<slang::Float4>& transfer, bool surface) {
+    const std::vector<slang::Float4>& transfer, const char* module, const char* entry) {
+    require(module && *module && entry && *entry,"Owned raycast shader name");
     require(snapshot && snapshot->getDevice()==runtime.device(),"Owned raycast snapshot device");
     require(p.image.x/8+uint32_t(p.image.x%8!=0)<=65535 &&
         p.image.y/8+uint32_t(p.image.y%8!=0)<=65535,"Owned raycast dispatch dimensions");
@@ -39,6 +40,7 @@ slang::RaycastOutput raycastOwnedVolume(ethereal::slang::ComputeRuntime& runtime
         storage.logicalBytes==selected.storage.logicalBytes && storage.allocatedBytes==selected.storage.allocatedBytes &&
         storage.voxelCount==selected.storage.voxelCount && selected.storage.voxelStride==4,"Owned raycast atlas extent");
     raw(selected.raw,storage.allocatedBytes);
+    runtime.requireRaycastKernel(module,entry);
     p.volume=desc.volume;p.image.z=uint32_t(transfer.size());
     slang::RaycastOutput result;result.width=p.image.x;result.height=p.image.y;
     if (!desc.activeLeafCount) {
@@ -70,8 +72,14 @@ slang::RaycastOutput raycastOwnedVolume(ethereal::slang::ComputeRuntime& runtime
     // A root-only hierarchy has no child pool; the runtime supplies the module's
     // unused reflected child global with valid dummy storage in that case.
     if(children.buffer)bindings.push_back(BindingSetItem::RawBuffer_SRV(2,children.buffer,range(children)));
-    runtime.dispatch("GVDBRawRaycast",surface?"raycastSurface":"raycastVolume",&p,sizeof(p),bindings,
+    runtime.dispatch(module,entry,&p,sizeof(p),bindings,
         p.image.x/8+uint32_t(p.image.x%8!=0),p.image.y/8+uint32_t(p.image.y%8!=0));
     return result;
+}
+slang::RaycastOutput raycastOwnedVolume(ethereal::slang::ComputeRuntime& runtime,
+    portable::SnapshotHandle snapshot, uint32_t channel, slang::RaycastParameters parameters,
+    const std::vector<slang::Float4>& transfer, bool surface) {
+    return dispatchOwnedRaycast(runtime,std::move(snapshot),channel,parameters,transfer,
+        "GVDBRawRaycast",surface?"raycastSurface":"raycastVolume");
 }
 } // namespace gvdb::sample

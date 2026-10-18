@@ -8,7 +8,8 @@ if(NOT TARGET gvdb_owned_raycast)
         CONFIG "${CMAKE_CURRENT_BINARY_DIR}/gvdb-owned-raycast.cfg"
         OUTPUT_DIRECTORY "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/shaders/gvdb_owned"
         INCLUDE_DIRECTORIES "${_owned_shader_dir}")
-    add_library(gvdb_owned_raycast STATIC "${CMAKE_CURRENT_LIST_DIR}/OwnedVolumeRaycast.cpp")
+    add_library(gvdb_owned_raycast STATIC "${CMAKE_CURRENT_LIST_DIR}/OwnedVolumeRaycast.cpp"
+        "${CMAKE_CURRENT_LIST_DIR}/OwnedVolumeIO.cpp")
     target_compile_features(gvdb_owned_raycast PUBLIC cxx_std_17)
     target_link_libraries(gvdb_owned_raycast PUBLIC gvdb_slang_runtime gvdb::nvrhi_api)
     target_include_directories(gvdb_owned_raycast PUBLIC "${CMAKE_CURRENT_LIST_DIR}" "${CMAKE_CURRENT_LIST_DIR}/../..")

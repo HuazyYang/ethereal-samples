@@ -2,9 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "ExampleDevice.h"
 #include "../sample-utils/OwnedVolumeRaycast.h"
-#include <gvdb/GVDBNvrhiSerializer.h>
-#include <nvrhi/core/datablob.h>
-#include <fstream>
+#include "../sample-utils/OwnedVolumeIO.h"
 #include <donut/core/math/math.h>
 #include <stb_image_write.h>
 #include <algorithm>
@@ -17,14 +15,6 @@
 namespace {
 void check(nvrhi::FRESULT status,const char* operation) {
     if(NVRHI_FAILED(status))throw std::runtime_error(std::string(operation)+": "+std::to_string(status));
-}
-nvrhi::AutoPtr<nvrhi::IDataBlob> readBlob(const std::filesystem::path& path) {
-    std::ifstream input(path,std::ios::binary|std::ios::ate);
-    if(!input)throw std::runtime_error("Cannot open "+path.string());
-    const auto size=input.tellg();if(size<0||uint64_t(size)>SIZE_MAX)throw std::runtime_error("Invalid file size: "+path.string());
-    nvrhi::AutoPtr<nvrhi::IDataBlob> result;check(nvrhi::CreateBlob(size_t(size),&result),"allocate input blob");
-    input.seekg(0);if(size&&!input.read(static_cast<char*>(result->GetDataPtr()),size))throw std::runtime_error("Cannot read "+path.string());
-    return result;
 }
 gvdb::slang::Float4 vector4(dm::float3 v,float w=0) {return {v.x,v.y,v.z,w};}
 std::vector<gvdb::slang::Float4> transferFunction() {
@@ -63,22 +53,7 @@ int main(int argc,const char** argv) {
         ethereal::slang::ExampleDevice device(argc,argv);
         const auto shaderPath=donut::app::GetDirectoryWithExecutable()/"shaders/gvdb_owned"/
             donut::app::GetShaderTypeName(device.get()->getGraphicsAPI());
-        const auto remap=readBlob(shaderPath/"GVDBAtlasRepack_relocateAtlas.bin");
-        gvdb::portable::VolumeCreateDesc create;create.device=device.get();create.configuration.levelCount=1;
-        create.configuration.logDimension[0]=1;create.remapArtifact=remap->GetDataPtr();create.remapArtifactBytes=remap->GetSize();
-        gvdb::portable::VolumeHandle owner;check(gvdb::portable::createVolume(create,&owner),"create volume owner");
-        gvdb::portable::SerializerCreateDesc serializerDesc;serializerDesc.volume=owner;
-        gvdb::portable::SerializerHandle serializer;check(gvdb::portable::createSerializer(serializerDesc,&serializer),"create serializer");
-        gvdb::portable::GenerationTicketHandle load;auto file=readBlob(input);nvrhi::AutoPtr<nvrhi::IDataBlob> diagnostic;
-        const auto status=serializer->prepareLoadVBX(file,{},&load,&diagnostic);
-        if(NVRHI_FAILED(status))throw std::runtime_error(diagnostic?std::string(static_cast<const char*>(diagnostic->GetDataPtr()),diagnostic->GetSize()):"Cannot load VBX");
-        file=nullptr;
-        nvrhi::CommandListHandle upload;check(device.get()->createCommandList({},&upload),"create upload list");
-        upload->open();check(owner->recordAndPublish({device.get(),upload},load),"record loaded volume");upload->close();
-        const auto submission=device.get()->executeCommandList(upload);
-        if(!submission&&device.get()->getGraphicsAPI()!=nvrhi::GraphicsAPI::D3D11)throw std::runtime_error("Submit volume upload failed");
-        if(!device.get()->waitForIdle())throw std::runtime_error("Volume upload failed");device.get()->runGarbageCollection();
-        gvdb::portable::SnapshotHandle volume;check(owner->getSnapshot(&volume),"retain volume snapshot");
+        auto volume=gvdb::sample::loadOwnedVBX(device.get(),shaderPath/"GVDBAtlasRepack_relocateAtlas.bin",input);
         const auto snapshot=volume->getDesc();gvdb::portable::ChannelSnapshotDesc scalar;
         check(volume->getChannel(0,scalar),"get scalar channel");
         if(snapshot.channelMask!=1||scalar.desc.format!=gvdb::portable::AtlasFormat::R32_FLOAT)
@@ -86,7 +61,6 @@ int main(int argc,const char** argv) {
         gvdb::portable::LevelInfo leafLevel;check(volume->getLevel(0,leafLevel),"get leaf level");
         const auto& info=snapshot.volume;
         // Rendering requires only the retained snapshot; no duplicate atlas/topology owner.
-        load=nullptr;serializer=nullptr;owner=nullptr;upload=nullptr;
         ethereal::slang::ComputeRuntime runtime(device.get(),shaderPath);
         const dm::float3 lower(info.boundsMin.x,info.boundsMin.y,info.boundsMin.z);
         const dm::float3 upper(info.boundsMax.x,info.boundsMax.y,info.boundsMax.z);

@@ -1,6 +1,9 @@
 // NVIDIA GVDB custom diffuse/reflected-sky surface shader, ported from RenderCustom.cu.
 // Copyright 2017 NVIDIA Corporation
 // SPDX-License-Identifier: Apache-2.0
+#if !defined(GVDB_CUSTOM_TYPED_ATLAS)
+#define GVDB_ATLAS_RAW 1
+#endif
 #include "GVDBRaycastCommon.slang"
 [shader("compute")]
 [numthreads(8,8,1)]

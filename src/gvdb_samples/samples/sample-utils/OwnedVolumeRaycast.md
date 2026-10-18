@@ -6,9 +6,9 @@ not create a second topology, placement map, or atlas. `ComputeRuntime` remains 
 sample's command recording and transient output utility; it is not part of the
 public volume ownership API.
 
-`render-to-file` loads VBX through `IGVDBSerializer`, records the returned ticket
-on its caller-owned command list, submits that list, and explicitly waits for the
-upload. It retains a snapshot and releases the owner and serializer before
+`render-to-file` and `render-kernel` use the app-only `loadOwnedVBX` helper. It
+loads VBX through `IGVDBSerializer`, records the returned ticket on a local command
+list, submits that list, and explicitly waits for the upload. It returns a retained snapshot and releases the owner and serializer before
 rendering. The CLI, index-space camera, transfer function, integration/surface
 equations, and PNG conversion are unchanged.
 
@@ -30,6 +30,15 @@ parameters. A snapshot and its borrowed buffers stay alive while recording;
 NVRHI binding-set liveness retains the dispatched resources through execution.
 Neither publication nor a revision change means GPU completion. The caller must
 order uploads and dispatches, and synchronize cross-queue use explicitly.
+
+`dispatchOwnedRaycast` shares this binding path with custom sample kernels that
+implement the same parameter/resource ABI and 8x8 group shape. The runtime checks
+exact global types, logical slots/spaces, counts, structured strides, constant
+size and 16-byte member offsets/parents before transient output allocation. Extra
+globals and compute entry arguments are rejected; a typed atlas artifact cannot
+silently receive the runtime's default dummy buffer. The custom
+`render-kernel` wrapper uses its retained fixed miss color `(0,0,0.1,1)` for empty
+snapshots as well; the standard raycaster preserves the caller's background.
 
 ## Refreshing after publication
 

@@ -14,4 +14,10 @@ namespace gvdb::sample {
 slang::RaycastOutput raycastOwnedVolume(ethereal::slang::ComputeRuntime& runtime,
     portable::SnapshotHandle snapshot, uint32_t channel, slang::RaycastParameters parameters,
     const std::vector<slang::Float4>& transfer, bool surface = false);
+// Custom app kernels must implement the same RaycastParameters b0, raw atlas/nodes/
+// children t0..t2, LevelInfo t3, optional float4 transfer t4 and color/depth u0/u1
+// layout, with an 8x8 thread group. Empty snapshots use parameters.background.
+slang::RaycastOutput dispatchOwnedRaycast(ethereal::slang::ComputeRuntime& runtime,
+    portable::SnapshotHandle snapshot, uint32_t channel, slang::RaycastParameters parameters,
+    const std::vector<slang::Float4>& transfer, const char* module, const char* entry);
 } // namespace gvdb::sample

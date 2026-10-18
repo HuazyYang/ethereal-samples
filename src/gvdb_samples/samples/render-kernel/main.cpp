@@ -9,7 +9,7 @@
 #include <cstdio>
 #include <cstring>
 #include <donut/core/math/math.h>
-#include <gvdb/GVDBSlangVolume.h>
+#include "../sample-utils/OwnedVolumeIO.h"
 #include <gvdb/slang/GVDBPortableVbx.h>
 #include <stb_image_write.h>
 #include <vector>
@@ -20,7 +20,7 @@ gvdb::slang::Float4 vector4(dm::float3 v, float w = 0)
 {
     return {v.x, v.y, v.z, w};
 }
-void analyticTest(ethereal::slang::ComputeRuntime &runtime)
+void analyticTest(ethereal::slang::ComputeRuntime &runtime,const std::filesystem::path& remap)
 {
     namespace g = gvdb::slang;
     namespace f = g::fixtures;
@@ -33,7 +33,11 @@ void analyticTest(ethereal::slang::ComputeRuntime &runtime)
     std::string error;
     if (!g::packVolume(f::volumeSource(fixture), packed, error))
         throw std::runtime_error(error);
-    g::SlangVolume volume(runtime, packed, fixture.atlas.data(), fixture.atlas.size());
+    g::VbxRawVolume file;file.packed=std::move(packed);
+    g::VbxChannel scalar;scalar.format=g::AtlasFormat::R32_FLOAT;scalar.bytes.resize(fixture.atlas.size()*sizeof(float));
+    std::memcpy(scalar.bytes.data(),fixture.atlas.data(),scalar.bytes.size());file.channels.push_back(std::move(scalar));
+    std::vector<uint8_t> encoded;if(!g::saveRawVBX(file,encoded,error))throw std::runtime_error(error);
+    auto volume=gvdb::sample::loadOwnedVBX(runtime.device(),remap,encoded.data(),encoded.size());
     auto p = f::raycastParameters(fixture);
     const auto test = [&](g::RaycastParameters settings, g::Float4 expected, float expectedDepth) {
         auto output = renderCustom(runtime, volume, settings);
@@ -49,7 +53,8 @@ void analyticTest(ethereal::slang::ComputeRuntime &runtime)
                 std::fprintf(stderr, "channel %u: expected %f actual %f\n", i, reference[i], actual[i]);
                 throw std::runtime_error("Custom diffuse/reflection color differs from analytic reference");
             }
-        if (std::isinf(expectedDepth) ? !std::isinf(depth) : std::abs(depth - expectedDepth) > .002f)
+        if (std::isinf(expectedDepth) ? !(std::isinf(depth) && depth > 0) :
+            (!std::isfinite(depth) || std::abs(depth - expectedDepth) > .002f))
             throw std::runtime_error("Custom surface depth differs from analytic reference");
     };
     test(p, {.6f, .6f, .6f, 1}, 3);
@@ -109,18 +114,20 @@ int main(int argc, const char **argv)
         ethereal::slang::ExampleDevice device(argc, argv);
         const auto shaderPath =
             device.shaderPath().parent_path().parent_path() / "render_kernel" / device.shaderPath().filename();
+        const auto remap=device.shaderPath().parent_path().parent_path()/"gvdb_owned"/
+            device.shaderPath().filename()/"GVDBAtlasRepack_relocateAtlas.bin";
         ethereal::slang::ComputeRuntime runtime(device.get(), shaderPath);
         if (selfTest)
         {
-            analyticTest(runtime);
+            analyticTest(runtime,remap);
             return 0;
         }
-        gvdb::slang::VbxVolume loaded;
-        std::string error;
-        if (!gvdb::slang::loadVBXFile(input, loaded, error))
-            throw std::runtime_error(error);
-        gvdb::slang::SlangVolume volume(runtime, loaded.packed, loaded.atlas.data(), loaded.atlas.size());
-        const auto &info = volume.info();
+        auto volume=gvdb::sample::loadOwnedVBX(device.get(),remap,input);
+        const auto snapshot=volume->getDesc();gvdb::portable::ChannelSnapshotDesc scalar;gvdb::portable::LevelInfo leafLevel;
+        if(NVRHI_FAILED(volume->getChannel(0,scalar))||snapshot.channelMask!=1||
+            scalar.desc.format!=gvdb::portable::AtlasFormat::R32_FLOAT||NVRHI_FAILED(volume->getLevel(0,leafLevel)))
+            throw std::runtime_error("render-kernel requires exactly one R32_FLOAT channel");
+        const auto& info=snapshot.volume;
         const dm::float3 lower(info.boundsMin.x, info.boundsMin.y, info.boundsMin.z);
         const dm::float3 upper(info.boundsMax.x, info.boundsMax.y, info.boundsMax.z);
         const dm::float3 center = (lower + upper) * 0.5f;
@@ -169,7 +176,7 @@ int main(int argc, const char **argv)
         if (!stbi_write_png(output.string().c_str(), width, height, 4, rgba.data(), width * 4))
             throw std::runtime_error("Cannot write output image");
         std::printf("%u leaves, %zu voxels, %zu non-background pixels; render/readback %.3f ms\n",
-                    loaded.packed.levels[0].nodes.z, loaded.atlas.size(), changed, milliseconds);
+                    leafLevel.nodes.z, size_t(scalar.storage.voxelCount), changed, milliseconds);
         std::printf("Wrote %s\n", output.string().c_str());
         return 0;
     }
