@@ -1,0 +1,721 @@
+{
+  "schemaVersion": 1,
+  "asOf": "2026-10-19",
+  "referenceRetirementAuthorized": false,
+  "scope": "Explicit __global__ void entries in retained .cu/.cuh source under sourceRoot. CPU/device helpers and graphics shaders require separate inventory.",
+  "sourceRoot": "src/gvdb_samples",
+  "entryCount": 100,
+  "groups": {
+    "owned-mutation": {
+      "status": "owned-validated",
+      "replacementFiles": [
+        "gvdb/slang/GVDBAtlasMutation.slang"
+      ],
+      "remaining": "Public Windows five-format tests passed; Linux and broad consumers remain."
+    },
+    "owned-filters": {
+      "status": "owned-validated",
+      "replacementFiles": [
+        "gvdb/slang/GVDBAtlasFilters.slang"
+      ],
+      "remaining": "Public Windows tests passed; deterministic separate-source scheduling and checked bounds/iteration limit are documented."
+    },
+    "reduction": {
+      "status": "portable-foundation",
+      "replacementFiles": [
+        "gvdb/slang/GVDBOperators.slang"
+      ],
+      "remaining": "Public snapshot-owned reduction must exclude inactive/unused slots; packed-column helper alone does not prove this."
+    },
+    "resample": {
+      "status": "portable-foundation",
+      "replacementFiles": [
+        "gvdb/slang/GVDBOperators.slang"
+      ],
+      "remaining": "Public owned-channel adapter and source ownership/transform contracts remain."
+    },
+    "regional-downsample": {
+      "status": "portable-foundation",
+      "replacementFiles": [
+        "gvdb/slang/GVDBResample.slang",
+        "gvdb/slang/GVDBResampleStats.slang"
+      ],
+      "remaining": "Public explicit-completion adapter remains; downsampleDense has different placement semantics."
+    },
+    "linking": {
+      "status": "portable-foundation",
+      "replacementFiles": [
+        "gvdb/slang/GVDBTopology.slang",
+        "gvdb/GVDBHostVolume.cpp"
+      ],
+      "remaining": "CPU owner/full rebuild validated; device-authored topology fetch/commit and append acceptance remain separate."
+    },
+    "split-positions": {
+      "status": "portable-foundation",
+      "replacementFiles": [
+        "gvdb/slang/GVDBPointStreamConversion.slang"
+      ],
+      "remaining": "General strided converter can express separate destinations; explicit split/bounds orchestration remains."
+    },
+    "mark-leaves": {
+      "status": "portable-foundation",
+      "replacementFiles": [
+        "gvdb/slang/GVDBParticles.slang"
+      ],
+      "remaining": "Public owned topology orchestration remains."
+    },
+    "insertion": {
+      "status": "portable-foundation",
+      "replacementFiles": [
+        "gvdb/slang/GVDBParticles.slang"
+      ],
+      "remaining": "Public ownership and velocity/color association coverage remain."
+    },
+    "subcell-binning": {
+      "status": "portable-foundation",
+      "replacementFiles": [
+        "gvdb/slang/GVDBSubcells.slang",
+        "gvdb/GVDBSlangSubcells.cpp"
+      ],
+      "remaining": "Replacement bin organization differs; public ownership and complete attribute transport remain."
+    },
+    "conversion": {
+      "status": "portable-foundation",
+      "replacementFiles": [
+        "gvdb/slang/GVDBPointStreamConversion.slang"
+      ],
+      "remaining": "All encoding/stride pairs pass; public upload/set factory still uncommitted at this checkpoint."
+    },
+    "normalized-ushort": {
+      "status": "partial",
+      "replacementFiles": [
+        "gvdb/slang/GVDBPointConversion.slang"
+      ],
+      "remaining": "Not IEEE half. Public bounds/quantization and velocity transport remain."
+    },
+    "keys": {
+      "status": "portable-foundation",
+      "replacementFiles": [
+        "gvdb/slang/GVDBPointKeys.slang",
+        "gvdb/slang/GVDBAlgorithms.slang"
+      ],
+      "remaining": "GPU key helper uses nonnegative 16-bit coordinates; signed public topology must not inherit that restriction silently."
+    },
+    "topology-growth": {
+      "status": "partial",
+      "replacementFiles": [
+        "gvdb/GVDBHostVolume.cpp",
+        "gvdb/GVDBNvrhiAdoptionInternal.h"
+      ],
+      "remaining": "Dense replacement validated; append-preserving candidate and exact point-support orchestration in progress."
+    },
+    "deposition": {
+      "status": "pending",
+      "replacementFiles": [],
+      "remaining": "Central/six-neighbor deposition, support and averaged color need owned Slang implementation; legacy amp is unused."
+    },
+    "velocity": {
+      "status": "partial",
+      "replacementFiles": [
+        "gvdb/slang/GVDBVelocity.slang"
+      ],
+      "remaining": "Sparse MAC/PIC-FLIP utility exists; exact legacy diagnostics/export contracts and owned channels remain. Reference contains no complete FLIP solver."
+    },
+    "obstacle-mapping": {
+      "status": "pending",
+      "replacementFiles": [],
+      "remaining": "Obstacle-volume subcell mapping needs an explicit replacement and tests."
+    },
+    "gather": {
+      "status": "portable-foundation",
+      "replacementFiles": [
+        "gvdb/slang/GVDBGather.slang"
+      ],
+      "remaining": "Public channel publication and attribute transport remain; retained gather does not read velocity attributes."
+    },
+    "weighted-ushort-gather": {
+      "status": "partial",
+      "replacementFiles": [
+        "gvdb/slang/GVDBPointConversion.slang",
+        "gvdb/slang/GVDBGather.slang"
+      ],
+      "remaining": "Inverse-distance weighted color and zero-distance policy are not supplied by ordinary gather after quantization."
+    },
+    "algorithms": {
+      "status": "portable-foundation",
+      "replacementFiles": [
+        "gvdb/slang/GVDBAlgorithms.slang"
+      ],
+      "remaining": "Scan/stable radix replace algorithm roles, not positional CUDA ABIs; platform/performance gates remain."
+    },
+    "voxelization": {
+      "status": "portable-foundation",
+      "replacementFiles": [
+        "gvdb/slang/GVDBVoxelize.slang",
+        "gvdb/GVDBSlangVoxelizer.cpp"
+      ],
+      "remaining": "Public voxelizer/owned sparse publication remains; numerical decision-boundary differences are documented."
+    },
+    "sph": {
+      "status": "sample-validated",
+      "replacementFiles": [
+        "gvdb/slang/GVDBSph.slang"
+      ],
+      "remaining": "Both SPH sample families execute Slang; owner/interactive/performance gates remain."
+    },
+    "scanner": {
+      "status": "sample-validated",
+      "replacementFiles": [
+        "samples/point-fusion/PointFusionScan.slang"
+      ],
+      "remaining": "Portable sample migrated; public owner/point integration remains."
+    },
+    "custom-raycast": {
+      "status": "sample-validated",
+      "replacementFiles": [
+        "samples/render-kernel/RenderCustom.slang"
+      ],
+      "remaining": "Portable custom renderer migrated; owned snapshot adoption remains."
+    },
+    "raycast-modes": {
+      "status": "partial",
+      "replacementFiles": [
+        "gvdb/slang/GVDBRaycast.slang",
+        "gvdb/slang/GVDBRaycastCommon.slang"
+      ],
+      "remaining": "Shared compute rendering exists; each legacy shading mode still needs explicit controls/equations/visual acceptance and owner adoption."
+    },
+    "tricubic": {
+      "status": "pending",
+      "replacementFiles": [],
+      "remaining": "No complete tricubic sampling contract; do not silently substitute trilinear."
+    },
+    "ray-query": {
+      "status": "portable-foundation",
+      "replacementFiles": [
+        "gvdb/slang/GVDBRayQuery.slang"
+      ],
+      "remaining": "Ray-query fixtures exist; owned scene integration and exact legacy ray-buffer contract remain."
+    },
+    "section-compositing": {
+      "status": "partial",
+      "replacementFiles": [],
+      "remaining": "Migrated viewers provide section/compositing behavior; these exported kernel contracts lack complete explicit parity acceptance."
+    },
+    "mixed-rt": {
+      "status": "partial",
+      "replacementFiles": [
+        "samples/sample-utils/SlangSceneRT.slang",
+        "gvdb/slang/GVDBRayTracing.slang"
+      ],
+      "remaining": "Shared DXR/Vulkan/OptiX mixed-scene implementation exists; material/shading/visual and owned-volume gates remain."
+    },
+    "exception": {
+      "status": "pending",
+      "replacementFiles": [],
+      "remaining": "OptiX exception-program diagnostic behavior needs explicit disposition; no public exception-stage equivalence claimed."
+    }
+  },
+  "entries": [
+    {
+      "source": "gvdb/GVDB.cuh",
+      "entry": "gvdbDelinkLeafBricks",
+      "group": "linking"
+    },
+    {
+      "source": "gvdb/GVDB.cuh",
+      "entry": "gvdbDelinkBricks",
+      "group": "linking"
+    },
+    {
+      "source": "gvdb/GVDB.cuh",
+      "entry": "gvdbLinkBricks",
+      "group": "linking"
+    },
+    {
+      "source": "gvdb/GVDB.cuh",
+      "entry": "gvdbSplitPos",
+      "group": "split-positions"
+    },
+    {
+      "source": "gvdb/GVDB.cuh",
+      "entry": "gvdbMarkLeafNode",
+      "group": "mark-leaves"
+    },
+    {
+      "source": "gvdb/kernels/GVDBOperators.cu",
+      "entry": "gvdbUpdateApronF",
+      "group": "owned-mutation"
+    },
+    {
+      "source": "gvdb/kernels/GVDBOperators.cu",
+      "entry": "gvdbUpdateApronF4",
+      "group": "owned-mutation"
+    },
+    {
+      "source": "gvdb/kernels/GVDBOperators.cu",
+      "entry": "gvdbUpdateApronC",
+      "group": "owned-mutation"
+    },
+    {
+      "source": "gvdb/kernels/GVDBOperators.cu",
+      "entry": "gvdbUpdateApronC4",
+      "group": "owned-mutation"
+    },
+    {
+      "source": "gvdb/kernels/GVDBOperators.cu",
+      "entry": "gvdbClearAtlasF",
+      "group": "owned-mutation"
+    },
+    {
+      "source": "gvdb/kernels/GVDBOperators.cu",
+      "entry": "gvdbClearAtlasF4",
+      "group": "owned-mutation"
+    },
+    {
+      "source": "gvdb/kernels/GVDBOperators.cu",
+      "entry": "gvdbClearAtlasC",
+      "group": "owned-mutation"
+    },
+    {
+      "source": "gvdb/kernels/GVDBOperators.cu",
+      "entry": "gvdbClearAtlasC4",
+      "group": "owned-mutation"
+    },
+    {
+      "source": "gvdb/kernels/GVDBOperators.cu",
+      "entry": "gvdbOpGrow",
+      "group": "owned-filters"
+    },
+    {
+      "source": "gvdb/kernels/GVDBOperators.cu",
+      "entry": "gvdbOpCut",
+      "group": "owned-filters"
+    },
+    {
+      "source": "gvdb/kernels/GVDBOperators.cu",
+      "entry": "gvdbReduction",
+      "group": "reduction"
+    },
+    {
+      "source": "gvdb/kernels/GVDBOperators.cu",
+      "entry": "gvdbResample",
+      "group": "resample"
+    },
+    {
+      "source": "gvdb/kernels/GVDBOperators.cu",
+      "entry": "gvdbDownsample",
+      "group": "regional-downsample"
+    },
+    {
+      "source": "gvdb/kernels/GVDBOperators.cu",
+      "entry": "gvdbOpFillF",
+      "group": "owned-mutation"
+    },
+    {
+      "source": "gvdb/kernels/GVDBOperators.cu",
+      "entry": "gvdbOpFillF4",
+      "group": "owned-mutation"
+    },
+    {
+      "source": "gvdb/kernels/GVDBOperators.cu",
+      "entry": "gvdbOpFillC4",
+      "group": "owned-mutation"
+    },
+    {
+      "source": "gvdb/kernels/GVDBOperators.cu",
+      "entry": "gvdbOpFillC",
+      "group": "owned-mutation"
+    },
+    {
+      "source": "gvdb/kernels/GVDBOperators.cu",
+      "entry": "gvdbOpSmooth",
+      "group": "owned-filters"
+    },
+    {
+      "source": "gvdb/kernels/GVDBOperators.cu",
+      "entry": "gvdbOpClrExpand",
+      "group": "owned-filters"
+    },
+    {
+      "source": "gvdb/kernels/GVDBOperators.cu",
+      "entry": "gvdbOpExpandC",
+      "group": "owned-filters"
+    },
+    {
+      "source": "gvdb/kernels/GVDBOperators.cu",
+      "entry": "gvdbOpNoise",
+      "group": "owned-filters"
+    },
+    {
+      "source": "gvdb/kernels/GVDBParticles.cu",
+      "entry": "gvdbInsertPoints",
+      "group": "insertion"
+    },
+    {
+      "source": "gvdb/kernels/GVDBParticles.cu",
+      "entry": "gvdbInsertSupportPoints",
+      "group": "insertion"
+    },
+    {
+      "source": "gvdb/kernels/GVDBParticles.cu",
+      "entry": "gvdbSortPoints",
+      "group": "insertion"
+    },
+    {
+      "source": "gvdb/kernels/GVDBParticles.cu",
+      "entry": "gvdbSetFlagSubcell",
+      "group": "subcell-binning"
+    },
+    {
+      "source": "gvdb/kernels/GVDBParticles.cu",
+      "entry": "gvdbConvAndTransform",
+      "group": "conversion"
+    },
+    {
+      "source": "gvdb/kernels/GVDBParticles.cu",
+      "entry": "gvdbScalePntPos",
+      "group": "conversion"
+    },
+    {
+      "source": "gvdb/kernels/GVDBParticles.cu",
+      "entry": "gvdbInsertSubcell_fp16",
+      "group": "normalized-ushort"
+    },
+    {
+      "source": "gvdb/kernels/GVDBParticles.cu",
+      "entry": "gvdbInsertSubcell",
+      "group": "subcell-binning"
+    },
+    {
+      "source": "gvdb/kernels/GVDBParticles.cu",
+      "entry": "gvdbCountSubcell",
+      "group": "subcell-binning"
+    },
+    {
+      "source": "gvdb/kernels/GVDBParticles.cu",
+      "entry": "gvdbFindActivBricks",
+      "group": "keys"
+    },
+    {
+      "source": "gvdb/kernels/GVDBParticles.cu",
+      "entry": "gvdbFindUnique",
+      "group": "keys"
+    },
+    {
+      "source": "gvdb/kernels/GVDBParticles.cu",
+      "entry": "gvdbCalcBrickId",
+      "group": "keys"
+    },
+    {
+      "source": "gvdb/kernels/GVDBParticles.cu",
+      "entry": "gvdbCalcIncreBrickId",
+      "group": "topology-growth"
+    },
+    {
+      "source": "gvdb/kernels/GVDBParticles.cu",
+      "entry": "gvdbCalcIncreExtraBrickId",
+      "group": "topology-growth"
+    },
+    {
+      "source": "gvdb/kernels/GVDBParticles.cu",
+      "entry": "gvdbCalcExtraBrickId",
+      "group": "topology-growth"
+    },
+    {
+      "source": "gvdb/kernels/GVDBParticles.cu",
+      "entry": "gvdbScatterPointDensity",
+      "group": "deposition"
+    },
+    {
+      "source": "gvdb/kernels/GVDBParticles.cu",
+      "entry": "gvdbAddSupportVoxel",
+      "group": "deposition"
+    },
+    {
+      "source": "gvdb/kernels/GVDBParticles.cu",
+      "entry": "gvdbScatterPointAvgCol",
+      "group": "deposition"
+    },
+    {
+      "source": "gvdb/kernels/GVDBParticles.cu",
+      "entry": "gvdbReadGridVel",
+      "group": "velocity"
+    },
+    {
+      "source": "gvdb/kernels/GVDBParticles.cu",
+      "entry": "gvdbMapExtraGVDB",
+      "group": "obstacle-mapping"
+    },
+    {
+      "source": "gvdb/kernels/GVDBParticles.cu",
+      "entry": "gvdbCalcSubcellPos",
+      "group": "subcell-binning"
+    },
+    {
+      "source": "gvdb/kernels/GVDBParticles.cu",
+      "entry": "gvdbGatherDensity",
+      "group": "gather"
+    },
+    {
+      "source": "gvdb/kernels/GVDBParticles.cu",
+      "entry": "gvdbGatherLevelSet",
+      "group": "gather"
+    },
+    {
+      "source": "gvdb/kernels/GVDBParticles.cu",
+      "entry": "gvdbGatherLevelSet_fp16",
+      "group": "weighted-ushort-gather"
+    },
+    {
+      "source": "gvdb/kernels/GVDBParticles.cu",
+      "entry": "gvdbCheckVal",
+      "group": "velocity"
+    },
+    {
+      "source": "gvdb/kernels/GVDBParticles.cu",
+      "entry": "prefixFixup",
+      "group": "algorithms"
+    },
+    {
+      "source": "gvdb/kernels/GVDBParticles.cu",
+      "entry": "prefixSum",
+      "group": "algorithms"
+    },
+    {
+      "source": "gvdb/kernels/GVDBParticles.cu",
+      "entry": "gvdbInsertTriangles",
+      "group": "voxelization"
+    },
+    {
+      "source": "gvdb/kernels/GVDBParticles.cu",
+      "entry": "gvdbCompactUnique",
+      "group": "keys"
+    },
+    {
+      "source": "gvdb/kernels/GVDBParticles.cu",
+      "entry": "gvdbRadixPrescan",
+      "group": "algorithms"
+    },
+    {
+      "source": "gvdb/kernels/GVDBParticles.cu",
+      "entry": "gvdbRadixBincount",
+      "group": "algorithms"
+    },
+    {
+      "source": "gvdb/kernels/GVDBParticles.cu",
+      "entry": "gvdbRadixShuffle",
+      "group": "algorithms"
+    },
+    {
+      "source": "gvdb/kernels/GVDBParticles.cu",
+      "entry": "gvdbSortTriangles",
+      "group": "voxelization"
+    },
+    {
+      "source": "gvdb/kernels/GVDBParticles.cu",
+      "entry": "gvdbVoxelize",
+      "group": "voxelization"
+    },
+    {
+      "source": "gvdb/kernels/GVDBParticles.cu",
+      "entry": "gvdbBitonicSort",
+      "group": "algorithms"
+    },
+    {
+      "source": "samples/fluid-surface/FluidSystemKernels.cu",
+      "entry": "insertParticles",
+      "group": "sph"
+    },
+    {
+      "source": "samples/fluid-surface/FluidSystemKernels.cu",
+      "entry": "countingSortFull",
+      "group": "sph"
+    },
+    {
+      "source": "samples/fluid-surface/FluidSystemKernels.cu",
+      "entry": "computePressure",
+      "group": "sph"
+    },
+    {
+      "source": "samples/fluid-surface/FluidSystemKernels.cu",
+      "entry": "computeForce",
+      "group": "sph"
+    },
+    {
+      "source": "samples/fluid-surface/FluidSystemKernels.cu",
+      "entry": "advanceParticles",
+      "group": "sph"
+    },
+    {
+      "source": "samples/fluid-surface/FluidSystemKernels.cu",
+      "entry": "prefixFixup",
+      "group": "algorithms"
+    },
+    {
+      "source": "samples/fluid-surface/FluidSystemKernels.cu",
+      "entry": "prefixSum",
+      "group": "algorithms"
+    },
+    {
+      "source": "samples/point-fusion/PointFusionScan.cu",
+      "entry": "scanBuildings",
+      "group": "scanner"
+    },
+    {
+      "source": "samples/render-kernel/RenderCustom.cu",
+      "entry": "raycast_kernel",
+      "group": "custom-raycast"
+    },
+    {
+      "source": "samples/sample-utils/kernels/GVDBRaycast.cu",
+      "entry": "gvdbRayDeep",
+      "group": "raycast-modes"
+    },
+    {
+      "source": "samples/sample-utils/kernels/GVDBRaycast.cu",
+      "entry": "gvdbRaySurfaceVoxel",
+      "group": "raycast-modes"
+    },
+    {
+      "source": "samples/sample-utils/kernels/GVDBRaycast.cu",
+      "entry": "gvdbRaySurfaceTrilinear",
+      "group": "raycast-modes"
+    },
+    {
+      "source": "samples/sample-utils/kernels/GVDBRaycast.cu",
+      "entry": "gvdbRaySurfaceTricubic",
+      "group": "tricubic"
+    },
+    {
+      "source": "samples/sample-utils/kernels/GVDBRaycast.cu",
+      "entry": "gvdbRaySurfaceDepth",
+      "group": "raycast-modes"
+    },
+    {
+      "source": "samples/sample-utils/kernels/GVDBRaycast.cu",
+      "entry": "gvdbRayLevelSet",
+      "group": "raycast-modes"
+    },
+    {
+      "source": "samples/sample-utils/kernels/GVDBRaycast.cu",
+      "entry": "gvdbRayEmptySkip",
+      "group": "raycast-modes"
+    },
+    {
+      "source": "samples/sample-utils/kernels/GVDBRaycast.cu",
+      "entry": "gvdbRaytrace",
+      "group": "ray-query"
+    },
+    {
+      "source": "samples/sample-utils/kernels/GVDBRaycast.cu",
+      "entry": "gvdbSection3D",
+      "group": "section-compositing"
+    },
+    {
+      "source": "samples/sample-utils/kernels/GVDBRaycast.cu",
+      "entry": "gvdbSection2D",
+      "group": "section-compositing"
+    },
+    {
+      "source": "samples/sample-utils/kernels/GVDBRaycast.cu",
+      "entry": "gvdbCompositeOver",
+      "group": "section-compositing"
+    },
+    {
+      "source": "samples/sample-utils/kernels/optix/OptixPrograms.cu",
+      "entry": "__raygen__main",
+      "group": "mixed-rt"
+    },
+    {
+      "source": "samples/sample-utils/kernels/optix/OptixPrograms.cu",
+      "entry": "__exception__main",
+      "group": "exception"
+    },
+    {
+      "source": "samples/sample-utils/kernels/optix/OptixPrograms.cu",
+      "entry": "__miss__radiance",
+      "group": "mixed-rt"
+    },
+    {
+      "source": "samples/sample-utils/kernels/optix/OptixPrograms.cu",
+      "entry": "__miss__shadow",
+      "group": "mixed-rt"
+    },
+    {
+      "source": "samples/sample-utils/kernels/optix/OptixPrograms.cu",
+      "entry": "__intersection__volume_surface",
+      "group": "mixed-rt"
+    },
+    {
+      "source": "samples/sample-utils/kernels/optix/OptixPrograms.cu",
+      "entry": "__intersection__volume_emptyskip",
+      "group": "mixed-rt"
+    },
+    {
+      "source": "samples/sample-utils/kernels/optix/OptixPrograms.cu",
+      "entry": "__intersection__volume_levelset",
+      "group": "mixed-rt"
+    },
+    {
+      "source": "samples/sample-utils/kernels/optix/OptixPrograms.cu",
+      "entry": "__intersection__volume_deep",
+      "group": "mixed-rt"
+    },
+    {
+      "source": "samples/sample-utils/kernels/optix/OptixPrograms.cu",
+      "entry": "__closesthit__surface",
+      "group": "mixed-rt"
+    },
+    {
+      "source": "samples/sample-utils/kernels/optix/OptixPrograms.cu",
+      "entry": "__closesthit__mesh",
+      "group": "mixed-rt"
+    },
+    {
+      "source": "samples/sample-utils/kernels/optix/OptixPrograms.cu",
+      "entry": "__closesthit__deep",
+      "group": "mixed-rt"
+    },
+    {
+      "source": "samples/sample-utils/kernels/optix/OptixPrograms.cu",
+      "entry": "__anyhit__shadow",
+      "group": "mixed-rt"
+    },
+    {
+      "source": "sph_fluid_pool/kernels/SPHFluidKernels.cu",
+      "entry": "insertParticles",
+      "group": "sph"
+    },
+    {
+      "source": "sph_fluid_pool/kernels/SPHFluidKernels.cu",
+      "entry": "countingSortFull",
+      "group": "sph"
+    },
+    {
+      "source": "sph_fluid_pool/kernels/SPHFluidKernels.cu",
+      "entry": "computePressure",
+      "group": "sph"
+    },
+    {
+      "source": "sph_fluid_pool/kernels/SPHFluidKernels.cu",
+      "entry": "computeForce",
+      "group": "sph"
+    },
+    {
+      "source": "sph_fluid_pool/kernels/SPHFluidKernels.cu",
+      "entry": "advanceParticles",
+      "group": "sph"
+    },
+    {
+      "source": "sph_fluid_pool/kernels/SPHFluidKernels.cu",
+      "entry": "prefixFixup",
+      "group": "algorithms"
+    },
+    {
+      "source": "sph_fluid_pool/kernels/SPHFluidKernels.cu",
+      "entry": "prefixSum",
+      "group": "algorithms"
+    }
+  ]
+}
