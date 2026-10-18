@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "VolumeViewer.h"
+#include "OwnedVolumeView.h"
 #include "VolumeSurface.h"
 #include <donut/app/DeviceManager.h>
 #include <donut/app/ApplicationBase.h>
@@ -434,7 +435,8 @@ class VolumePass : public app::IRenderPass {
                 m_options.pitch = std::clamp(m_options.pitch + dy * .006f, -1.5f, 1.5f);
             }
         } else if (m_drag == GLFW_MOUSE_BUTTON_MIDDLE) {
-            const auto c = cameraFor(m_scene->volumeInfo(), m_options);
+            const auto snapshot = m_scene->ownedSnapshot();
+            const auto c = cameraFor(snapshot ? snapshot->getDesc().volume : m_scene->volumeInfo(), m_options);
             const auto movement =
                 (-c.right * dx + c.up * dy) *
                 (2 * c.horizontal * c.radius * m_options.distanceScale / std::max(1u, m_options.width));
@@ -673,7 +675,9 @@ g::RaycastOutput renderVolumeView(es::ComputeRuntime& runtime, VolumeScene& scen
     if (o.lightDirection.x == 0 && o.lightDirection.y == 0 && o.lightDirection.z == 0)
         throw std::invalid_argument("Zero viewer light direction");
     auto transfer = scene.transfer();
-    const auto info = scene.volumeInfo();
+    const auto snapshot = scene.ownedSnapshot();
+    const auto channel = scene.ownedScalarChannel();
+    const auto info = snapshot ? snapshot->getDesc().volume : scene.volumeInfo();
     const auto camera = cameraFor(info, o);
     auto p = parameters(info, o, camera, transfer.size());
     g::validateRaycastParameters(p, transfer);
@@ -692,12 +696,21 @@ g::RaycastOutput renderVolumeView(es::ComputeRuntime& runtime, VolumeScene& scen
                 output.color->getDesc().byteSize < pixels * sizeof(g::Float4) ||
                 output.depth->getDesc().byteSize < pixels * sizeof(float))
                 throw std::invalid_argument("Custom scene output does not match the viewer image");
+        } else if (snapshot) {
+            if (o.mode == VolumeViewMode::Surface && (o.scalarBackground != 0 || scene.colorAtlas()))
+                throw std::invalid_argument("Owned colored/background level sets require a custom surface renderer");
+            output = raycastOwnedVolume(runtime, snapshot, channel, p, transfer, o.mode == VolumeViewMode::Surface);
         } else if (o.mode == VolumeViewMode::Surface && (o.scalarBackground != 0 || scene.colorAtlas()))
             output = renderVolumeSurface(runtime, scene.volume(), p, transfer, scene.colorAtlas(), o.scalarBackground);
         else
             output = scene.volume().raycast(p, transfer, o.mode == VolumeViewMode::Surface);
         if (!o.sectionInset && !o.topology && overlayLines.empty() && overlayPoints.empty())
             return output;
+    } else if (snapshot) {
+        const auto mode = o.mode == VolumeViewMode::Voxel ? OwnedVolumeViewMode::Voxel
+            : o.mode == VolumeViewMode::Section ? OwnedVolumeViewMode::Section : OwnedVolumeViewMode::Section2D;
+        output = renderOwnedVolumeView(runtime, snapshot, channel, p, transfer, mode,
+            info.boundsMin.y + (info.boundsMax.y - info.boundsMin.y) * o.sectionHeight);
     } else {
         output.width = o.width;
         output.height = o.height;
@@ -710,7 +723,7 @@ g::RaycastOutput renderVolumeView(es::ComputeRuntime& runtime, VolumeScene& scen
     // Screen overlays only need the output image. A custom snapshot renderer
     // therefore needs no duplicate typed atlas or legacy SlangVolume instance.
     nvrhi::BufferHandle transferBuffer;
-    if (!customSelected || o.sectionInset) {
+    if (!snapshot && (!customSelected || o.sectionInset)) {
         auto& volume = scene.volume();
         transferBuffer =
             runtime.buffer(transfer.size() * sizeof(g::Float4), sizeof(g::Float4), transfer.data());
@@ -727,8 +740,8 @@ g::RaycastOutput renderVolumeView(es::ComputeRuntime& runtime, VolumeScene& scen
     auto constants = settingsBuffer(runtime, settings);
     auto extended = bindings;
     extended.push_back(nvrhi::BindingSetItem::ConstantBuffer(1, constants));
-    if (o.mode == VolumeViewMode::Voxel || o.mode == VolumeViewMode::Section ||
-        o.mode == VolumeViewMode::Section2D) {
+    if (!snapshot && (o.mode == VolumeViewMode::Voxel || o.mode == VolumeViewMode::Section ||
+        o.mode == VolumeViewMode::Section2D)) {
         const char* entry = o.mode == VolumeViewMode::Voxel     ? "renderVoxel"
                             : o.mode == VolumeViewMode::Section ? "renderSection"
                                                                 : "renderSection2D";
@@ -745,11 +758,15 @@ g::RaycastOutput renderVolumeView(es::ComputeRuntime& runtime, VolumeScene& scen
     if (o.sectionInset && o.mode != VolumeViewMode::Section2D) {
         const uint32_t width = std::max(1u, o.width / 4), height = std::max(1u, o.height / 4);
         settings.rectangle = {0, o.height - height, width, height};
-        constants = settingsBuffer(runtime, settings);
-        extended = bindings;
-        extended.push_back(nvrhi::BindingSetItem::ConstantBuffer(1, constants));
-        runtime.dispatch("VolumeView", "renderSection2D", &p, sizeof(p), extended, (width + 7) / 8,
-                         (height + 7) / 8);
+        if (snapshot) {
+            drawOwnedVolumeSection(runtime, snapshot, channel, p, transfer, settings.section.y, settings.rectangle, output);
+        } else {
+            constants = settingsBuffer(runtime, settings);
+            extended = bindings;
+            extended.push_back(nvrhi::BindingSetItem::ConstantBuffer(1, constants));
+            runtime.dispatch("VolumeView", "renderSection2D", &p, sizeof(p), extended, (width + 7) / 8,
+                             (height + 7) / 8);
+        }
     }
     return output;
 }

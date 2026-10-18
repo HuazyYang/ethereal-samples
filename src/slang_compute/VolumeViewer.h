@@ -1,6 +1,7 @@
 // Shared portable GVDB display and controls. SPDX-License-Identifier: Apache-2.0
 #pragma once
 #include "ComputeRuntime.h"
+#include "../gvdb_samples/gvdb/GVDBNvrhiApi.h"
 #include "../gvdb_samples/gvdb/GVDBSlangVolume.h"
 #include <functional>
 #include <memory>
@@ -50,6 +51,12 @@ class VolumeScene {
     // Metadata and custom rendering must refer to the same retained publication
     // for the duration of renderVolumeView (including its overlays).
     virtual slang::VolumeInfo volumeInfo() { return volume().info(); }
+    // Optional canonical raw snapshot for standard density, voxel and section
+    // rendering, including the inset. The viewer retains one handle for the
+    // entire draw; its metadata overrides volumeInfo. Custom volume/surface
+    // rendering may still override the standard path using that same publication.
+    virtual portable::SnapshotHandle ownedSnapshot() const { return {}; }
+    virtual uint32_t ownedScalarChannel() const { return 0; }
     // Return true to supply topology lines directly, including an empty set.
     // False selects the legacy packed topology overlay.
     virtual bool topologyOverlay(std::vector<VolumeOverlayLine>&) const { return false; }

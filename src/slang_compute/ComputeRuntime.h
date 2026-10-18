@@ -12,7 +12,7 @@ class ComputeRuntime {
     struct Kernel {
         nvrhi::ShaderProgramHandle program;
         nvrhi::ShaderEntryPointDesc entryDesc;
-        bool raycastLayoutValidated = false;
+        bool raycastLayoutValidated = false, viewLayoutValidated = false;
         nvrhi::BindingLayoutDesc layoutDesc;
         nvrhi::BindingLayoutHandle layout;
         nvrhi::ComputePipelineHandle pipeline;
@@ -26,6 +26,7 @@ class ComputeRuntime {
     std::map<std::string, Kernel> m_kernels;
     std::map<std::tuple<nvrhi::ResourceType,uint32_t,uint32_t>, nvrhi::BufferHandle> m_defaults;
     Kernel& kernel(const char* source, const char* entry);
+    void requireVolumeKernel(const char* source, const char* entry, bool view);
 public:
     ComputeRuntime(nvrhi::IDevice* device, const std::filesystem::path& shaderPath);
     ~ComputeRuntime();
@@ -35,6 +36,8 @@ public:
     // App raycast ABI guard, before transient output allocation. Rejects typed
     // atlas shaders, extra globals, entry arguments and incompatible constants.
     void requireRaycastKernel(const char* source, const char* entry);
+    // Raw voxel/section ABI: raycast resources plus the 64-byte b1 view settings.
+    void requireViewKernel(const char* source, const char* entry);
     void dispatch(const char* source, const char* entry, const void* parameters, size_t parameterBytes,
         const std::vector<nvrhi::BindingSetItem>& bindings, uint32_t x, uint32_t y = 1, uint32_t z = 1);
     void flush();

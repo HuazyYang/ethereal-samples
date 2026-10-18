@@ -8,10 +8,12 @@ struct ViewSettings {
     uint4 flags;
 };
 ConstantBuffer<ViewSettings> g_View : register(b1);
+#if !defined(GVDB_OWNED_VIEW)
 struct Line {float4 points;float4 color;};
 StructuredBuffer<Line> g_Lines : register(t5);
 StructuredBuffer<uint2> g_TileRanges : register(t6);
 StructuredBuffer<uint> g_LineIndices : register(t7);
+#endif
 bool nearestValue(float3 position,out float value) {
     VDBNode leaf;uint index;value=0;
     if(!findLeaf(g_Nodes,g_Children,g_Levels,g_Parameters.volume,position,leaf,index))return false;
@@ -44,6 +46,11 @@ float nextVoxelBoundary(float origin,float direction,int cell) {
 void renderVoxel(uint3 id:SV_DispatchThreadID) {
     [branch] if(any(id.xy>=g_Parameters.image.xy))return;
     uint pixel=id.y*g_Parameters.image.x+id.x;
+#if defined(GVDB_OWNED_VIEW)
+    [branch] if(g_View.flags.x==0) {
+        g_Output[pixel]=g_Parameters.background;g_Depth[pixel]=asfloat(0x7f800000u);return;
+    }
+#endif
     float3 origin=g_Parameters.rayOrigin.xyz,direction=pixelDirection(id.xy);
     float enter,leave,depth=asfloat(0x7f800000u);float4 color=g_Parameters.background;
     if(intersectVolume(origin,direction,enter,leave)) {
@@ -77,6 +84,11 @@ void renderVoxel(uint3 id:SV_DispatchThreadID) {
 void renderSection(uint3 id:SV_DispatchThreadID) {
     if(any(id.xy>=g_Parameters.image.xy))return;
     uint pixel=id.y*g_Parameters.image.x+id.x;
+#if defined(GVDB_OWNED_VIEW)
+    [branch] if(g_View.flags.x==0) {
+        g_Output[pixel]=g_Parameters.background;g_Depth[pixel]=asfloat(0x7f800000u);return;
+    }
+#endif
     float3 origin=g_Parameters.rayOrigin.xyz,direction=pixelDirection(id.xy);
     float planeT=direction.y!=0?(g_View.section.y-origin.y)/direction.y:-1;
     float enter,leave,depth=asfloat(0x7f800000u);float4 base=g_Parameters.background,section=float4(0);
@@ -108,6 +120,12 @@ void renderSection2D(uint3 id:SV_DispatchThreadID) {
     if(any(id.xy>=extent))return;
     uint2 pixel=id.xy+g_View.rectangle.xy;
     if(any(pixel>=g_Parameters.image.xy))return;
+#if defined(GVDB_OWNED_VIEW)
+    [branch] if(g_View.flags.x==0) {
+        g_Output[pixel.y*g_Parameters.image.x+pixel.x]=g_Parameters.background;
+        g_Depth[pixel.y*g_Parameters.image.x+pixel.x]=asfloat(0x7f800000u);return;
+    }
+#endif
     float2 uv=(float2(id.xy)+.5)/float2(extent);
     float3 position=float3(lerp(g_Parameters.volume.boundsMin.x,g_Parameters.volume.boundsMax.x,uv.x),
         g_View.section.y,lerp(g_Parameters.volume.boundsMin.z,g_Parameters.volume.boundsMax.z,uv.y));
@@ -115,6 +133,7 @@ void renderSection2D(uint3 id:SV_DispatchThreadID) {
     g_Output[pixel.y*g_Parameters.image.x+pixel.x]=float4(color.xyz*saturate(color.w),1);
     g_Depth[pixel.y*g_Parameters.image.x+pixel.x]=0;
 }
+#if !defined(GVDB_OWNED_VIEW)
 [shader("compute")][numthreads(8,8,1)]
 void overlayTopology(uint3 id:SV_DispatchThreadID) {
     if(any(id.xy>=g_Parameters.image.xy))return;
@@ -138,3 +157,5 @@ void overlayTopology(uint3 id:SV_DispatchThreadID) {
     [branch] if(!found)return;
     g_Output[id.y*g_Parameters.image.x+id.x]=color;
 }
+
+#endif

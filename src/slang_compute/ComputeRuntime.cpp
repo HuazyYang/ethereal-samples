@@ -67,37 +67,52 @@ ComputeRuntime::Kernel& ComputeRuntime::kernel(const char* source,const char* en
     return m_kernels.emplace(name,std::move(k)).first->second;
 }
 void ComputeRuntime::requireRaycastKernel(const char* source,const char* entry) {
+    requireVolumeKernel(source,entry,false);
+}
+void ComputeRuntime::requireViewKernel(const char* source,const char* entry) {
+    requireVolumeKernel(source,entry,true);
+}
+void ComputeRuntime::requireVolumeKernel(const char* source,const char* entry,bool view) {
     auto& k=kernel(source,entry);
-    if(k.raycastLayoutValidated)return;
-    const auto require=[](bool valid){if(!valid)throw std::invalid_argument("Compute kernel raycast ABI mismatch");};
+    bool& validated=view?k.viewLayoutValidated:k.raycastLayoutValidated;
+    if(validated)return;
+    const auto require=[view](bool valid){if(!valid)throw std::invalid_argument(view?"Compute kernel view ABI mismatch":"Compute kernel raycast ABI mismatch");};
     require(k.entryDesc.threadGroupSize[0]==8 && k.entryDesc.threadGroupSize[1]==8 &&
         k.entryDesc.threadGroupSize[2]==1 && k.entryDesc.entryParamsSize==0);
     const ResourceType types[]={ResourceType::ConstantBuffer,ResourceType::RawBuffer_SRV,
         ResourceType::RawBuffer_SRV,ResourceType::RawBuffer_SRV,ResourceType::StructuredBuffer_SRV,
-        ResourceType::StructuredBuffer_SRV,ResourceType::StructuredBuffer_UAV,ResourceType::StructuredBuffer_UAV};
-    const uint32_t slots[]={0,0,1,2,3,4,0,1};
-    const uint32_t strides[]={sizeof(gvdb::slang::RaycastParameters),1,1,1,sizeof(gvdb::slang::LevelInfo),16,16,4};
-    require(k.layoutDesc.bindings.size()==8);
-    for(uint32_t i=0;i<8;++i)require(std::count_if(k.layoutDesc.bindings.begin(),k.layoutDesc.bindings.end(),
+        ResourceType::StructuredBuffer_SRV,ResourceType::StructuredBuffer_UAV,ResourceType::StructuredBuffer_UAV,
+        ResourceType::ConstantBuffer};
+    const uint32_t slots[]={0,0,1,2,3,4,0,1,1};
+    const uint32_t strides[]={sizeof(gvdb::slang::RaycastParameters),1,1,1,sizeof(gvdb::slang::LevelInfo),16,16,4,64};
+    const uint32_t count=view?9:8;
+    require(k.layoutDesc.bindings.size()==count);
+    for(uint32_t i=0;i<count;++i)require(std::count_if(k.layoutDesc.bindings.begin(),k.layoutDesc.bindings.end(),
         [&](const auto& binding){return binding.type==types[i]&&binding.slot==slots[i];})==1);
-    uint32_t globals=0,resources=0,members=0,memberMask=0,constantIndex=UINT32_MAX;
+    uint32_t globals=0,resources=0,constantIndex[2]={UINT32_MAX,UINT32_MAX};
     for(uint32_t i=0;i<k.parameters.size();++i) {
         const auto& p=k.parameters[i];require(p.registerSpace==0&&p.count==1);
-        if(p.scope==ShaderParameterScope::Global) {
-            ++globals;require(p.parentParameter==UINT32_MAX);
-            uint32_t found=8;for(uint32_t j=0;j<8;++j)if(p.resourceType==types[j]&&p.registerIndex==slots[j])found=j;
-            require(found<8);require(!(resources&(1u<<found))&&p.elementStride==strides[found]);resources|=1u<<found;
-            if(p.resourceType==ResourceType::ConstantBuffer)constantIndex=i;
-        } else {
-            require(p.scope==ShaderParameterScope::ConstantBuffer&&p.resourceType==ResourceType::None&&
-                p.size==16&&p.elementStride==16&&p.offset<sizeof(gvdb::slang::RaycastParameters)&&p.offset%16==0);
-            const uint32_t bit=1u<<(p.offset/16);require(!(memberMask&bit));memberMask|=bit;++members;
-        }
+        if(p.scope!=ShaderParameterScope::Global)continue;
+        ++globals;require(p.parentParameter==UINT32_MAX);
+        uint32_t found=count;
+        for(uint32_t j=0;j<count;++j)if(p.resourceType==types[j]&&p.registerIndex==slots[j])found=j;
+        require(found<count);require(!(resources&(1u<<found))&&p.elementStride==strides[found]);resources|=1u<<found;
+        if(p.resourceType==ResourceType::ConstantBuffer)constantIndex[p.registerIndex]=i;
     }
-    constexpr uint32_t memberCount=sizeof(gvdb::slang::RaycastParameters)/16;
-    require(globals==8&&resources==255&&members==memberCount&&memberMask==((1u<<memberCount)-1)&&constantIndex!=UINT32_MAX);
-    for(const auto& p:k.parameters)if(p.scope==ShaderParameterScope::ConstantBuffer)require(p.parentParameter==constantIndex);
-    k.raycastLayoutValidated=true;
+    require(globals==count&&resources==((1u<<count)-1)&&constantIndex[0]!=UINT32_MAX&&
+        (!view||constantIndex[1]!=UINT32_MAX));
+    uint32_t members[2]{},memberMask[2]{};
+    const uint32_t bytes[2]={sizeof(gvdb::slang::RaycastParameters),64};
+    for(const auto& p:k.parameters)if(p.scope!=ShaderParameterScope::Global) {
+        const uint32_t parent=p.parentParameter==constantIndex[0]?0:1;
+        require((!parent||view)&&p.parentParameter==constantIndex[parent]);
+        require(p.scope==ShaderParameterScope::ConstantBuffer&&p.resourceType==ResourceType::None&&
+            p.size==16&&p.elementStride==16&&p.offset<bytes[parent]&&p.offset%16==0);
+        const uint32_t bit=1u<<(p.offset/16);require(!(memberMask[parent]&bit));memberMask[parent]|=bit;++members[parent];
+    }
+    for(uint32_t i=0;i<(view?2u:1u);++i)
+        require(members[i]==bytes[i]/16&&memberMask[i]==((1u<<(bytes[i]/16))-1));
+    validated=true;
 }
 BufferHandle ComputeRuntime::buffer(size_t bytes,uint32_t stride,const void* data,bool raw) {
     if(!bytes)throw std::invalid_argument("zero-sized buffer");
