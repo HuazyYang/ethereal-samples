@@ -1,43 +1,55 @@
-﻿// Persistent sparse point fusion; topology orchestration uses the CPU, voxel math Slang.
+// Persistent point fusion through the public owned-volume and point APIs.
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 #include "PointFusionScanner.h"
-#include <gvdb/GVDBSlangVolume.h>
-#include <gvdb/GVDBSlangAtlas.h>
+#include <gvdb/GVDBNvrhiPointApi.h>
+#include <filesystem>
 #include <memory>
-#include <set>
-#include <tuple>
-namespace gvdb::samples {
-struct PointFusionConfiguration {
+namespace gvdb::samples
+{
+struct PointFusionConfiguration
+{
     float radius = 1, support = 2;
     bool color = false;
 };
-class PointFusionVolume {
-    using Coordinate = std::tuple<int32_t, int32_t, int32_t>;
-    ethereal::slang::ComputeRuntime* m_runtime;
+class PointFusionVolume
+{
+    struct State;
+    ethereal::slang::ComputeRuntime *m_runtime;
     PointFusionConfiguration m_configuration;
-    std::set<Coordinate> m_leaves;
-    slang::PackedVolume m_packed;
-    std::unique_ptr<slang::SlangVolume> m_volume;
-    std::unique_ptr<slang::SlangAtlas> m_color;
+    std::filesystem::path m_artifacts;
+    std::unique_ptr<State> m_state;
     uint64_t m_frames = 0, m_hits = 0;
-    std::vector<slang::Float4> m_lastPositions;
-    std::vector<uint32_t> m_lastColors;
+    std::unique_ptr<State> createState(bool color);
 
- public:
-    explicit PointFusionVolume(ethereal::slang::ComputeRuntime&, PointFusionConfiguration = {});
-    // Input is compact and valid; positions at the origin are accepted. Empty
-    // frames advance statistics but do not alter any existing atlas or topology.
-    void fuse(const ScanFrame& frame);
+  public:
+    explicit PointFusionVolume(ethereal::slang::ComputeRuntime &, PointFusionConfiguration = {},
+                               std::filesystem::path artifacts = {});
+    ~PointFusionVolume();
+    // Compact scanner output is explicitly staged to CPU, then converted into an
+    // owned PointSet. Publication is atomic per operator, not per multi-step frame.
+    // A failed post-topology operation leaves the last rendered snapshot intact;
+    // reset is required before another fuse. Device failures cannot be rolled back.
+    void fuse(const ScanFrame &);
     void reset(bool color);
-    bool hasVolume() const { return bool(m_volume); }
-    slang::SlangVolume& volume() const;
-    const slang::PackedVolume& packed() const { return m_packed; }
-    slang::SlangAtlas* colorAtlas() const { return m_color.get(); }
-    bool useColor() const { return m_configuration.color; }
-    const std::vector<slang::Float4>& lastPositions() const { return m_lastPositions; }
-    const std::vector<uint32_t>& lastColors() const { return m_lastColors; }
-    uint64_t frames() const { return m_frames; }
-    uint64_t totalHits() const { return m_hits; }
+    bool hasVolume() const;
+    portable::SnapshotHandle snapshot() const;
+    const portable::IGVDBHostVolume &topology() const;
+    portable::PointSetHandle lastPoints() const;
+    // Test/export convenience: explicit synchronous public readback of the current
+    // retained snapshot. The core API itself never waits or owns our command list.
+    portable::ReadbackHandle readback(uint32_t channelMask) const;
+    bool useColor() const
+    {
+        return m_configuration.color;
+    }
+    uint64_t frames() const
+    {
+        return m_frames;
+    }
+    uint64_t totalHits() const
+    {
+        return m_hits;
+    }
 };
-}  // namespace gvdb::samples
+} // namespace gvdb::samples

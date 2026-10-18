@@ -1,4 +1,4 @@
-﻿// Procedural city scanning and persistent Slang point fusion through NVRHI.
+// Procedural city scanning and persistent Slang point fusion through NVRHI.
 // SPDX-License-Identifier: Apache-2.0
 #include "PointFusionScene.h"
 #include "PointFusionTests.h"
@@ -106,8 +106,8 @@ int main(int argc, const char** argv) {
             for (size_t i = 0; i < pixels.size(); ++i) {
                 const auto& p = pixels[i];
                 if (!std::isfinite(p.x) || !std::isfinite(p.y) || !std::isfinite(p.z) || !std::isfinite(p.w) ||
-                    std::isnan(depth[i]))
-                    throw std::runtime_error("Point-fusion render contains nonfinite color or NaN depth");
+                    (!std::isfinite(depth[i]) && !(std::isinf(depth[i]) && depth[i] > 0)))
+                    throw std::runtime_error("Point-fusion render contains nonfinite color or invalid depth");
                 if (std::isfinite(depth[i]))
                     ++hits;
             }

@@ -1,7 +1,8 @@
 # Slang point-fusion example
 
 The original 3,028-box procedural city is scanned on the GPU and fused into a
-persistent sparse level set through the public NVRHI runtime. D3D11, D3D12,
+persistent sparse level set through the public `IGVDBVolume`, `IGVDBPointOps`,
+`IGVDBGather`, and `IGVDBApronOps` interfaces. D3D11, D3D12,
 Vulkan and CUDA share the same Slang scanner, compaction, atlas remap and gather
 kernels. CUDA provides the headless path; graphics APIs also provide a window.
 
@@ -30,14 +31,25 @@ scanner angles, middle dragging changes its height in `[0,500]` and stops it,
 and right dragging changes speed. In orbit mode, those buttons orbit, pan and
 change distance. The wheel adjusts speed in FPV and distance in orbit.
 
-Topology is a CPU-managed union of 32-voxel support leaves, matching the
+The public owner manages a persistent union of 32-voxel support leaves, matching the
 legacy `fromBranching(3,3,3,3,5)` argument order (root to leaf). Each leaf
 contains 512 subcells of width 4. Subcell lists are built in
 stable scan order on the CPU, while scalar/color fusion runs in Slang. A GPU
 remap preserves prior scalar and raw RGBA values when the root or atlas layout
 changes. New voxels start at distance 3 and transparent black. All channels
 share the same topology. These host steps are deliberate migration choices;
-they can later become GPU-resident without changing the data contract.
+the app stages compact scanner outputs explicitly, converts them to a retained
+public PointSet, then records topology accumulation, gather, and apron updates.
+It has no second SlangVolume, PackedVolume, or SlangAtlas owner. Immutable
+snapshots supply both the raw scalar/color buffers and rendering metadata.
+Point overlays borrow the retained PointSet; topology overlays use the public
+host graph and refresh on topology revision changes.
+
+Preparation/publication is atomic per operation, not across the whole scan. If
+a later operation fails after topology publication, the last completed display
+snapshot remains retained and scanning requires reset. Ordered submissions use
+the same graphics queue. The explicit point conversion/readback staging phase
+waits before CPU topology work; rendering adds no hidden owner queue.
 
 The scanner fixes the original shared-seed race with one LCG state per pixel.
 It explicitly marks misses and compacts valid hits, so a real point at the
@@ -52,15 +64,24 @@ The surface renderer treats missing sparse space as distance 3 and samples the
 raw RGBA channel with the original point filtering. The viewer uses
 its portable lighting rather than the legacy CUDA Phong/shadow implementation;
 point overlays are small screen-space glyphs rather than voxel-length ticks.
-The empty-volume display uses a uniform far-distance buffer while reporting zero
-actual bricks and no valid fused volume. It never inserts fabricated scan points.
+The empty-volume display uses an actual empty published snapshot. The raw surface
+kernel emits the requested background and positive-infinite depth before any
+topology access; no dummy leaf or fabricated scan point is inserted.
 
 `--self-test` compares jittered scan hits, packed colors, compact pixel order and
 LCG state against independent CPU slabs. Persistent fusion tests cover repeated
 scans, negative coordinates, root/atlas relocation, scalar/color aprons, invalid
-and empty scans, and channel reset. Input fixtures cover FPV/orbit/Shift
+and empty scans, and channel reset. They also check fractional support coverage
+across positive/negative leaf boundaries, monotonic channel revisions, and
+retained old buffer bytes after later publication and owner replacement. Input fixtures cover FPV/orbit/Shift
 precedence and camera/speed clamps. CTest also executes two full-resolution city
 scans on every enabled API and requires finite rendered surface hits. See
 `docs/point-fusion-slang-plan.md` for the complete migration and test contract.
 
+The remap, point conversion, gather, apron mutation, and raw surface artifacts
+are production dependencies and are generated with `BUILD_TESTING=OFF`,
+including graphics-only builds without CUDA SDK discovery.
+
 `legacy-main.cpp` and `PointFusionScan.cu` retain the previous non-Slang build.
+`PointFusionUpdate.slang` remains as the prior portable gather reference; the
+application now dispatches the shared public gather implementation.
