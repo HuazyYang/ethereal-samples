@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-#include "GVDBNvrhiApi.h"
+#include "GVDBNvrhiApiInternal.h"
 #include "GVDBNvrhiVolume.h"
 #include <nvrhi/core/foundation.h>
 #include <new>
@@ -131,18 +131,22 @@ class Readback final : public ObjectImpl<IGVDBReadback> {
         return FS_OK;
     }
 };
+NVRHI_CLASS_CLSID(Volume, "d52f11a7-e0c9-4ed3-8063-30cc1575fb1c")
 class Volume final : public ObjectImpl<IGVDBVolume> {
     IDevice* m_device; // The composed NvrhiVolume owns the device reference.
     std::unique_ptr<NvrhiVolume> m_volume;
     HostVolume& host() noexcept { return m_volume->host(); }
     const HostVolume& host() const noexcept { return static_cast<const NvrhiVolume&>(*m_volume).host(); }
  public:
+    NVRHI_DECLARE_UUID_TRAITS(Volume)
     NVRHI_BEGIN_INTERFACE_TABLE_INLINE(Volume)
         NVRHI_IMPLEMENTS_INTERFACE(IGVDBVolume)
         NVRHI_IMPLEMENTS_INTERFACE(IGVDBHostVolume)
         NVRHI_IMPLEMENTS_INTERFACE(IRHIObject)
+        NVRHI_IMPLEMENTS_CLASS(Volume)
     NVRHI_END_INTERFACE_TABLE()
     Volume(IDevice* device, std::unique_ptr<NvrhiVolume> value) noexcept : m_device(device), m_volume(std::move(value)) {}
+    NvrhiVolume& core() noexcept { return *m_volume; }
     IDevice* getDevice() const noexcept override { return m_device; }
     FRESULT configure(const LevelConfig& config) noexcept override { return host().configure(config); }
     FRESULT clearTopology() noexcept override { return host().clear(); }
@@ -216,8 +220,7 @@ class Volume final : public ObjectImpl<IGVDBVolume> {
             request.uploads = uploads.data(); request.uploadCount = uploads.size();
             std::unique_ptr<PreparedGeneration> prepared;
             check(m_volume->prepareGeneration(request,prepared));
-            auto result = MAKE_RC_OBJ_PTR(GenerationTicket,m_device,std::move(prepared));
-            *output = result.Detach(); return FS_OK;
+            return detail::wrapGeneration(m_device,std::move(prepared),output);
         });
     }
     FRESULT recordAndPublish(RecordingContext context, IGVDBGenerationTicket* ticket) noexcept override {
@@ -255,6 +258,28 @@ class Volume final : public ObjectImpl<IGVDBVolume> {
     }
 };
 }
+namespace detail {
+nvrhi::FRESULT resolveVolume(IGVDBVolume* volume, NvrhiVolume** output) noexcept {
+    if (!output) return nvrhi::FE_INVALID_ARGS;
+    *output = nullptr;
+    return guarded([&] {
+        const auto owner = implementation<Volume>(volume);
+        *output = &owner->core();
+        return nvrhi::FS_OK;
+    });
+}
+nvrhi::FRESULT wrapGeneration(nvrhi::IDevice* device, std::unique_ptr<PreparedGeneration> prepared,
+                             IGVDBGenerationTicket** output) noexcept {
+    if (!output) return nvrhi::FE_INVALID_ARGS;
+    *output = nullptr;
+    return guarded([&] {
+        require(device && prepared);
+        auto result = MAKE_RC_OBJ_PTR(GenerationTicket,device,std::move(prepared));
+        *output = result.Detach();
+        return nvrhi::FS_OK;
+    });
+}
+} // namespace detail
 uint32_t gvdbGetNvrhiApiVersion() noexcept { return c_GVDBNvrhiApiVersion; }
 nvrhi::FRESULT gvdbCreateNvrhiVolume(uint32_t apiVersion, const VolumeCreateDesc* desc, IGVDBVolume** output) noexcept {
     if (!output) return nvrhi::FE_INVALID_ARGS;

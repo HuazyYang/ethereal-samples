@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "GVDBNvrhiVolume.h"
+#include "GVDBNvrhiMutationInternal.h"
 #include <nvrhi/shader-program.h>
 #include <algorithm>
 #include <cstring>
@@ -27,7 +28,7 @@ bool sameRevision(const TopologyRevision& a, const TopologyRevision& b) {
 }
 struct OwnerIdentity {};
 struct Upload { BufferHandle buffer; std::vector<uint8_t> bytes; };
-struct Dispatch { BindingSetHandle bindings; uint32_t x = 0, y = 0; };
+struct Dispatch { ComputePipelineHandle pipeline; BindingSetHandle bindings; uint32_t x = 0, y = 0, z = 1; };
 struct Placement {
     PackedHostTopology topology;
     std::vector<slang::AtlasNode> map;
@@ -171,7 +172,7 @@ struct VolumeGeneration::Impl {
     // Destruction releases the retained device last through SnapshotBindings.
     SnapshotBindings bindings;
     std::shared_ptr<OwnerIdentity> owner;
-    Placement placement;
+    std::shared_ptr<const Placement> placement;
     std::array<uint64_t, c_MaxChannels> incarnations{};
     uint64_t serial = 0;
 };
@@ -183,7 +184,6 @@ struct PreparedGeneration::Impl {
     std::shared_ptr<VolumeGeneration> generation;
     std::vector<Upload> uploads;
     std::vector<Dispatch> dispatches;
-    ComputePipelineHandle pipeline;
     bool consumed = false;
 };
 struct PreparedReadback::Impl {
@@ -328,16 +328,16 @@ FRESULT NvrhiVolume::prepareGeneration(const GenerationRequest& request, std::un
         ticket->baseSerial = state.serial;
         ticket->channelRevision = state.channelRevision;
         ticket->hostRevision = state.host.revision();
-        ticket->pipeline = state.pipeline;
         auto generation = std::make_unique<VolumeGeneration::Impl>();
         generation->owner = state.owner;
         generation->serial = advance(state.serial);
         generation->incarnations = state.incarnations;
-        generation->placement = place(state.host, request.placement);
-        auto& placed = generation->placement;
+        auto placedStorage = std::make_shared<Placement>(place(state.host, request.placement));
+        generation->placement = placedStorage;
+        auto& placed = *placedStorage;
         if (request.placement.preserve && state.current && state.current->bindings().activeLeafCount &&
             placed.topology.activeLeafCount)
-            require(state.current->m_impl->placement.topology.levels[0].nodeExtent.x == placed.topology.levels[0].nodeExtent.x,
+            require(state.current->m_impl->placement->topology.levels[0].nodeExtent.x == placed.topology.levels[0].nodeExtent.x,
                 FE_UNSUPPORTED);
         auto& bindings = generation->bindings;
         bindings.device = state.device;
@@ -385,7 +385,7 @@ FRESULT NvrhiVolume::prepareGeneration(const GenerationRequest& request, std::un
             std::map<Origin, Int3> oldByOrigin;
             bool compatible = false;
             if (request.placement.preserve && state.current && state.current->bindings().activeLeafCount) {
-                const auto& old = state.current->m_impl->placement.topology;
+                const auto& old = state.current->m_impl->placement->topology;
                 compatible = old.levels[0].nodeExtent.x == placed.topology.levels[0].nodeExtent.x;
                 if (compatible) for (uint32_t index = 0; index < old.levels[0].nodes.z; ++index) {
                     const Node node = readNode(old, 0, index);
@@ -437,6 +437,7 @@ FRESULT NvrhiVolume::prepareGeneration(const GenerationRequest& request, std::un
                 desc.addItem(BindingSetItem::RawBuffer_SRV(5, source));
                 desc.addItem(BindingSetItem::RawBuffer_UAV(0, binding.raw.buffer));
                 Dispatch dispatch;
+                dispatch.pipeline = state.pipeline;
                 check(state.device->createBindingSet(desc, state.layout, &dispatch.bindings));
                 const uint32_t groups = (parameters.work.y + 255u) / 256u;
                 dispatch.x = std::min(groups, 65535u);
@@ -461,8 +462,8 @@ FRESULT NvrhiVolume::recordAndPublish(RecordingContext context, PreparedGenerati
         for (const auto& upload : ticket.uploads)
             context.commands->writeBuffer(upload.buffer, upload.bytes.data(), upload.bytes.size());
         for (const auto& dispatch : ticket.dispatches) {
-            context.commands->setComputeState(ComputeState().setPipeline(ticket.pipeline).addBindingSet(dispatch.bindings));
-            context.commands->dispatch(dispatch.x, dispatch.y, 1);
+            context.commands->setComputeState(ComputeState().setPipeline(dispatch.pipeline).addBindingSet(dispatch.bindings));
+            context.commands->dispatch(dispatch.x, dispatch.y, dispatch.z);
         }
         state.current = ticket.generation;
         state.serial = ticket.generation->m_impl->serial;
@@ -518,6 +519,94 @@ FRESULT NvrhiVolume::finishReadbackAfterCompletion(PreparedReadback& prepared, C
         }
         output = std::move(candidate);
         impl.completed = true;
+    });
+}
+
+// Private builder for trusted operator implementations. Source/destination buffers
+// are always authenticated owner allocations; publication stays in recordAndPublish.
+struct detail::VolumeMutationBuilder::Impl {
+    std::shared_ptr<const VolumeGeneration> source;
+    std::unique_ptr<PreparedGeneration::Impl> ticket;
+    std::unique_ptr<Allocator> allocator;
+    bool work = false;
+};
+detail::VolumeMutationBuilder::VolumeMutationBuilder(std::unique_ptr<Impl> impl) noexcept : m_impl(std::move(impl)) {}
+detail::VolumeMutationBuilder::~VolumeMutationBuilder() = default;
+IDevice* detail::VolumeMutationBuilder::device(const NvrhiVolume& volume) noexcept { return volume.m_impl->device; }
+FRESULT detail::VolumeMutationBuilder::begin(NvrhiVolume& volume, uint32_t writeMask, const PreparationBudget& budget,
+                                            std::unique_ptr<VolumeMutationBuilder>& output) noexcept {
+    return guarded([&] {
+        auto& state = *volume.m_impl;
+        require(bool(state.current), FE_NOT_ALIVE_OBJECT);
+        require(!state.host.dirty() && sameRevision(state.host.revision(), state.current->m_impl->placement->topology.revision));
+        require(state.mask == state.current->bindings().channelMask && state.incarnations == state.current->m_impl->incarnations);
+        require(!(writeMask & ~state.mask), FE_NOT_FOUND);
+        auto impl = std::make_unique<Impl>();
+        impl->source = state.current;
+        impl->ticket = std::make_unique<PreparedGeneration::Impl>();
+        auto& ticket = *impl->ticket;
+        ticket.device = state.device;
+        ticket.owner = state.owner;
+        ticket.baseSerial = state.serial;
+        ticket.channelRevision = state.channelRevision;
+        ticket.hostRevision = state.host.revision();
+        impl->allocator = std::make_unique<Allocator>(Allocator{state.device, budget, 0, 0, &ticket.uploads});
+        impl->work = writeMask != 0 && state.current->bindings().activeLeafCount != 0;
+        if (impl->work) {
+            auto generation = std::make_unique<VolumeGeneration::Impl>(*state.current->m_impl);
+            generation->serial = advance(state.serial);
+            // Shared immutable placement avoids both full CPU topology copies and
+            // old-generation chains during long sequences of channel-only edits.
+            for (uint32_t channel = 0; channel < c_MaxChannels; ++channel) {
+                if (!(writeMask & (uint32_t(1) << channel))) continue;
+                auto& binding = generation->bindings.channels[channel];
+                binding.raw = view(impl->allocator->create(binding.storage.allocatedBytes, 0, true));
+                binding.revision = {generation->serial, generation->serial};
+            }
+            ticket.generation = std::shared_ptr<VolumeGeneration>(new VolumeGeneration(std::move(generation)));
+        } else ticket.generation = state.current;
+        auto candidate = std::unique_ptr<VolumeMutationBuilder>(new VolumeMutationBuilder(std::move(impl)));
+        output = std::move(candidate);
+    });
+}
+const SnapshotBindings& detail::VolumeMutationBuilder::sourceBindings() const noexcept { return m_impl->source->bindings(); }
+const SnapshotBindings& detail::VolumeMutationBuilder::destinationBindings() const noexcept {
+    return m_impl->ticket->generation->bindings();
+}
+bool detail::VolumeMutationBuilder::hasWork() const noexcept { return m_impl->work; }
+FRESULT detail::VolumeMutationBuilder::allocate(uint64_t bytes, uint32_t stride, bool raw, bool constant,
+                                               BufferHandle& output) noexcept {
+    return guarded([&] {
+        require(m_impl->ticket && m_impl->work, FE_NOT_ALIVE_OBJECT);
+        auto candidate = m_impl->allocator->create(bytes, stride, raw, constant);
+        output = std::move(candidate);
+    });
+}
+FRESULT detail::VolumeMutationBuilder::upload(const void* data, uint64_t bytes, uint32_t stride, bool raw,
+                                             bool constant, BufferHandle& output) noexcept {
+    return guarded([&] {
+        require(m_impl->ticket && m_impl->work, FE_NOT_ALIVE_OBJECT);
+        auto candidate = m_impl->allocator->upload(data, bytes, stride, raw, constant);
+        output = std::move(candidate);
+    });
+}
+FRESULT detail::VolumeMutationBuilder::appendDispatch(IComputePipeline* pipeline, IBindingSet* bindings,
+                                                     uint32_t x, uint32_t y, uint32_t z) noexcept {
+    return guarded([&] {
+        require(m_impl->ticket && m_impl->work, FE_NOT_ALIVE_OBJECT);
+        require(pipeline && bindings && x && y && z && x <= 65535 && y <= 65535 && z <= 65535);
+        m_impl->ticket->dispatches.push_back({pipeline, bindings, x, y, z});
+    });
+}
+FRESULT detail::VolumeMutationBuilder::finish(std::unique_ptr<PreparedGeneration>& output) noexcept {
+    return guarded([&] {
+        require(bool(m_impl->ticket), FE_NOT_ALIVE_OBJECT);
+        require(!m_impl->work || !m_impl->ticket->dispatches.empty());
+        // Allocate the facade object before moving the ticket so bad_alloc leaves
+        // the builder intact. No-op tickets remain unconsumed until recording.
+        auto candidate = std::unique_ptr<PreparedGeneration>(new PreparedGeneration(nullptr));
+        candidate->m_impl = std::move(m_impl->ticket);
+        output = std::move(candidate);
     });
 }
 } // namespace gvdb::portable

@@ -38,6 +38,7 @@ struct GenerationRequest {
     PreparationBudget budget;
 };
 class NvrhiVolume;
+namespace detail { class VolumeMutationBuilder; }
 class PreparedGeneration {
  public:
     ~PreparedGeneration();
@@ -48,6 +49,7 @@ class PreparedGeneration {
     std::unique_ptr<Impl> m_impl;
     explicit PreparedGeneration(std::unique_ptr<Impl>) noexcept;
     friend class NvrhiVolume;
+    friend class detail::VolumeMutationBuilder;
 };
 // Authenticated retained generation. Bindings and buffers survive the publishing owner.
 // The binding description is immutable; its GPU contents obey caller queue ordering.
@@ -62,6 +64,7 @@ class VolumeGeneration {
     std::unique_ptr<Impl> m_impl;
     explicit VolumeGeneration(std::unique_ptr<Impl>) noexcept;
     friend class NvrhiVolume;
+    friend class detail::VolumeMutationBuilder;
 };
 class PreparedReadback {
  public:
@@ -118,5 +121,6 @@ class NvrhiVolume {
     struct Impl;
     std::unique_ptr<Impl> m_impl;
     explicit NvrhiVolume(std::unique_ptr<Impl>) noexcept;
+    friend class detail::VolumeMutationBuilder;
 };
 } // namespace gvdb::portable
