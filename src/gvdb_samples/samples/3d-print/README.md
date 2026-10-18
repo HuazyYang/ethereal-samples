@@ -1,7 +1,7 @@
 # Slang 3D-print example
 
 The example loads the original `lucy.obj`, runs the portable GPU solid voxelizer,
-constructs a sparse scalar atlas, and renders through the shared volume viewer.
+publishes a public owned sparse scalar snapshot, and renders through the shared volume viewer.
 D3D11, D3D12, Vulkan and CUDA use the same Slang compute kernels. CUDA uses the
 headless image path; graphics backends also provide an interactive window.
 
@@ -55,3 +55,24 @@ The corrected leaf32 analytic and Lucy asset cases pass on all four APIs. See
 aggregate build directory. Earlier leaf8 screenshots are superseded. Corrected CUDA
 Compute Sanitizer runs report zero errors for the analytic cube and Lucy asset:
 `corrected-print-analytic-memcheck.log` and `corrected-print-lucy-memcheck.log`.
+
+The current ownership path retains no PackedVolume, SlangVolume or duplicate GPU
+atlas. A fresh public IGVDBVolume activates leaf masks derived from the completed
+dense classification. Initial storage and a public IGVDBResample upload publish
+on caller-owned commands in queue order, with an origin translation and zero
+outside background. The viewer reads one retained raw snapshot; topology overlays
+read public host nodes. CPU atlas/map copies exist only during verification.
+
+A rebuild replaces the visible owner only after both publications are submitted.
+Preparation failure preserves the old visible state; submitted device failures
+are not recoverable transactions. Publication does not mean completion. Explicit
+classification and verification readbacks wait through NVRHI; same-queue rendering
+observes ordered publications. Tests retain old snapshot bytes across a valid
+rebuild and verify that an invalid voxel size leaves the prior visible identity
+and configuration unchanged. `--frames N` bounds graphics windows for validation.
+
+Production artifacts build with tests and CUDA Toolkit discovery disabled. The
+mesh binning/solid voxelization helper still uses ComputeRuntime with explicit
+classification readback; a public mesh voxelization operator and its multi-stage
+completion contract remain outstanding. This checkpoint validates consumer
+ownership, not completion of the voxelization replacement or reference retirement.

@@ -1,8 +1,8 @@
-﻿// Indexed mesh -> GPU solid voxels -> sparse scalar topology, without gp/CUDA setup.
+// Indexed mesh -> GPU solid voxels -> sparse scalar topology, without gp/CUDA setup.
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 #include <gvdb/GVDBSlangVoxelizer.h>
-#include <gvdb/GVDBSlangVolume.h>
+#include <gvdb/GVDBNvrhiApi.h>
 #include <sample-utils/ObjLoader.h>
 #include <memory>
 #include <filesystem>
@@ -17,8 +17,8 @@ class PrintVolume {
     std::vector<uint32_t> m_indices;
     donut::math::box3 m_bounds;
     PrintConfiguration m_configuration;
-    slang::PackedVolume m_packed;
-    std::unique_ptr<slang::SlangVolume> m_volume;
+    struct State;
+    std::unique_ptr<State> m_state;
     std::vector<float> m_dense;
     slang::UInt4 m_resolution{};
     slang::Int4 m_origin{};
@@ -28,8 +28,11 @@ class PrintVolume {
     PrintVolume(ethereal::slang::ComputeRuntime& runtime, const SampleUtils::TriangleMesh& mesh,
                 PrintConfiguration configuration = {});
     void rebuild(float voxelSize);
-    slang::SlangVolume& volume() const { return *m_volume; }
-    const slang::PackedVolume& packed() const { return m_packed; }
+    ~PrintVolume();
+    portable::SnapshotHandle snapshot() const;
+    const portable::IGVDBHostVolume& topology() const;
+    std::vector<float> readAtlas();
+    std::vector<slang::AtlasNode> readAtlasMap();
     const std::vector<float>& dense() const { return m_dense; }
     slang::UInt4 resolution() const { return m_resolution; }
     slang::Int4 origin() const { return m_origin; }

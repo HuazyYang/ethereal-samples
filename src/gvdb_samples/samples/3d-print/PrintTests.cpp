@@ -5,6 +5,7 @@
 #include "../../tests/VoxelizeFixtures.h"
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <stdexcept>
 namespace gvdb::samples {
 namespace {
@@ -16,8 +17,7 @@ class CubeScene final : public sample::VolumeScene {
     CubeScene(ethereal::slang::ComputeRuntime& runtime, const SampleUtils::TriangleMesh& mesh,
               PrintConfiguration c)
         : m_pipeline(runtime, mesh, c) {}
-    SlangVolume& volume() override { return m_pipeline.volume(); }
-    const PackedVolume& packed() const override { return m_pipeline.packed(); }
+    portable::SnapshotHandle ownedSnapshot() const override { return m_pipeline.snapshot(); }
     std::vector<Float4> transfer() const override {
         return {
             {0, 0, 0, 1},
@@ -54,28 +54,40 @@ void testCube(ethereal::slang::ComputeRuntime& runtime, Float4 translation) {
             for (int x = 0; x < 32; ++x)
                 if (pipeline.dense()[size_t((z * 32 + y) * 32 + x)] != cubeValue(x, y, z))
                     throw std::runtime_error("Print cube dense voxel classification differs");
-    const auto& packed = scene.packed();
-    if (packed.levels[0].nodeExtent.x != 32 || packed.volume.atlasBrickCountAndWidth.w != 34)
+    const auto snapshot = pipeline.snapshot()->getDesc();
+    portable::LevelInfo level;
+    if (NVRHI_FAILED(pipeline.snapshot()->getLevel(0, level)))
+        throw std::runtime_error("Print snapshot level");
+    if (level.nodeExtent.x != 32 || snapshot.volume.atlasBrickCountAndWidth.w != 34)
         throw std::runtime_error("Legacy fromBranching(...,5) requires leaf32/apron34");
-    if (packed.levels[0].nodes.z != 1)
+    if (snapshot.activeLeafCount != 1)
         throw std::runtime_error("Print cube did not activate exactly one leaf");
     const auto origin = pipeline.origin();
-    const auto& map = packed.atlasMap.at(0);
-    const auto* leaf = packed.nodes.data() + packed.levels[0].nodes.x / 4;
+    const auto maps = pipeline.readAtlasMap();
+    const auto& map = maps.at(0);
+    portable::NodeId id;
+    portable::NodeId::encode(0, 0, 0, id);
+    const auto* leaf = pipeline.topology().getNode(id);
+    if (!leaf)
+        throw std::runtime_error("Print leaf node");
     const int32_t expectedOrigin[] = {int32_t(translation.x), int32_t(translation.y), int32_t(translation.z)};
     const int32_t actualOrigin[] = {origin.x, origin.y, origin.z}, mapOrigin[] = {map.x, map.y, map.z};
-    const float lower[] = {packed.volume.boundsMin.x, packed.volume.boundsMin.y, packed.volume.boundsMin.z};
-    const float upper[] = {packed.volume.boundsMax.x, packed.volume.boundsMax.y, packed.volume.boundsMax.z};
+    const float lower[] = {snapshot.volume.boundsMin.x, snapshot.volume.boundsMin.y,
+                           snapshot.volume.boundsMin.z};
+    const float upper[] = {snapshot.volume.boundsMax.x, snapshot.volume.boundsMax.y,
+                           snapshot.volume.boundsMax.z};
     for (size_t axis = 0; axis < 3; ++axis)
-        if (actualOrigin[axis] != expectedOrigin[axis] || int32_t(leaf[1 + axis]) != expectedOrigin[axis] ||
+        if (actualOrigin[axis] != expectedOrigin[axis] ||
+            (axis == 0   ? leaf->position.x
+             : axis == 1 ? leaf->position.y
+                         : leaf->position.z) != expectedOrigin[axis] ||
             mapOrigin[axis] != expectedOrigin[axis] || lower[axis] != float(expectedOrigin[axis]) ||
             upper[axis] != float(expectedOrigin[axis] + 32))
             throw std::runtime_error(
                 "Print signed origin, node, atlas map or world bounds did not preserve translation");
     if (map.leaf != 0)
         throw std::runtime_error("Print atlas map leaf reference differs");
-    scene.volume().updateApron();
-    const auto atlas = scene.volume().readAtlas();
+    const auto atlas = pipeline.readAtlas();
     for (int z = 0; z < 34; ++z)
         for (int y = 0; y < 34; ++y)
             for (int x = 0; x < 34; ++x)
@@ -101,6 +113,25 @@ void testCube(ethereal::slang::ComputeRuntime& runtime, Float4 translation) {
                 depth[size_t(z * 32 + x)] != 0)
                 throw std::runtime_error("Print section pixels differ from analytic cube cross-section");
         }
+    const auto retained = pipeline.snapshot();
+    bool rejected = false;
+    try {
+        pipeline.rebuild(-1);
+    } catch (const std::invalid_argument&) {
+        rejected = true;
+    }
+    if (!rejected || pipeline.snapshot().Get() != retained.Get() || pipeline.voxelSize() != 1)
+        throw std::runtime_error("Invalid print rebuild replaced visible state");
+    pipeline.rebuild(1);
+    portable::ChannelSnapshotDesc oldChannel;
+    if (NVRHI_FAILED(retained->getChannel(0, oldChannel)) ||
+        oldChannel.raw.byteSize != atlas.size() * sizeof(float))
+        throw std::runtime_error("Retained print channel");
+    std::vector<uint8_t> oldBytes(size_t(oldChannel.raw.byteOffset + oldChannel.raw.byteSize));
+    runtime.read(oldChannel.raw.buffer, oldBytes.data(), oldBytes.size());
+    if (std::memcmp(oldBytes.data() + size_t(oldChannel.raw.byteOffset), atlas.data(),
+                    atlas.size() * sizeof(float)))
+        throw std::runtime_error("Print rebuild mutated retained snapshot");
     std::printf("PASS print cube: 56 surface/8 interior voxels, sparse apron and section at origin(%d,%d,%d)\n",
                 pipeline.origin().x, pipeline.origin().y, pipeline.origin().z);
 }

@@ -1,13 +1,121 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "PrintVolume.h"
 #include "ComputeRuntime.h"
-#include <gvdb/slang/GVDBTopologyBuilder.h>
+#include <gvdb/GVDBNvrhiResampleApi.h>
+#include <donut/app/ApplicationBase.h>
+#include <cstring>
+#include <fstream>
+#include <iterator>
 #include <nvrhi/core/autoptr.h>
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
 namespace gvdb::samples {
 using namespace slang;
+namespace p = portable;
+namespace {
+void check(nvrhi::FRESULT r, const char* what) {
+    if (NVRHI_FAILED(r))
+        throw std::runtime_error(std::string(what) + ": " + std::to_string(r));
+}
+std::vector<char> artifact(ethereal::slang::ComputeRuntime& runtime, const char* directory, const char* name) {
+    auto path = donut::app::GetDirectoryWithExecutable() / "shaders" / directory /
+                donut::app::GetShaderTypeName(runtime.device()->getGraphicsAPI()) / name;
+    std::ifstream file(path, std::ios::binary);
+    if (!file)
+        throw std::runtime_error("Missing print artifact: " + path.string());
+    return {(std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>()};
+}
+template <class F>
+void submit(nvrhi::IDevice* device, nvrhi::ICommandList* commands, F&& record, bool wait = false) {
+    struct Close {
+        nvrhi::ICommandList* list;
+        bool open = false;
+        ~Close() {
+            if (open)
+                list->close();
+        }
+    } scope{commands};
+    commands->open();
+    scope.open = true;
+    record(p::RecordingContext{device, commands});
+    commands->close();
+    scope.open = false;
+    if (!device->executeCommandList(commands) && device->getGraphicsAPI() != nvrhi::GraphicsAPI::D3D11)
+        throw std::runtime_error("Print submission failed");
+    if (wait) {
+        if (!device->waitForIdle())
+            throw std::runtime_error("Print completion failed");
+        device->runGarbageCollection();
+    }
+}
+}  // namespace
+struct PrintVolume::State {
+    nvrhi::DeviceHandle device;
+    nvrhi::CommandListHandle commands;
+    p::VolumeHandle owner;
+    p::SnapshotHandle visible;
+    void publish(p::IGVDBGenerationTicket* ticket) {
+        submit(device, commands, [&](p::RecordingContext context) {
+            check(owner->recordAndPublish(context, ticket), "Print publication");
+        });
+    }
+};
+PrintVolume::~PrintVolume() = default;
+p::SnapshotHandle PrintVolume::snapshot() const { return m_state ? m_state->visible : p::SnapshotHandle{}; }
+const p::IGVDBHostVolume& PrintVolume::topology() const {
+    if (!m_state)
+        throw std::logic_error("No print publication");
+    return *m_state->owner;
+}
+std::vector<float> PrintVolume::readAtlas() {
+    m_runtime->flush();
+    p::ReadbackHandle read;
+    check(m_state->owner->prepareReadback(m_state->visible, 1, &read), "Print prepare readback");
+    submit(
+        m_state->device, m_state->commands,
+        [&](p::RecordingContext context) {
+            check(m_state->owner->recordReadback(context, read), "Print record readback");
+        },
+        true);
+    check(read->finishAfterCallerCompletion(), "Print finish readback");
+    p::BorrowedBytes bytes;
+    check(read->getChannelData(0, bytes), "Print channel bytes");
+    std::vector<float> result(size_t(bytes.byteCount / 4));
+    if (bytes.byteCount)
+        std::memcpy(result.data(), bytes.data, size_t(bytes.byteCount));
+    return result;
+}
+std::vector<AtlasNode> PrintVolume::readAtlasMap() {
+    m_runtime->flush();
+    p::BorrowedBufferBinding binding;
+    check(m_state->visible->getTopologyBuffer(p::TopologyBuffer::AtlasMap, binding), "Print atlas map");
+    if (binding.byteSize % sizeof(AtlasNode))
+        throw std::logic_error("Malformed snapshot atlas map");
+    std::vector<AtlasNode> result(size_t(binding.byteSize / sizeof(AtlasNode)));
+    if (result.empty())
+        return result;
+    nvrhi::BufferHandle staging;
+    check(m_state->device->createBuffer(nvrhi::BufferDesc()
+                                            .setByteSize(binding.byteSize)
+                                            .setCpuAccess(nvrhi::CpuAccessMode::Read)
+                                            .setInitialState(nvrhi::ResourceStates::CopyDest)
+                                            .setKeepInitialState(true),
+                                        &staging),
+          "Print atlas map staging");
+    submit(
+        m_state->device, m_state->commands,
+        [&](p::RecordingContext context) {
+            context.commands->copyBuffer(staging, 0, binding.buffer, binding.byteOffset, binding.byteSize);
+        },
+        true);
+    const void* data = m_state->device->mapBuffer(staging, nvrhi::CpuAccessMode::Read);
+    if (!data)
+        throw std::runtime_error("Print map failed");
+    std::memcpy(result.data(), data, size_t(binding.byteSize));
+    m_state->device->unmapBuffer(staging);
+    return result;
+}
 PrintVolume::PrintVolume(ethereal::slang::ComputeRuntime& runtime, const SampleUtils::TriangleMesh& mesh,
                          PrintConfiguration configuration)
     : m_runtime(&runtime), m_bounds(donut::math::box3::empty()), m_configuration(configuration) {
@@ -40,7 +148,8 @@ void PrintVolume::rebuild(float voxelSize) {
     int32_t low[3], high[3];
     uint32_t resolution[3];
     for (int axis = 0; axis < 3; ++axis) {
-        const double a = std::floor(double(lower[axis]) / 32) * 32, b = std::ceil(double(upper[axis]) / 32) * 32;
+        const double a = std::floor(double(lower[axis]) / 32) * 32,
+                     b = std::ceil(double(upper[axis]) / 32) * 32;
         if (!std::isfinite(a) || !std::isfinite(b) || a < INT32_MIN || b > INT32_MAX || b <= a ||
             b - a > INT32_MAX)
             throw std::invalid_argument("Print mesh bounds exceed portable signed coordinates");
@@ -70,18 +179,62 @@ void PrintVolume::rebuild(float voxelSize) {
     }
     if (!surface)
         throw std::runtime_error("Print voxelization produced no surface voxels");
-    TopologyBuildOptions topology;
-    topology.logDimensions = {5, 3, 3, 3, 3};
-    ScalarVolumeData data;
-    std::string error;
+    // CPU classification remains explicit; only public ownership is published.
+    // Construct a fresh owner so any failed rebuild preserves the visible snapshot.
+    m_runtime->flush();
+    auto state = std::make_unique<State>();
+    state->device = m_runtime->device();
+    check(state->device->createCommandList({}, &state->commands), "Print commands");
+    auto remap = artifact(*m_runtime, "gvdb_owned", "GVDBAtlasRepack_relocateAtlas.bin");
+    portable::VolumeCreateDesc create;
+    create.device = state->device;
+    create.remapArtifact = remap.data();
+    create.remapArtifactBytes = remap.size();
+    if (!portable::LevelConfig::fromBranching(3, 3, 3, 3, 5, create.configuration))
+        throw std::logic_error("Print branching");
+    check(portable::createVolume(create, &state->owner), "Print owner");
+    check(state->owner->setChannel(0, {}), "Print scalar channel");
+    portable::HostExtents extents;
+    check(state->owner->computeExtents(1, p.boundsMinimum, p.boundsMaximum, extents), "Print extents");
+    const UInt4 cells{p.resolution.x / 32, p.resolution.y / 32, p.resolution.z / 32, 0};
+    if (extents.cellWidth != 32 || extents.count != uint64_t(cells.x) * cells.y * cells.z)
+        throw std::logic_error("Print coarse grid");
+    std::vector<uint8_t> active(size_t(extents.count), 0);
+    for (uint32_t z = 0; z < p.resolution.z; ++z)
+        for (uint32_t y = 0; y < p.resolution.y; ++y)
+            for (uint32_t x = 0; x < p.resolution.x; ++x)
+                if (dense[(size_t(z) * p.resolution.y + y) * p.resolution.x + x] != 0)
+                    active[(size_t(z / 32) * cells.y + y / 32) * cells.x + x / 32] = 1;
+    uint64_t selected = 0;
+    check(state->owner->activateRegionFromMasks(extents, active.data(), active.size(), selected),
+          "Print activation");
+    check(state->owner->finishTopology(), "Print finish topology");
+    portable::GenerationDesc generation;
+    generation.placement.minimumBrickCount = {1, 1, 1};
+    portable::GenerationTicketHandle ticket;
+    check(state->owner->prepareGeneration(generation, &ticket), "Print initial generation");
+    state->publish(ticket);
+    auto binary = artifact(*m_runtime, "gvdb_resample", "GVDBAtlasResample_resampleOwnedAtlas.bin");
+    portable::ResampleCreateDesc resample;
+    resample.volume = state->owner;
+    resample.artifact = binary.data();
+    resample.artifactBytes = binary.size();
+    portable::ResampleHandle op;
+    check(portable::createResample(resample, &op), "Print resample operator");
+    portable::ResampleRequestDesc request;
+    request.sourceData = dense.data();
+    request.sourceBytes = dense.size() * sizeof(float);
+    request.sourceResolution = {p.resolution.x, p.resolution.y, p.resolution.z};
+    request.preserveOutside = 0;
+    request.transformRows[0].w = -float(low[0]);
+    request.transformRows[1].w = -float(low[1]);
+    request.transformRows[2].w = -float(low[2]);
+    check(op->prepare(request, {}, &ticket), "Print dense upload");
+    state->publish(ticket);
+    check(state->owner->getSnapshot(&state->visible), "Print snapshot");
     const Int4 origin{low[0], low[1], low[2], 0};
-    if (!buildScalarVolumeAtOrigin(dense.data(), dense.size(), p.resolution, origin, topology, 0, 0, data,
-                                   error))
-        throw std::runtime_error("Print topology: " + error);
-    auto volume = std::make_unique<SlangVolume>(*m_runtime, data.packed, data.atlas.data(), data.atlas.size());
     m_configuration.voxelSize = voxelSize;
-    m_packed = std::move(data.packed);
-    m_volume = std::move(volume);
+    m_state = std::move(state);
     m_dense = std::move(dense);
     m_resolution = p.resolution;
     m_origin = origin;

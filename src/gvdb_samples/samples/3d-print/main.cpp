@@ -31,8 +31,40 @@ class PrintScene final : public gvdb::sample::VolumeScene {
         c.voxelSize = size;
         return c;
     }
-    gvdb::slang::SlangVolume& volume() override { return m_pipeline.volume(); }
-    const gvdb::slang::PackedVolume& packed() const override { return m_pipeline.packed(); }
+    gvdb::portable::SnapshotHandle ownedSnapshot() const override { return m_pipeline.snapshot(); }
+    bool topologyOverlay(std::vector<gvdb::sample::VolumeOverlayLine>& output) const override {
+        const auto& host = m_pipeline.topology();
+        const gvdb::slang::Float4 colors[] = {
+            {.1f, 1,   .2f, 1},
+            {1,   .7f, .1f, 1},
+            {.1f, .6f, 1,   1},
+            {1,   .2f, .8f, 1}
+        };
+        output.clear();
+        for (uint32_t level = 0; level < host.getConfiguration().levelCount; ++level) {
+            const auto pool = host.getPool(0, level);
+            if (pool.count && (!pool.data || pool.stride != sizeof(gvdb::portable::Node)))
+                throw std::logic_error("Resample node pool");
+            if (pool.count > (1000000 - output.size()) / 12)
+                throw std::invalid_argument("Resample topology overlay too large");
+            for (uint64_t i = 0; i < pool.count; ++i) {
+                gvdb::portable::Node node;
+                std::memcpy(&node, static_cast<const uint8_t*>(pool.data) + i * pool.stride, sizeof(node));
+                const float w = float(host.getRange(int32_t(level)));
+                const auto vertex = [&](uint32_t c) {
+                    return gvdb::slang::Float4{float(node.position.x) + (c & 1 ? w : 0),
+                                               float(node.position.y) + (c & 2 ? w : 0),
+                                               float(node.position.z) + (c & 4 ? w : 0), 0};
+                };
+                for (uint32_t c = 0; c < 8; ++c)
+                    for (uint32_t axis = 0; axis < 3; ++axis)
+                        if (!(c & (1u << axis)))
+                            output.push_back({vertex(c), vertex(c | (1u << axis)), colors[level % 4]});
+            }
+        }
+        return true;
+    }
+
     std::vector<gvdb::slang::Float4> transfer() const override {
         return gvdb::samples::printTransferFunction();
     }
@@ -60,9 +92,12 @@ class PrintScene final : public gvdb::sample::VolumeScene {
         return false;
     }
     void verifyLucy() const {
-        const auto& packed = m_pipeline.packed();
-        if (std::abs(m_pipeline.voxelSize() - .5f) > 1e-6f || packed.levels[0].nodeExtent.x != 32 ||
-            packed.volume.atlasBrickCountAndWidth.w != 34 || m_pipeline.surfaceCount() != 56839 ||
+        const auto snapshot = m_pipeline.snapshot()->getDesc();
+        gvdb::portable::LevelInfo level;
+        if (NVRHI_FAILED(m_pipeline.snapshot()->getLevel(0, level)))
+            throw std::runtime_error("Print snapshot level");
+        if (std::abs(m_pipeline.voxelSize() - .5f) > 1e-6f || level.nodeExtent.x != 32 ||
+            snapshot.volume.atlasBrickCountAndWidth.w != 34 || m_pipeline.surfaceCount() != 56839 ||
             m_pipeline.interiorCount() != 131750)
             throw std::runtime_error(
                 "Lucy 0.5 mm legacy configuration or geometric voxel classification changed");
@@ -79,10 +114,14 @@ class PrintScene final : public gvdb::sample::VolumeScene {
                     if (dense[(size_t(z) * resolution.y + y) * resolution.x + x] != 0)
                         expected.emplace(origin.x + int32_t(x / 32) * 32, origin.y + int32_t(y / 32) * 32,
                                          origin.z + int32_t(z / 32) * 32);
-        for (uint32_t i = 0; i < packed.levels[0].nodes.z; ++i) {
-            const auto* node =
-                packed.nodes.data() + (packed.levels[0].nodes.x + size_t(i) * packed.levels[0].nodes.y) / 4;
-            actual.emplace(int32_t(node[1]), int32_t(node[2]), int32_t(node[3]));
+        const auto& host = m_pipeline.topology();
+        const auto pool = host.getPool(0, 0);
+        if (pool.count && (!pool.data || pool.stride != sizeof(gvdb::portable::Node)))
+            throw std::logic_error("Print leaf pool");
+        for (uint64_t i = 0; i < pool.count; ++i) {
+            gvdb::portable::Node node;
+            std::memcpy(&node, static_cast<const uint8_t*>(pool.data) + i * pool.stride, sizeof(node));
+            actual.emplace(node.position.x, node.position.y, node.position.z);
         }
         if (expected != actual)
             throw std::runtime_error("Lucy leaf32 topology differs from independently classified dense voxels");
@@ -93,7 +132,7 @@ class PrintScene final : public gvdb::sample::VolumeScene {
     }
     std::string describe() const override {
         return std::to_string(m_pipeline.voxelSize()) + " mm; " +
-               std::to_string(m_pipeline.packed().levels[0].nodes.z) + " bricks; " +
+               std::to_string(m_pipeline.snapshot()->getDesc().activeLeafCount) + " bricks; " +
                std::to_string(m_pipeline.surfaceCount()) + " surface / " +
                std::to_string(m_pipeline.interiorCount()) + " interior voxels; 2 shading, 3 voxel size";
     }
@@ -134,7 +173,7 @@ int main(int argc, const char** argv) {
                     "  [--input lucy.obj] [--voxel-size 0.5|0.4|0.3|0.2] [--shading "
                     "voxel|surface|section|volume|section2d]\n"
                     "  [--section-height 0..1] [--no-inset] [--topology] [--headless] [--output image.png]\n"
-                    "  [--width N] [--height N] [--self-test] [--verify]\n"
+                    "  [--width N] [--height N] [--self-test] [--verify] [--frames N]\n"
                     "Interactive: 1 topology, 2 shading, 3 voxel size; mouse height selects section. CUDA runs "
                     "headless.");
                 return 0;
@@ -147,7 +186,11 @@ int main(int argc, const char** argv) {
                 options.view.mode = mode(value());
             else if (!std::strcmp(argv[i], "--section-height"))
                 options.view.sectionHeight = std::stof(value());
-            else if (!std::strcmp(argv[i], "--width"))
+            else if (!std::strcmp(argv[i], "--frames")) {
+                options.view.frameLimit = uint32_t(std::stoul(value()));
+                if (!options.view.frameLimit || options.view.frameLimit > 10000)
+                    throw std::invalid_argument("Frames must be in [1,10000]");
+            } else if (!std::strcmp(argv[i], "--width"))
                 options.view.width = uint32_t(std::stoul(value()));
             else if (!std::strcmp(argv[i], "--height"))
                 options.view.height = uint32_t(std::stoul(value()));
