@@ -106,3 +106,28 @@ The implementation corrects legacy existing-only inactive reactivation, empty
 rebuild, root promotion and signed-crossing limitations. It does not promise
 legacy node-byte identity for those formerly invalid cases and does not implement
 point gathering, sorting or a FLIP solver through this factory.
+
+## Float support coverage and descriptor compatibility
+
+`PointTopologyDesc` now appends `coverage` and a zero reserved field, making the
+current descriptor 40 bytes. The original 32-byte prefix is unchanged. A caller
+with `structSize=32` retains Legacy behavior; preparation copies only that prefix
+and never reads an absent tail. Current 40-byte requests validate the new tail.
+The interface IID and vtable are unchanged.
+
+Opt in with `PointSupportCoverage::FloatSupport` when topology must cover the
+same continuous support box used by subcell gathering. For each position axis,
+form binary32 `p-radius` and `(p+1.0f)+radius`, then floor both endpoints onto the
+leaf grid and activate every inclusive leaf origin. This applies to both rebuild
+and accumulation, including radius zero. The actual containing leaf is still
+included. Centers are activated first, followed by the existing X/Y/Z support
+order, and the activation-candidate budget counts center plus support visits
+before deduplication.
+
+A full rebuild uses the zero-anchored leaf grid. Accumulation follows the current
+root's phase modulo leaf width, preserving valid shifted trees and existing IDs.
+For example, on width32, radius2 and phase0, p=29.75 includes leaf32 and p=-30.75
+includes leaf-64. Legacy truncation-based coverage remains the default. Invalid
+or unrepresentable endpoints and exhausted CPU/GPU budgets fail without changing
+the host or published generation. FloatSupport changes topology coverage only;
+it does not gather values, translate points, or change minimum-depth semantics.

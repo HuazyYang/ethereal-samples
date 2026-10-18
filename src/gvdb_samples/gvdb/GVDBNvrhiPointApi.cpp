@@ -265,11 +265,17 @@ class PointOps final:public ObjectImpl<IGVDBPointOps> {
     }
     FRESULT prepareTopology(IGVDBPointSet*,const PointTopologyDesc&,const PlacementDesc&,const PointPreparationBudget&,IGVDBGenerationTicket**) noexcept override;
 };
-FRESULT PointOps::prepareTopology(IGVDBPointSet* points,const PointTopologyDesc& desc,
+FRESULT PointOps::prepareTopology(IGVDBPointSet* points,const PointTopologyDesc& input,
     const PlacementDesc& placement,const PointPreparationBudget& budget,IGVDBGenerationTicket** output) noexcept {
     if(!output)return FE_INVALID_ARGS;*output=nullptr;
     return guarded([&] {
-        require(desc.structSize==sizeof(PointTopologyDesc)&&!desc.reserved&&!desc.reserved2&&!desc.reserved3&&!budget.reserved);
+        // Read only the caller-declared supported prefix. Previously compiled
+        // clients pass 32 bytes; their absent tail must never be dereferenced.
+        uint32_t size=0;std::memcpy(&size,&input,sizeof(size));
+        require(size==c_PointTopologyDescV1Size||size==sizeof(PointTopologyDesc));
+        PointTopologyDesc desc;std::memcpy(&desc,&input,size);
+        require(!desc.reserved&&!desc.reserved2&&!desc.reserved3&&!desc.reserved4&&!budget.reserved);
+        require(desc.coverage==PointSupportCoverage::Legacy||desc.coverage==PointSupportCoverage::FloatSupport);
         require(desc.mode==PointTopologyMode::FullRebuild||desc.mode==PointTopologyMode::Accumulate);
         require(std::isfinite(desc.radius)&&desc.radius>=0&&desc.preserveMetadata<=1&&placement.preserve<=1);
         require(desc.minDepth<m_core->host().configuration().levelCount);
@@ -279,6 +285,13 @@ FRESULT PointOps::prepareTopology(IGVDBPointSet* points,const PointTopologyDesc&
         require(data->device.Get()==m_volume->getDevice());
         const uint32_t width=m_core->host().range(0);
         require(width!=0);
+        const bool floatSupport=desc.coverage==PointSupportCoverage::FloatSupport;
+        int32_t phase[3]{};
+        if(floatSupport&&accumulating&&!m_core->host().root().isNull()) {
+            const auto* root=m_core->host().node(m_core->host().root());require(root!=nullptr);
+            const int32_t origins[]={root->position.x,root->position.y,root->position.z};
+            for(uint32_t axis=0;axis<3;++axis)phase[axis]=int32_t((int64_t(origins[axis])%width+width)%width);
+        }
         struct Support {Int3 center,lower,upper;bool expanded=false;};
         std::vector<Support> ranges;
         require(data->info.count<=ranges.max_size()&&data->info.count<=budget.maxActivationCandidates,FE_OUT_OF_MEMORY);
@@ -298,22 +311,35 @@ FRESULT PointOps::prepareTopology(IGVDBPointSet* points,const PointTopologyDesc&
             require(origin>=INT32_MIN&&origin<=INT32_MAX,FE_UNSUPPORTED);
             return int32_t(origin);
         };
+        auto floorSupportBrick=[&](double value,uint32_t axis) {
+            const double origin=std::floor((value-phase[axis])/width)*width+phase[axis];
+            return integer(origin);
+        };
         for(uint64_t i=0;i<data->info.count;++i) {
             Float4 position{};
             std::memcpy(&position,data->attributes[0].bytes.data()+i*data->attributes[0].components*4,data->attributes[0].components*4);
             Support support;
-            support.center={floorBrick(integer(std::floor(double(position.x)))),floorBrick(integer(std::floor(double(position.y)))),floorBrick(integer(std::floor(double(position.z))))};
+            if(floatSupport) support.center={floorSupportBrick(position.x,0),floorSupportBrick(position.y,1),floorSupportBrick(position.z,2)};
+            else support.center={floorBrick(integer(std::floor(double(position.x)))),floorBrick(integer(std::floor(double(position.y)))),floorBrick(integer(std::floor(double(position.z))))};
             account(1); // The actual containing brick also covers negative fractional positions.
-            support.expanded=accumulating||desc.radius>=1;
+            support.expanded=floatSupport||accumulating||desc.radius>=1;
             if(support.expanded) {
                 const float upperRadius=accumulating?desc.radius:2.f*desc.radius;
                 const float values[]={position.x,position.y,position.z};
                 int32_t lower[3],upper[3];uint64_t count=1;
                 for(uint32_t axis=0;axis<3;++axis) {
-                    const float truncated=float(integer(double(values[axis])));
-                    const float lo=truncated-desc.radius,hi=truncated+upperRadius;
-                    lower[axis]=floorBrick(integer(double(lo)));
-                    upper[axis]=floorBrick(integer(double(hi)));
+                    if(floatSupport) {
+                        const float lo=values[axis]-desc.radius;
+                        const float plusOne=values[axis]+1.f;
+                        const float hi=plusOne+desc.radius;
+                        lower[axis]=floorSupportBrick(double(lo),axis);
+                        upper[axis]=floorSupportBrick(double(hi),axis);
+                    } else {
+                        const float truncated=float(integer(double(values[axis])));
+                        const float lo=truncated-desc.radius,hi=truncated+upperRadius;
+                        lower[axis]=floorBrick(integer(double(lo)));
+                        upper[axis]=floorBrick(integer(double(hi)));
+                    }
                     require(lower[axis]<=upper[axis]);
                     const auto cells=uint64_t((int64_t(upper[axis])-lower[axis])/width)+1;
                     require(cells<=budget.maxActivationCandidates,FE_OUT_OF_MEMORY);

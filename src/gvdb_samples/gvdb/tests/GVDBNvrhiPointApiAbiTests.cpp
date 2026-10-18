@@ -10,6 +10,15 @@ int main() {
                   offsetof(g::PointSetDesc, colors) == 232);
     static_assert(offsetof(g::PointOpsCreateDesc, volume) == 8 &&
                   offsetof(g::PointOpsCreateDesc, conversionArtifactBytes) == 24);
+    static_assert(
+        sizeof(g::PointTopologyDesc) == 40 && offsetof(g::PointTopologyDesc, mode) == 8 &&
+        offsetof(g::PointTopologyDesc, minDepth) == 12 && offsetof(g::PointTopologyDesc, radius) == 16 &&
+        offsetof(g::PointTopologyDesc, preserveMetadata) == 20 &&
+        offsetof(g::PointTopologyDesc, reserved2) == 24 && offsetof(g::PointTopologyDesc, reserved3) == 28 &&
+        offsetof(g::PointTopologyDesc, coverage) == 32 && offsetof(g::PointTopologyDesc, reserved4) == 36);
+    const g::PointTopologyDesc topology;
+    if (topology.structSize != 40 || topology.coverage != g::PointSupportCoverage::Legacy || topology.reserved4)
+        return 7;
     g::PointOpsCreateDesc desc;
     auto* sentinel = reinterpret_cast<g::IGVDBPointOps*>(uintptr_t(1));
     auto* output = sentinel;

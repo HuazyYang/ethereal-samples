@@ -515,11 +515,13 @@ void publish(Harness& h, g::IGVDBVolume* owner, g::IGVDBGenerationTicket* ticket
     h.submit();
 }
 g::GenerationTicketHandle prepareTopology(g::IGVDBPointOps* ops, g::IGVDBPointSet* set,
-                                          g::PointTopologyMode mode, float radius = 0, uint32_t minDepth = 0) {
+                                          g::PointTopologyMode mode, float radius = 0, uint32_t minDepth = 0,
+                                          g::PointSupportCoverage coverage = g::PointSupportCoverage::Legacy) {
     g::PointTopologyDesc desc;
     desc.mode = mode;
     desc.radius = radius;
     desc.minDepth = minDepth;
+    desc.coverage = coverage;
     g::PlacementDesc placement;
     placement.minimumBrickCount = {1, 1, 1};
     g::GenerationTicketHandle ticket;
@@ -739,6 +741,247 @@ void topologyGoldens(Harness& h, const std::vector<char>& remap, const std::vect
         "empty/subset removal and failures");
 }
 
+void floatSupportGoldens(Harness& h, const std::vector<char>& remap, const std::vector<char>& artifact) {
+    auto make32 = [&]() {
+        g::VolumeCreateDesc create;
+        create.device = h.device;
+        create.configuration.levelCount = 5;
+        create.configuration.logDimension = {5, 1, 1, 1, 1};
+        create.remapArtifact = remap.data();
+        create.remapArtifactBytes = remap.size();
+        g::VolumeHandle result;
+        check(g::createVolume(create, &result), "create leaf32 floating-support owner");
+        return result;
+    };
+    g::PlacementDesc placement;
+    placement.minimumBrickCount = {1, 1, 1};
+    auto reset = [&](g::IGVDBVolume* owner) {
+        check(owner->clearTopology(), "clear floating-support fixture");
+        check(owner->finishTopology(), "finish empty floating topology");
+        g::GenerationDesc generation;
+        generation.placement = placement;
+        g::GenerationTicketHandle ticket;
+        check(owner->prepareGeneration(generation, &ticket), "prepare empty floating-support publication");
+        publish(h, owner, ticket);
+    };
+    struct Case {
+        float x, radius;
+        std::vector<int32_t> origins;
+        uint64_t visits;
+    };
+    const Case cases[] = {
+        {29.75f, 2, {0, 32}, 3},
+        {-30.75f, 2, {-64, -32}, 3},
+        {31.75f, 0, {0, 32}, 3},
+        {-.25f, 0, {-32, 0}, 3},
+        {-32.75f, 0, {-64, -32}, 3},
+        {30.25f, .75f, {0, 32}, 3},
+        {std::nextafter(30.25f, 0.f), .75f, {0}, 2}
+    };
+    for (auto mode : {g::PointTopologyMode::FullRebuild, g::PointTopologyMode::Accumulate}) {
+        auto owner = make32();
+        auto ops = makeOps(owner, artifact);
+        for (const auto& c : cases) {
+            reset(owner);
+            auto set = points(h, ops,
+                              {
+                                  {c.x, 15, 15, 0}
+            });
+            const auto epoch = owner->getTopologyRevision().epoch;
+            g::PointTopologyDesc desc;
+            desc.mode = mode;
+            desc.radius = c.radius;
+            desc.coverage = g::PointSupportCoverage::FloatSupport;
+            g::PointPreparationBudget budget;
+            budget.maxActivationCandidates = c.visits - 1;
+            auto* rejected = reinterpret_cast<g::IGVDBGenerationTicket*>(uintptr_t(1));
+            require(NVRHI_FAILED(ops->prepareTopology(set, desc, placement, budget, &rejected)) && !rejected,
+                    "floating support candidate budget must include actual center plus inclusive cells");
+            require(leaves(owner).empty() && owner->getTopologyRevision().epoch == epoch,
+                    "failed floating support mutated empty owner");
+            budget.maxActivationCandidates = c.visits;
+            g::GenerationTicketHandle ticket;
+            check(ops->prepareTopology(set, desc, placement, budget, &ticket),
+                  "prepare exact floating-support budget");
+            publish(h, owner, ticket);
+            LeafSet expected;
+            for (int32_t x : c.origins)
+                expected.insert({x, 0, 0});
+            require(leaves(owner) == expected, "independent leaf32 floating-support boundary golden");
+            require(mode == g::PointTopologyMode::FullRebuild ? owner->getTopologyRevision().epoch > epoch
+                                                              : owner->getTopologyRevision().epoch == epoch,
+                    "floating support changed rebuild/append epoch semantics");
+        }
+        reset(owner);
+        auto duplicate = points(h, ops,
+                                {
+                                    {29.75f, 15, 15, 0},
+                                    {29.75f, 15, 15, 0}
+        });
+        g::PointTopologyDesc desc;
+        desc.mode = mode;
+        desc.radius = 2;
+        desc.minDepth = 3;
+        desc.coverage = g::PointSupportCoverage::FloatSupport;
+        g::PointPreparationBudget budget;
+        budget.maxActivationCandidates = 5;
+        g::GenerationTicketHandle ticket;
+        require(NVRHI_FAILED(ops->prepareTopology(duplicate, desc, placement, budget, &ticket)) && !ticket,
+                "floating support duplicate visit budget deduplicated too early");
+        budget.maxActivationCandidates = 6;
+        check(ops->prepareTopology(duplicate, desc, placement, budget, &ticket),
+              "floating duplicate exact budget");
+        publish(h, owner, ticket);
+        require(leaves(owner) ==
+                        LeafSet{
+                            {0,  0, 0},
+                            {32, 0, 0}
+        } &&
+                    owner->getRootId().level() >= 3,
+                "floating support minDepth or duplicate leaves");
+    }
+    // Manual shifted root establishes a phase independently of global-zero alignment.
+    auto shifted = make32();
+    auto shiftedOps = makeOps(shifted, artifact);
+    g::NodeId originalId, farId, dormantId;
+    check(shifted->allocateNode(0, {1, -3, 5}, true, originalId), "manual shifted leaf");
+    check(shifted->setRoot(originalId), "manual shifted leaf root");
+    check(shifted->finishTopology(), "finish shifted root");
+    check(shifted->activate(65, -3, 5, farId), "grow shifted tree across a missing leaf");
+    check(shifted->activate(33, -3, 5, dormantId), "allocate dormant shifted gap");
+    check(shifted->setActive(dormantId, false), "make shifted gap inactive");
+    check(shifted->finishTopology(), "finish shifted hole topology");
+    g::GenerationDesc generation;
+    generation.placement = placement;
+    g::GenerationTicketHandle ticket;
+    check(shifted->prepareGeneration(generation, &ticket), "publish shifted sparse fixture");
+    publish(h, shifted, ticket);
+    const auto shiftedEpoch = shifted->getTopologyRevision().epoch, oldCount = shifted->getPoolCount(0, 0);
+    auto gap = points(h, shiftedOps,
+                      {
+                          {32.75f, 15, 15, 0}
+    });
+    ticket = prepareTopology(shiftedOps, gap, g::PointTopologyMode::Accumulate, 0, 0,
+                             g::PointSupportCoverage::FloatSupport);
+    publish(h, shifted, ticket);
+    require(leaves(shifted) ==
+                    LeafSet{
+                        {1,  -3, 5},
+                        {33, -3, 5},
+                        {65, -3, 5}
+    } &&
+                shifted->getPoolCount(0, 0) == oldCount && shifted->findLeaf({1, -3, 5}) == originalId &&
+                shifted->findLeaf({33, -3, 5}) == dormantId && shifted->findLeaf({65, -3, 5}) == farId &&
+                shifted->getTopologyRevision().epoch == shiftedEpoch,
+            "floating accumulation lost shifted phase or reactivation IDs");
+    auto negative = points(h, shiftedOps,
+                           {
+                               {.75f, 15, 15, 0}
+    });
+    ticket = prepareTopology(shiftedOps, negative, g::PointTopologyMode::Accumulate, 0, 0,
+                             g::PointSupportCoverage::FloatSupport);
+    publish(h, shifted, ticket);
+    require(leaves(shifted) ==
+                    LeafSet{
+                        {-31, -3, 5},
+                        {1,   -3, 5},
+                        {33,  -3, 5},
+                        {65,  -3, 5}
+    } &&
+                shifted->findLeaf({1, -3, 5}) == originalId && shifted->findLeaf({65, -3, 5}) == farId &&
+                shifted->getTopologyRevision().epoch == shiftedEpoch,
+            "negative shifted root growth lost phase or stable IDs");
+    ticket = prepareTopology(shiftedOps, gap, g::PointTopologyMode::FullRebuild, 0, 0,
+                             g::PointSupportCoverage::FloatSupport);
+    publish(h, shifted, ticket);
+    require(leaves(shifted) ==
+                    LeafSet{
+                        {32, 0, 0}
+    } &&
+                shifted->getTopologyRevision().epoch > shiftedEpoch,
+            "full floating rebuild must establish zero phase instead of inheriting shifted roots");
+    // Actual old32-byte wire storage and a poisoned new tail both normalize to Legacy.
+    struct Legacy32 {
+        uint32_t structSize = 32, reserved = 0;
+        g::PointTopologyMode mode = g::PointTopologyMode::FullRebuild;
+        uint32_t minDepth = 0;
+        float radius = 0;
+        uint32_t preserveMetadata = 1, reserved2 = 0, reserved3 = 0;
+    };
+    static_assert(sizeof(Legacy32) == 32 && offsetof(Legacy32, radius) == 16);
+    auto compatibility = make32();
+    auto ops = makeOps(compatibility, artifact);
+    auto boundary = points(h, ops,
+                           {
+                               {31.75f, 15, 15, 0}
+    });
+    Legacy32 old;
+    // The public method is a versioned wire ABI: the callee must copy only structSize bytes.
+    const auto& oldRequest = *reinterpret_cast<const g::PointTopologyDesc*>(&old);
+    check(ops->prepareTopology(boundary, oldRequest, placement, {}, &ticket), "old32-byte topology ABI");
+    publish(h, compatibility, ticket);
+    require(leaves(compatibility) ==
+                LeafSet{
+                    {0, 0, 0}
+    },
+            "old32 request did not retain legacy center-only coverage");
+    g::PointTopologyDesc poisoned;
+    poisoned.structSize = 32;
+    poisoned.coverage = g::PointSupportCoverage::FloatSupport;
+    poisoned.reserved4 = 0xffffffffu;
+    check(ops->prepareTopology(boundary, poisoned, placement, {}, &ticket),
+          "old wire size ignores poisoned appended tail");
+    publish(h, compatibility, ticket);
+    require(leaves(compatibility) ==
+                LeafSet{
+                    {0, 0, 0}
+    },
+            "32-byte compatibility read new coverage tail");
+    auto before = snapshot(compatibility);
+    const auto revision = compatibility->getTopologyRevision();
+    auto rejects = [&](g::PointTopologyDesc desc) {
+        auto* output = reinterpret_cast<g::IGVDBGenerationTicket*>(uintptr_t(1));
+        require(NVRHI_FAILED(ops->prepareTopology(boundary, desc, placement, {}, &output)) && !output,
+                "invalid extended topology accepted");
+        auto after = snapshot(compatibility);
+        require(leaves(compatibility) ==
+                        LeafSet{
+                            {0, 0, 0}
+        } &&
+                    compatibility->getTopologyRevision().epoch == revision.epoch &&
+                    compatibility->getTopologyRevision().topology == revision.topology &&
+                    before->getDesc().revision.placement == after->getDesc().revision.placement,
+                "rejected extended request mutated owner");
+    };
+    g::PointTopologyDesc bad;
+    bad.coverage = g::PointSupportCoverage(2);
+    rejects(bad);
+    bad = {};
+    bad.reserved4 = 1;
+    rejects(bad);
+    bad = {};
+    bad.structSize = 36;
+    rejects(bad);
+    bad = {};
+    bad.structSize = 41;
+    rejects(bad);
+    bad = {};
+    bad.structSize = 32;
+    bad.reserved3 = 1;
+    rejects(bad);
+    // Existing point lifetime/stale/foreign tests remain shared; this query adds the new policy explicitly.
+    auto pending = prepareTopology(ops, boundary, g::PointTopologyMode::FullRebuild, 0, 0,
+                                   g::PointSupportCoverage::FloatSupport);
+    check(compatibility->finishTopology(), "invalidate floating-support preparation");
+    h.begin();
+    require(NVRHI_FAILED(compatibility->recordAndPublish(h.context(), pending)),
+            "stale floating-support ticket accepted");
+    h.submit();
+    std::puts(
+        "PASS floating point support: leaf32 signed boundaries, exact budgets, shifted phase/stable IDs, "
+        "rebuild phase0, old32 ABI and invalid tails");
+}
+
 void precisionAndColors(Harness& h, g::IGVDBPointOps* ops) {
     // Binary64 ties are specified independently as expected binary32 bit patterns.
     const double source[][3] = {
@@ -901,40 +1144,42 @@ void hostPoolLimits(Harness& h, const std::vector<char>& remap, const std::vecto
                                       {12.25f, .25f, .25f, 0},
                                       {16.25f, .25f, .25f, 0}
     });
-    for (auto mode : {g::PointTopologyMode::FullRebuild, g::PointTopologyMode::Accumulate}) {
-        g::PointTopologyDesc desc;
-        desc.mode = mode;
-        g::PlacementDesc placement;
-        placement.minimumBrickCount = {1, 1, 1};
-        auto* rejected = reinterpret_cast<g::IGVDBGenerationTicket*>(uintptr_t(1));
-        require(
-            ops->prepareTopology(oversized, desc, placement, {}, &rejected) == FE_OUT_OF_MEMORY && !rejected,
-            "point candidate growth ignored owner CPU pool limit");
-        auto after = snapshot(owner);
-        require(owner->getRootId() == root &&
-                    owner->findLeaf({
-                        0, 0, 0
-        }) == leaf &&
-                    leaves(owner) == LeafSet{{0, 0, 0}} &&
-                    owner->getTopologyRevision().epoch == revision.epoch &&
-                    owner->getTopologyRevision().topology == revision.topology &&
-                    after->getDesc().revision.placement == before->getDesc().revision.placement,
-                "failed CPU staging changed published topology");
-        g::ChannelSnapshotDesc a, b;
-        check(before->getChannel(0, a), "old limited channel");
-        check(after->getChannel(0, b), "new limited channel");
-        require(a.raw.buffer == b.raw.buffer && a.revision.resource == b.revision.resource &&
-                    a.revision.content == b.revision.content,
-                "failed CPU staging replaced published channel");
-        for (uint32_t l = 0; l < 5; ++l)
-            for (uint32_t group = 0; group < 2; ++group) {
-                const auto pool = owner->getPool(group, l);
-                const auto& expected = pools[l * 2 + group];
-                require(pool.count * pool.stride == expected.size() &&
-                            (expected.empty() || !std::memcmp(pool.data, expected.data(), expected.size())),
-                        "failed CPU staging changed live pool contents");
-            }
-    }
+    for (auto coverage : {g::PointSupportCoverage::Legacy, g::PointSupportCoverage::FloatSupport})
+        for (auto mode : {g::PointTopologyMode::FullRebuild, g::PointTopologyMode::Accumulate}) {
+            g::PointTopologyDesc desc;
+            desc.mode = mode;
+            desc.coverage = coverage;
+            g::PlacementDesc placement;
+            placement.minimumBrickCount = {1, 1, 1};
+            auto* rejected = reinterpret_cast<g::IGVDBGenerationTicket*>(uintptr_t(1));
+            require(ops->prepareTopology(oversized, desc, placement, {}, &rejected) == FE_OUT_OF_MEMORY &&
+                        !rejected,
+                    "point candidate growth ignored owner CPU pool limit");
+            auto after = snapshot(owner);
+            require(owner->getRootId() == root &&
+                        owner->findLeaf({
+                            0, 0, 0
+            }) == leaf &&
+                        leaves(owner) == LeafSet{{0, 0, 0}} &&
+                        owner->getTopologyRevision().epoch == revision.epoch &&
+                        owner->getTopologyRevision().topology == revision.topology &&
+                        after->getDesc().revision.placement == before->getDesc().revision.placement,
+                    "failed CPU staging changed published topology");
+            g::ChannelSnapshotDesc a, b;
+            check(before->getChannel(0, a), "old limited channel");
+            check(after->getChannel(0, b), "new limited channel");
+            require(a.raw.buffer == b.raw.buffer && a.revision.resource == b.revision.resource &&
+                        a.revision.content == b.revision.content,
+                    "failed CPU staging replaced published channel");
+            for (uint32_t l = 0; l < 5; ++l)
+                for (uint32_t group = 0; group < 2; ++group) {
+                    const auto pool = owner->getPool(group, l);
+                    const auto& expected = pools[l * 2 + group];
+                    require(pool.count * pool.stride == expected.size() &&
+                                (expected.empty() || !std::memcmp(pool.data, expected.data(), expected.size())),
+                            "failed CPU staging changed live pool contents");
+                }
+        }
     std::puts(
         "PASS public point candidate host-pool budgets preserve live topology, channels and output on "
         "full/append failure");
@@ -1025,6 +1270,7 @@ int main(int argc, const char** argv) {
             precisionAndColors(h, ops);
             invalidInputs(h, ops, conversionBytes);
             topologyGoldens(h, remapBytes, conversionBytes);
+            floatSupportGoldens(h, remapBytes, conversionBytes);
             retainedChannels(h, remapBytes, conversionBytes);
             hostPoolLimits(h, remapBytes, conversionBytes);
             lifetimes(h, remapBytes, conversionBytes);

@@ -37,6 +37,8 @@ struct BorrowedPointStream {
     uint32_t components = 3;
 };
 enum class PointTopologyMode : uint32_t { FullRebuild, Accumulate };
+enum class PointSupportCoverage : uint32_t { Legacy = 0, FloatSupport = 1 };
+constexpr uint32_t c_PointTopologyDescV1Size = 32;
 struct PointTopologyDesc {
     uint32_t structSize = sizeof(PointTopologyDesc), reserved = 0;
     PointTopologyMode mode = PointTopologyMode::FullRebuild;
@@ -44,6 +46,10 @@ struct PointTopologyDesc {
     float radius = 0;
     uint32_t preserveMetadata = 1;
     uint32_t reserved2 = 0, reserved3 = 0;
+    // Appended extension. The original 32-byte descriptor remains accepted and
+    // defaults to Legacy without reading this tail. No interface/vtable change.
+    PointSupportCoverage coverage = PointSupportCoverage::Legacy;
+    uint32_t reserved4 = 0;
 };
 struct PointOpsCreateDesc {
     uint32_t structSize = sizeof(PointOpsCreateDesc), reserved = 0;
@@ -53,7 +59,8 @@ struct PointOpsCreateDesc {
 };
 static_assert(sizeof(HostPointStreamDesc)==48 && sizeof(PointAffineTransform)==64 && sizeof(PointSetDesc)==344);
 static_assert(sizeof(PointPreparationBudget)==32 && sizeof(PointSetInfo)==64 && sizeof(BorrowedPointStream)==48);
-static_assert(sizeof(PointTopologyDesc)==32 && sizeof(PointOpsCreateDesc)==32);
+static_assert(sizeof(PointTopologyDesc)==40 && sizeof(PointOpsCreateDesc)==32);
+static_assert(offsetof(PointTopologyDesc,coverage)==c_PointTopologyDescV1Size);
 static_assert(std::is_standard_layout_v<PointSetDesc> && std::is_trivially_copyable_v<PointSetDesc>);
 NVRHI_IID(IGVDBPointSet, "87291603-6087-4c71-b51a-127d1f840d04")
 struct IGVDBPointSet : nvrhi::IRHIObject {

@@ -42,6 +42,10 @@ int main(int argc,char** argv) {
     if(NVRHI_SUCCEEDED(upload->finishAfterCallerCompletion(&repeated))||repeated)return 13;
     if(NVRHI_FAILED(g::createPointOps(desc,&points)))return 14; // Same-device PointSet reusable by another factory.
     g::PointTopologyDesc topology;topology.mode=g::PointTopologyMode::Accumulate;topology.minDepth=2;
+    // Previously compiled callers supply only this prefix. The absent extension
+    // must default to Legacy regardless of bytes after that declared prefix.
+    topology.structSize=g::c_PointTopologyDescV1Size;
+    topology.coverage=static_cast<g::PointSupportCoverage>(99);topology.reserved4=99;
     g::PlacementDesc placement;placement.minimumBrickCount={1,1,1};
     g::GenerationTicketHandle generation;
     if(NVRHI_FAILED(points->prepareTopology(dataset,topology,placement,{},&generation)))return 15;
@@ -52,6 +56,14 @@ int main(int argc,char** argv) {
     g::SnapshotHandle snapshot;if(NVRHI_FAILED(owner->getSnapshot(&snapshot)))return 18;
     g::ReadbackHandle readback;
     if(NVRHI_FAILED(owner->prepareReadback(snapshot,1,&readback))||NVRHI_FAILED(owner->recordReadback(context,readback)))return 19;
+    g::PointTopologyDesc extended;extended.coverage=g::PointSupportCoverage::FloatSupport;
+    // FloatSupport radius0 includes x=0 from p=-.25's inclusive upper endpoint.
+    // Legacy FullRebuild would contain only the x=-4 and x=4 center leaves.
+    g::GenerationTicketHandle rebuilt;
+    if(NVRHI_FAILED(points->prepareTopology(dataset,extended,placement,{},&rebuilt))||
+        NVRHI_FAILED(owner->recordAndPublish(context,rebuilt))||!owner->isActive({0,0,0})||
+        owner->getTopologyRevision().epoch==epoch)return 24;
+    rebuilt=nullptr;
     owner=nullptr;points=nullptr;dataset=nullptr;upload=nullptr;snapshot=nullptr;generation=nullptr;
     commands->close();device->executeCommandList(commands);
     if(!device->waitForIdle()||NVRHI_FAILED(readback->finishAfterCallerCompletion()))return 20;
@@ -64,5 +76,5 @@ int main(int argc,char** argv) {
     }
     if(nonzero!=3*216)return 23; // Three six-cubed bricks including aprons; unused slots are zero.
     readback=nullptr;commands=nullptr;device->runGarbageCollection();
-    std::puts("Installed points: copied input, explicit GPU completion, signed append and owner-free readback PASS");return 0;
+    std::puts("Installed points: copied input, explicit GPU completion, legacy32 descriptor, FloatSupport rebuild and owner-free readback PASS");return 0;
 }
