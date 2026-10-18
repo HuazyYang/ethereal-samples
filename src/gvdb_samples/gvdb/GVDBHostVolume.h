@@ -7,6 +7,7 @@
 #include <vector>
 
 namespace gvdb::portable {
+namespace detail { class VolumeAdoptionBuilder; }
 struct IndexBounds {
     Int3 lower{}, upper{}; // Half-open; all zeros when empty.
     bool empty = true;
@@ -118,5 +119,7 @@ class HostVolume {
                                      uint64_t& selected) noexcept;
     void validateImpl() const;
     void swap(HostVolume& other) noexcept;
+    friend class NvrhiVolume;
+    friend class detail::VolumeAdoptionBuilder;
 };
 } // namespace gvdb::portable

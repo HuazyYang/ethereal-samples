@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "GVDBNvrhiVolume.h"
 #include "GVDBNvrhiMutationInternal.h"
+#include "GVDBNvrhiAdoptionInternal.h"
 #include <nvrhi/shader-program.h>
 #include <algorithm>
 #include <cstring>
@@ -173,8 +174,14 @@ struct VolumeGeneration::Impl {
     SnapshotBindings bindings;
     std::shared_ptr<OwnerIdentity> owner;
     std::shared_ptr<const Placement> placement;
+    AutoPtr<IRHIObject> attachment;
     std::array<uint64_t, c_MaxChannels> incarnations{};
     uint64_t serial = 0;
+};
+struct HostAdoption {
+    std::unique_ptr<HostVolume> host;
+    std::array<ChannelDesc, c_MaxChannels> channels{};
+    uint64_t channelRevision = 0, incarnationSerial = 0;
 };
 struct PreparedGeneration::Impl {
     DeviceHandle device;
@@ -184,6 +191,7 @@ struct PreparedGeneration::Impl {
     std::shared_ptr<VolumeGeneration> generation;
     std::vector<Upload> uploads;
     std::vector<Dispatch> dispatches;
+    std::unique_ptr<HostAdoption> adoption;
     bool consumed = false;
 };
 struct PreparedReadback::Impl {
@@ -335,6 +343,8 @@ FRESULT NvrhiVolume::prepareGeneration(const GenerationRequest& request, std::un
         auto placedStorage = std::make_shared<Placement>(place(state.host, request.placement));
         generation->placement = placedStorage;
         auto& placed = *placedStorage;
+        if (state.current && state.current->bindings().revision.epoch == placed.topology.revision.epoch)
+            generation->attachment = state.current->m_impl->attachment;
         if (request.placement.preserve && state.current && state.current->bindings().activeLeafCount &&
             placed.topology.activeLeafCount)
             require(state.current->m_impl->placement->topology.levels[0].nodeExtent.x == placed.topology.levels[0].nodeExtent.x,
@@ -464,6 +474,16 @@ FRESULT NvrhiVolume::recordAndPublish(RecordingContext context, PreparedGenerati
         for (const auto& dispatch : ticket.dispatches) {
             context.commands->setComputeState(ComputeState().setPipeline(dispatch.pipeline).addBindingSet(dispatch.bindings));
             context.commands->dispatch(dispatch.x, dispatch.y, dispatch.z);
+        }
+        if (ticket.adoption) {
+            // All potentially failing work preceded recording. Swap storage inside
+            // the stable host object, invalidating borrowed node/pool pointers.
+            state.host.swap(*ticket.adoption->host);
+            state.channels = ticket.adoption->channels;
+            state.mask = ticket.generation->bindings().channelMask;
+            state.incarnations = ticket.generation->m_impl->incarnations;
+            state.channelRevision = ticket.adoption->channelRevision;
+            state.incarnationSerial = ticket.adoption->incarnationSerial;
         }
         state.current = ticket.generation;
         state.serial = ticket.generation->m_impl->serial;
@@ -608,5 +628,152 @@ FRESULT detail::VolumeMutationBuilder::finish(std::unique_ptr<PreparedGeneration
         candidate->m_impl = std::move(m_impl->ticket);
         output = std::move(candidate);
     });
+}
+
+FRESULT detail::VolumeAdoptionBuilder::prepareImport(NvrhiVolume& volume, const VolumeImportRequest& request,
+                                                    std::unique_ptr<PreparedGeneration>& output) noexcept {
+    return guarded([&] {
+        auto& state = *volume.m_impl;
+        require(request.candidate && !request.candidate->dirty() && !state.host.dirty());
+        require(request.channelCount <= c_MaxChannels && (!request.channelCount || request.channels));
+        const HostVolume& source = *request.candidate;
+        check(source.validate());
+        auto adopted = std::make_unique<HostAdoption>();
+        adopted->host = std::make_unique<HostVolume>(state.host.m_limits);
+        HostVolume& candidate = *adopted->host;
+        candidate.m_config = source.m_config;
+        candidate.m_ranges = source.m_ranges;
+        candidate.m_root = source.m_root;
+        // Clone only live pool records, bounded by the target owner's CPU limits.
+        // Source aliases never refer to this prepared candidate's storage.
+        for (uint32_t level = 0; level < c_MaxLevels; ++level) {
+            require(source.m_nodes[level].size() <= state.host.m_limits.maxPoolBytes / sizeof(Node) &&
+                    source.m_children[level].size() <= state.host.m_limits.maxPoolBytes / sizeof(NodeId), FE_OUT_OF_MEMORY);
+            candidate.m_nodes[level] = source.m_nodes[level];
+            candidate.m_children[level] = source.m_children[level];
+            for (auto& node : candidate.m_nodes[level]) node.atlasInterior = {-1,-1,-1};
+        }
+        candidate.m_revision = {advance(state.host.revision().epoch), state.host.revision().topology, 0};
+        check(candidate.finishTopology());
+        adopted->channelRevision = advance(state.channelRevision);
+        adopted->incarnationSerial = state.incarnationSerial;
+        auto ticket = std::make_unique<PreparedGeneration::Impl>();
+        ticket->device = state.device; ticket->owner = state.owner;
+        ticket->baseSerial = state.serial; ticket->channelRevision = state.channelRevision;
+        ticket->hostRevision = state.host.revision();
+        auto generation = std::make_unique<VolumeGeneration::Impl>();
+        generation->owner = state.owner; generation->serial = advance(state.serial);
+        generation->attachment = request.attachment;
+        auto placed = std::make_shared<Placement>();
+        check(candidate.packTopology(placed->topology));
+        generation->placement = placed;
+        const auto& placement = request.placement;
+        require(placement.leafCount == candidate.activeLeafCount() && (!placement.leafCount || placement.leaves));
+        constexpr int64_t coordinateLimit = (int64_t(1) << 23) - 1;
+        for (uint32_t level = 0; level < placed->topology.levels.size(); ++level) {
+            const auto& info = placed->topology.levels[level];
+            for (uint32_t i = 0; i < info.nodes.z; ++i) {
+                const Node node = readNode(placed->topology, level, i);
+                const int64_t origin[] = {node.position.x,node.position.y,node.position.z};
+                const int64_t extent[] = {info.nodeExtent.x,info.nodeExtent.y,info.nodeExtent.z};
+                const int64_t apron = level == 0 ? placement.apron : 0;
+                for (uint32_t axis = 0; axis < 3; ++axis)
+                    require(origin[axis] - apron >= -coordinateLimit && origin[axis] + extent[axis] + apron <= coordinateLimit,
+                            FE_UNSUPPORTED);
+            }
+        }
+        auto& info = placed->topology.volume;
+        if (candidate.activeLeafCount()) {
+            const auto grid = placement.brickCount;
+            require(grid.x && grid.y && grid.z);
+            const uint64_t plane = uint64_t(grid.x) * grid.y;
+            require(plane <= UINT32_MAX && grid.z <= UINT32_MAX / plane, FE_UNSUPPORTED);
+            const uint64_t slots = plane * grid.z;
+            require(slots <= c_AddressSpaceBytes / sizeof(slang::AtlasNode), FE_UNSUPPORTED);
+            const uint64_t pitch = uint64_t(candidate.range(0)) + uint64_t(placement.apron) * 2;
+            require(pitch && pitch <= INT32_MAX && pitch * grid.x <= INT32_MAX && pitch * grid.y <= INT32_MAX &&
+                    pitch * grid.z <= INT32_MAX, FE_UNSUPPORTED);
+            const UInt3 resolution{uint32_t(pitch * grid.x), uint32_t(pitch * grid.y), uint32_t(pitch * grid.z)};
+            ChannelStorage checked; check(describeChannel(AtlasFormat::R8_UINT, resolution, checked).result);
+            info.atlasResolutionAndApron = {resolution.x,resolution.y,resolution.z,placement.apron};
+            info.atlasBrickCountAndWidth = {grid.x,grid.y,grid.z,uint32_t(pitch)};
+            placed->map.assign(size_t(slots), {0,0,0,-1});
+            std::vector<uint8_t> seen(size_t(candidate.count(0,0)),0);
+            for (size_t i = 0; i < placement.leafCount; ++i) {
+                const auto mapping = placement.leaves[i];
+                require(mapping.leafIndex < seen.size() && mapping.leafIndex <= INT32_MAX && mapping.slot < slots &&
+                    !seen[mapping.leafIndex] && placed->map[mapping.slot].leaf < 0);
+                const Node leaf = readNode(placed->topology,0,mapping.leafIndex);
+                require(leaf.flags != 0);
+                seen[mapping.leafIndex] = 1;
+                const uint32_t x = mapping.slot % grid.x, y = (mapping.slot / grid.x) % grid.y,
+                               z = mapping.slot / uint32_t(plane);
+                setInterior(placed->topology,mapping.leafIndex,{int32_t(x*pitch+placement.apron),
+                    int32_t(y*pitch+placement.apron),int32_t(z*pitch+placement.apron)});
+                placed->map[mapping.slot] = {leaf.position.x,leaf.position.y,leaf.position.z,int32_t(mapping.leafIndex)};
+            }
+            // Equal counts plus unique active indices prove complete active coverage.
+        } else {
+            // An empty owner has no live atlas. Never silently discard a nonempty
+            // imported allocation merely because its topology has no active leaves.
+            require(!(placement.brickCount.x || placement.brickCount.y || placement.brickCount.z) && !placement.apron);
+            info.atlasResolutionAndApron = {}; info.atlasBrickCountAndWidth = {};
+        }
+        auto& bindings = generation->bindings;
+        bindings.device = state.device; bindings.volume = info;
+        bindings.activeLeafCount = candidate.activeLeafCount();
+        bindings.revision = candidate.revision();
+        bindings.revision.placement = state.current ? advance(state.current->bindings().revision.placement) : 1;
+        std::copy(placed->topology.levels.begin(),placed->topology.levels.end(),bindings.levels.begin());
+        const UInt3 resolution{info.atlasResolutionAndApron.x,info.atlasResolutionAndApron.y,info.atlasResolutionAndApron.z};
+        for (size_t i = 0; i < request.channelCount; ++i) {
+            const auto& input = request.channels[i];
+            require(input.channel < c_MaxChannels && !(bindings.channelMask & (uint32_t(1) << input.channel)));
+            check(validateChannelDesc(input.desc).result);
+            auto& channel = bindings.channels[input.channel];
+            channel.desc = input.desc; check(describeChannel(input.desc.format,resolution,channel.storage).result);
+            require(input.byteCount == channel.storage.logicalBytes && (!input.byteCount || input.data));
+            channel.revision = {generation->serial,generation->serial};
+            adopted->channels[input.channel] = input.desc;
+            adopted->incarnationSerial = advance(adopted->incarnationSerial);
+            generation->incarnations[input.channel] = adopted->incarnationSerial;
+            bindings.channelMask |= uint32_t(1) << input.channel;
+        }
+        Allocator allocator{state.device,request.budget,0,0,&ticket->uploads};
+        if (!placed->topology.nodes.empty()) bindings.nodes = view(allocator.upload(placed->topology.nodes.data(),
+            placed->topology.nodes.size()*4ull,0,true));
+        if (!placed->topology.children.empty()) bindings.children = view(allocator.upload(placed->topology.children.data(),
+            placed->topology.children.size()*4ull,0,true));
+        bindings.levelMetadata = view(allocator.upload(placed->topology.levels.data(),
+            placed->topology.levels.size()*sizeof(LevelInfo),sizeof(LevelInfo),false));
+        if (!placed->map.empty()) bindings.atlasMap = view(allocator.upload(placed->map.data(),
+            placed->map.size()*sizeof(slang::AtlasNode),sizeof(slang::AtlasNode),false));
+        for (size_t i = 0; i < request.channelCount; ++i) {
+            const auto& input = request.channels[i];
+            if (input.byteCount) bindings.channels[input.channel].raw = view(allocator.upload(input.data,input.byteCount,0,true));
+        }
+        ticket->generation = std::shared_ptr<VolumeGeneration>(new VolumeGeneration(std::move(generation)));
+        ticket->adoption = std::move(adopted);
+        auto candidateTicket = std::unique_ptr<PreparedGeneration>(new PreparedGeneration(std::move(ticket)));
+        output = std::move(candidateTicket);
+    });
+}
+FRESULT detail::VolumeAdoptionBuilder::exportTopology(const VolumeGeneration& generation, slang::PackedVolume& output) noexcept {
+    return guarded([&] {
+        const auto& placement = *generation.m_impl->placement;
+        slang::PackedVolume candidate;
+        candidate.volume = placement.topology.volume;
+        candidate.levels = placement.topology.levels;
+        candidate.nodes = placement.topology.nodes;
+        candidate.children = placement.topology.children;
+        candidate.atlasMap = placement.map;
+        output = std::move(candidate);
+    });
+}
+IRHIObject* detail::VolumeAdoptionBuilder::attachment(const VolumeGeneration& generation) noexcept {
+    return generation.m_impl->attachment.Get();
+}
+FRESULT detail::VolumeAdoptionBuilder::validateGeneration(const NvrhiVolume& volume, const VolumeGeneration& generation) noexcept {
+    return volume.m_impl->owner == generation.m_impl->owner ? FS_OK : FE_INVALID_ARGS;
 }
 } // namespace gvdb::portable

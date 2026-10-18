@@ -268,6 +268,14 @@ nvrhi::FRESULT resolveVolume(IGVDBVolume* volume, NvrhiVolume** output) noexcept
         return nvrhi::FS_OK;
     });
 }
+nvrhi::FRESULT resolveSnapshot(IGVDBSnapshot* snapshot, std::shared_ptr<const VolumeGeneration>& output) noexcept {
+    output.reset();
+    return guarded([&] {
+        const auto value = implementation<Snapshot>(snapshot);
+        output = value->generation;
+        return nvrhi::FS_OK;
+    });
+}
 nvrhi::FRESULT wrapGeneration(nvrhi::IDevice* device, std::unique_ptr<PreparedGeneration> prepared,
                              IGVDBGenerationTicket** output) noexcept {
     if (!output) return nvrhi::FE_INVALID_ARGS;

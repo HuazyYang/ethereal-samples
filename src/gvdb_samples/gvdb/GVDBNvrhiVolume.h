@@ -38,7 +38,7 @@ struct GenerationRequest {
     PreparationBudget budget;
 };
 class NvrhiVolume;
-namespace detail { class VolumeMutationBuilder; }
+namespace detail { class VolumeMutationBuilder; class VolumeAdoptionBuilder; }
 class PreparedGeneration {
  public:
     ~PreparedGeneration();
@@ -50,6 +50,7 @@ class PreparedGeneration {
     explicit PreparedGeneration(std::unique_ptr<Impl>) noexcept;
     friend class NvrhiVolume;
     friend class detail::VolumeMutationBuilder;
+    friend class detail::VolumeAdoptionBuilder;
 };
 // Authenticated retained generation. Bindings and buffers survive the publishing owner.
 // The binding description is immutable; its GPU contents obey caller queue ordering.
@@ -65,6 +66,7 @@ class VolumeGeneration {
     explicit VolumeGeneration(std::unique_ptr<Impl>) noexcept;
     friend class NvrhiVolume;
     friend class detail::VolumeMutationBuilder;
+    friend class detail::VolumeAdoptionBuilder;
 };
 class PreparedReadback {
  public:
@@ -89,6 +91,9 @@ class NvrhiVolume {
     ~NvrhiVolume();
     NvrhiVolume(const NvrhiVolume&) = delete;
     NvrhiVolume& operator=(const NvrhiVolume&) = delete;
+    // The HostVolume object address is stable. A transactional topology adoption
+    // invalidates every borrowed pool/node pointer. Bare NodeId has no epoch bits;
+    // callers must pair cached IDs with host().revision().epoch and reacquire after adoption.
     HostVolume& host() noexcept;
     const HostVolume& host() const noexcept;
     // Every successful set starts a fresh incarnation, even with an identical descriptor.
@@ -122,5 +127,6 @@ class NvrhiVolume {
     std::unique_ptr<Impl> m_impl;
     explicit NvrhiVolume(std::unique_ptr<Impl>) noexcept;
     friend class detail::VolumeMutationBuilder;
+    friend class detail::VolumeAdoptionBuilder;
 };
 } // namespace gvdb::portable
