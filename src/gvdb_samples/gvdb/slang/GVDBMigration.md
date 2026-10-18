@@ -1,4 +1,11 @@
-﻿# GVDB public interface migration inventory
+# GVDB public interface migration inventory
+
+This is the historical initial integration inventory. The CPU owner, public volume,
+transactional VBX and owned voxel/filter APIs have since been implemented and
+validated on Windows. Current entry-level retirement gaps are tracked in the
+[CUDA entry inventory](../../../../docs/gvdb-cuda-entry-inventory.md), and the
+aggregate `docs/slang-next-status.md` records accepted checkpoints. The table
+below preserves the earlier migration analysis rather than current completion.
 
 The NVRHI public device and command-list design is retained. The legacy GVDB
 public header still contains 22 declarations exposing `donut::gp` types. Those
