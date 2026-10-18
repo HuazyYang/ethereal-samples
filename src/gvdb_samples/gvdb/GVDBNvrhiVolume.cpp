@@ -692,6 +692,16 @@ FRESULT detail::VolumeAdoptionBuilder::prepareTopology(NvrhiVolume& volume, cons
     });
 }
 
+FRESULT detail::VolumeAdoptionBuilder::beginRebuild(NvrhiVolume& volume,
+    std::unique_ptr<HostVolume>& output) noexcept {
+    return guarded([&] {
+        auto& state = *volume.m_impl;
+        require(!state.host.dirty());
+        auto candidate = std::make_unique<HostVolume>(state.host.m_limits);
+        check(candidate->configure(state.host.configuration()));
+        output = std::move(candidate);
+    });
+}
 FRESULT detail::VolumeAdoptionBuilder::beginAccumulation(NvrhiVolume& volume,
     std::unique_ptr<AccumulationCandidate>& output) noexcept {
     return guarded([&] {

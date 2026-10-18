@@ -63,6 +63,10 @@ class VolumeAdoptionBuilder {
         std::unique_ptr<PreparedGeneration>& output) noexcept;
     static nvrhi::FRESULT describeTopologyPlacement(const HostVolume&, const AtlasPlacement&,
                                                    VolumeInfo& output) noexcept;
+    // Empty configured candidate using this owner's CPU pool limits. Useful for
+    // public builders: temporary staging obeys the same allocation bounds as adoption.
+    static nvrhi::FRESULT beginRebuild(NvrhiVolume&,
+        std::unique_ptr<HostVolume>& output) noexcept;
     // Begins from this owner's finished host, capturing owner/host/config/publication.
     // The private candidate can grow and activate inactive leaves, but cannot remove,
     // reorder, move or reconfigure existing nodes. Clear/configure invalidates it.
