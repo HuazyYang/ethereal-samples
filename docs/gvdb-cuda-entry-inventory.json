@@ -239,9 +239,11 @@
       "remaining": "Shared DXR/Vulkan/OptiX mixed-scene implementation exists; material/shading/visual and owned-volume gates remain."
     },
     "exception": {
-      "status": "pending",
-      "replacementFiles": [],
-      "remaining": "OptiX exception-program diagnostic behavior needs explicit disposition; no public exception-stage equivalence claimed."
+      "status": "sample-validated",
+      "replacementFiles": [
+        "../slang_compute/ExampleDevice.h"
+      ],
+      "remaining": "Explicit backend disposition: additive CUDA validation factory enables OptiX SDK diagnostics through IMessageCallback; launch/completion failures invalidate output instead of black-pixel continuation. Normal and isolated trace-depth failure tests pass, and GVDB samples use -cuda --validation. No portable exception stage/user exceptions or legacy recovery equivalence is claimed; Linux and other devices remain."
     }
   },
   "entries": [

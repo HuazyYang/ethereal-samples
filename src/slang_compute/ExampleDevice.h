@@ -33,7 +33,8 @@ public:
         if(cuda) {
 #if ETHEREAL_TEST_CUDA
             nvrhi::cuda::DeviceDesc desc;desc.deviceOrdinal=adapter<0?0:adapter;desc.enableOptiX=requestRayTracing;
-            m_device=nvrhi::cuda::createDevice(desc);
+            desc.errorCB=donut::app::DefaultMessageCallback::GetInstance();
+            m_device=validation && requestRayTracing ? nvrhi::cuda::createDeviceWithValidation(desc) : nvrhi::cuda::createDevice(desc);
 #else
             throw std::runtime_error("This build has no CUDA backend");
 #endif
