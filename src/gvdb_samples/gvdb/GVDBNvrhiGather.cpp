@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "GVDBNvrhiGather.h"
+#include "GVDBNvrhiPointBinsInternal.h"
 #include "GVDBNvrhiMutationInternal.h"
 #include "GVDBNvrhiAdoptionInternal.h"
 #include <nvrhi/shader-program.h>
@@ -82,7 +83,7 @@ void validateArtifact(IShaderProgram* program,uint32_t entry,const BindingLayout
         if(item.scope==ShaderParameterScope::ConstantBuffer)require(item.parentParameter==constant,FE_UNSUPPORTED);
     }
 }
-struct Bins {std::vector<slang::UInt2> cells;std::vector<uint32_t> indices;uint32_t side=0,perLeaf=0;};
+using Bins=detail::PointBins;
 Bins buildBins(const slang::PackedVolume& topology,const GatherRequestDesc& request,
     const GatherPreparationBudget& budget,const detail::ResolvedPointSet& points) {
     require(!topology.levels.empty());
@@ -170,6 +171,10 @@ Bins buildBins(const slang::PackedVolume& topology,const GatherRequestDesc& requ
     return result;
 }
 } // namespace
+nvrhi::FRESULT detail::buildPointBins(const slang::PackedVolume& topology,const GatherRequestDesc& request,
+    const GatherPreparationBudget& budget,const ResolvedPointSet& points,PointBins& output) noexcept {
+    return guarded([&] { auto result=buildBins(topology,request,budget,points);output=std::move(result); });
+}
 struct NvrhiGather::Impl {
     DeviceHandle device;
     NvrhiVolume* owner=nullptr;

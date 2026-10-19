@@ -77,12 +77,15 @@
       "remaining": "Public ownership and velocity/color association coverage remain."
     },
     "subcell-binning": {
-      "status": "portable-foundation",
+      "status": "owned-validated",
       "replacementFiles": [
         "gvdb/slang/GVDBSubcells.slang",
-        "gvdb/GVDBSlangSubcells.cpp"
+        "gvdb/GVDBSlangSubcells.cpp",
+        "gvdb/GVDBNvrhiSubcellApi.cpp",
+        "gvdb/slang/GVDBPointSubcells.slang",
+        "gvdb/GVDBNvrhiPointQuantizeApi.cpp"
       ],
-      "remaining": "Replacement bin organization differs; public ownership and complete attribute transport remain."
+      "remaining": "Public retained-snapshot stable subcell ranges, signed cell locations, original ordinals and expanded canonical attributes pass four Windows APIs, both native graphics adapters, CUDA memory checking and installed static/shared consumers. Position and velocity ushort3 factories compose without changing association. Fixed source leaf-pool ordering and stable point ordering replace arbitrary legacy permutations/atomic scheduling. Broader consumers, Linux and performance/reference gates remain."
     },
     "conversion": {
       "status": "owned-validated",
@@ -93,13 +96,15 @@
       "remaining": "Public owned upload/set factories validate strided encodings, exact converted XYZ bounds and velocity/color association on four Windows APIs. External GPU import and broader consumers remain."
     },
     "normalized-ushort": {
-      "status": "partial",
+      "status": "owned-validated",
       "replacementFiles": [
         "gvdb/slang/GVDBPointConversion.slang",
         "gvdb/slang/GVDBPointQuantize.slang",
-        "gvdb/GVDBNvrhiPointQuantizeApi.cpp"
+        "gvdb/GVDBNvrhiPointQuantizeApi.cpp",
+        "gvdb/GVDBNvrhiSubcellApi.cpp",
+        "gvdb/slang/GVDBPointSubcells.slang"
       ],
-      "remaining": "Public normalized-ushort position and velocity factories now expose actual GPU codes/decoded attributes with exact unmodified attribute transport. Velocity uses explicit or unpadded extrema bounds with constant-axis repair; four APIs, both native adapters, CUDA memcheck and installed consumers pass. Expanded public subcell storage/orchestration and platform/performance gates remain; this is not IEEE half."
+      "remaining": "Public retained-snapshot stable subcell ranges, signed cell locations, original ordinals and expanded canonical attributes pass four Windows APIs, both native graphics adapters, CUDA memory checking and installed static/shared consumers. Position and velocity ushort3 factories compose without changing association. Fixed source leaf-pool ordering and stable point ordering replace arbitrary legacy permutations/atomic scheduling. Broader consumers, Linux and performance/reference gates remain."
     },
     "keys": {
       "status": "portable-foundation",

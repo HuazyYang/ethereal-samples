@@ -3,6 +3,7 @@
 // Private same-binary authentication seam. Neither installed nor externally exported.
 #include "GVDBNvrhiPointApi.h"
 #include <vector>
+#include <array>
 namespace gvdb::portable::detail {
 struct ResolvedPointSet {
     // Owns all CPU borrows and canonical GPU buffers below. Read-only data remains
@@ -25,4 +26,9 @@ nvrhi::FRESULT clonePointSetPositions(IGVDBPointSet*,nvrhi::IDevice*,nvrhi::IBuf
 // preserves position bounds; all selected XYZ values must be finite.
 nvrhi::FRESULT clonePointSetFloatAttribute(IGVDBPointSet*,nvrhi::IDevice*,PointAttribute,
     nvrhi::IBuffer*,std::vector<uint8_t> values,IGVDBPointSet** output) noexcept;
+// Trusted GPU expansion producer: preserves source attribute layouts/mask but uses
+// a new count and actual completed GPU bytes. Recomputes finite position bounds.
+nvrhi::FRESULT createExpandedPointSet(IGVDBPointSet*,nvrhi::IDevice*,uint64_t count,
+    const std::array<nvrhi::BufferHandle,3>&,std::array<std::vector<uint8_t>,3> values,
+    IGVDBPointSet** output) noexcept;
 } // namespace gvdb::portable::detail

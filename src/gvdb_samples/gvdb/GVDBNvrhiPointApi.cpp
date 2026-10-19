@@ -448,6 +448,33 @@ nvrhi::FRESULT clonePointSetPositions(IGVDBPointSet* input,nvrhi::IDevice* devic
     std::vector<uint8_t> positions,IGVDBPointSet** output) noexcept {
     return clonePointSetFloatAttribute(input,device,PointAttribute::Position,buffer,std::move(positions),output);
 }
+nvrhi::FRESULT createExpandedPointSet(IGVDBPointSet* input,nvrhi::IDevice* device,uint64_t count,
+    const std::array<nvrhi::BufferHandle,3>& buffers,std::array<std::vector<uint8_t>,3> values,
+    IGVDBPointSet** output) noexcept {
+    if(!output)return FE_INVALID_ARGS;*output=nullptr;
+    return guarded([&] {
+        const auto source=implementation<PointSet>(input);require(device&&source->device.Get()==device);
+        require(count<=UINT32_MAX/16,FE_UNSUPPORTED);
+        auto info=source->info;info.count=count;info.empty=count==0;info.boundsMin=info.boundsMax={};
+        std::array<AttributeData,3> data;
+        for(uint32_t i=0;i<3;++i)if(info.attributeMask&(1u<<i)) {
+            const auto& format=source->attributes[i];
+            require(values[i].size()==count*format.components*componentBytes(format.component));
+            require(values[i].empty() || (buffers[i]&&buffers[i]->getDesc().canHaveRawViews&&buffers[i]->getDesc().byteSize>=values[i].size()));
+            data[i]={buffers[i],std::move(values[i]),format.component,format.components};
+        }
+        for(uint64_t i=0;i<count;++i) {
+            Float4 v{};std::memcpy(&v,data[0].bytes.data()+size_t(i)*data[0].components*4,12);
+            require(std::isfinite(v.x)&&std::isfinite(v.y)&&std::isfinite(v.z));
+            if(!i)info.boundsMin=info.boundsMax=v;
+            else {
+                info.boundsMin={std::min(info.boundsMin.x,v.x),std::min(info.boundsMin.y,v.y),std::min(info.boundsMin.z,v.z),0};
+                info.boundsMax={std::max(info.boundsMax.x,v.x),std::max(info.boundsMax.y,v.y),std::max(info.boundsMax.z,v.z),0};
+            }
+        }
+        auto result=MAKE_RC_OBJ_PTR(PointSet,device,info,std::move(data));*output=result.Detach();return FS_OK;
+    });
+}
 } // namespace detail
 nvrhi::FRESULT gvdbCreateNvrhiPointOps(uint32_t apiVersion,const PointOpsCreateDesc* desc,IGVDBPointOps** output) noexcept {
     if(!output)return FE_INVALID_ARGS;*output=nullptr;
