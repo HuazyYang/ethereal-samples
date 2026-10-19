@@ -18,7 +18,8 @@ namespace gvdb::samples::fluid {
 using namespace slang;
 namespace {
 void require(bool v, const char* what) {
-    if (!v) throw std::runtime_error(what);
+    if (!v)
+        throw std::runtime_error(what);
 }
 void expectNear(float a, float b, float tolerance, const char* what) {
     if (!std::isfinite(a) || std::abs(a - b) > tolerance) {
@@ -36,7 +37,11 @@ void sphTests(ethereal::slang::ComputeRuntime& runtime) {
     p.boundary = {.5f, 10, 0, 0};
     p.integration = {0, .1f, 1000, 1000};
     p.wall = {1, 2, 4, 1};
-    std::vector<Float4> positions = {{2.75f, 5, 5, 42}, {6.25f, 5, 5, 43}, {2.75f, 5, 6, 44}};
+    std::vector<Float4> positions = {
+        {2.75f, 5, 5, 42},
+        {6.25f, 5, 5, 43},
+        {2.75f, 5, 6, 44}
+    };
     SlangSphSimulation waves(runtime, p, positions);
     waves.step();
     const auto velocity = waves.readVelocities(), location = waves.readPositions();
@@ -54,7 +59,12 @@ void sphTests(ethereal::slang::ComputeRuntime& runtime) {
     expectNear(poolVelocity[0].x, expected, 1e-5f, "Existing pool phase and stiffness unchanged");
     p.boundary = {0, 0, 0, 0};
     p.wall = {0, 0, 0, 1};
-    positions = {{.5f, 5, 5, 0}, {1.5f, 5, 5, 0}, {7.5f, 5, 5, 0}, {8.5f, 5, 5, 0}};
+    positions = {
+        {.5f,  5, 5, 0},
+        {1.5f, 5, 5, 0},
+        {7.5f, 5, 5, 0},
+        {8.5f, 5, 5, 0}
+    };
     SlangSphSimulation inside(runtime, p, positions);
     inside.step();
     const auto accepted = inside.readPositions();
@@ -67,7 +77,11 @@ void sphTests(ethereal::slang::ComputeRuntime& runtime) {
     require(all[0].x == .5f && all[3].x == 8.5f, "Default pool retains boundary grid cells");
     p.wall.w = 1;
     p.integration.w = 2;
-    SlangSphSimulation clamp(runtime, p, {{5, 5, 5, 0}}, {{6, 8, 0, 0}});
+    SlangSphSimulation clamp(runtime, p,
+                             {
+                                 {5, 5, 5, 0}
+    },
+                             {{6, 8, 0, 0}});
     clamp.step();
     const auto limited = clamp.readVelocities();
     expectNear(limited[0].x, 1.2f, 1e-6f, "Corrected velocity clamp X");
@@ -82,17 +96,19 @@ void sphTests(ethereal::slang::ComputeRuntime& runtime) {
     require(rejected, "Unknown SPH compatibility mode rejected");
 }
 void gatherTests(ethereal::slang::ComputeRuntime& runtime) {
-    const std::vector<Float4> points = {{-31.75f, 16.25f, 16.25f, 0}, {31.75f, 16.25f, 16.25f, 0}};
+    const std::vector<Float4> points = {
+        {-31.75f, 16.25f, 16.25f, 0},
+        {31.75f,  16.25f, 16.25f, 0}
+    };
     // Nonbinary bytes catch normalized-float/uchar texture reinterpretation regressions.
     const uint32_t colors[] = {0xffcc3399, 0xff996633};
     auto gpu = runtime.buffer(points.size() * 16, 16, points.data()),
          color = runtime.buffer(sizeof(colors), 4, colors);
     FluidSurface surface(runtime);
     surface.reconstruct(gpu, uint32_t(points.size()), color);
-    const auto atlas = surface.volume().readAtlas();
-    std::vector<uint32_t> actualColor(atlas.size());
-    runtime.read(surface.color(), actualColor.data(), actualColor.size() * 4);
-    const auto& packed = surface.packed();
+    const auto atlas = surface.readAtlas();
+    const auto actualColor = surface.readColor();
+    const auto packed = surface.readTopology();
     const auto& level = packed.levels[0];
     const auto r = packed.volume.atlasResolutionAndApron;
     require(packed.levels.size() == 5 && level.nodes.w == 5 && level.nodeExtent.x == 32 &&
@@ -143,16 +159,66 @@ void gatherTests(ethereal::slang::ComputeRuntime& runtime) {
         for (int z = -1; z <= width; ++z)
             for (int y = -1; y <= width; ++y)
                 for (int x = -1; x <= width; ++x) {
-                    auto it =
-                        expected.find({int32_t(node[1]) + x, int32_t(node[2]) + y, int32_t(node[3]) + z});
+                    auto it = expected.find({int32_t(node[1]) + x, int32_t(node[2]) + y, int32_t(node[3]) + z});
                     const float wanted = it == expected.end() ? 3 : it->second;
-                    const size_t address =
-                        (size_t(int(node[6]) + z) * r.y + uint32_t(int(node[5]) + y)) * r.x +
-                        uint32_t(int(node[4]) + x);
+                    const size_t address = (size_t(int(node[6]) + z) * r.y + uint32_t(int(node[5]) + y)) * r.x +
+                                           uint32_t(int(node[4]) + x);
                     expectNear(atlas.at(address), wanted, 2e-5f,
                                "Scalar apron preserves sparse background three");
                 }
     }
+    const auto retained = surface.snapshot();
+    require(retained && retained->getDevice() == runtime.device(), "Fluid publication device identity");
+    auto rejects = [&](const std::vector<Float4>& bad) {
+        auto input = runtime.buffer(bad.size() * 16, 16, bad.data());
+        bool rejected = false;
+        try {
+            surface.reconstruct(input, uint32_t(bad.size()));
+        } catch (const std::exception&) {
+            rejected = true;
+        }
+        require(rejected && surface.snapshot() == retained,
+                "Failed fluid rebuild preserves visible publication");
+        require(surface.readAtlas() == atlas && surface.readColor() == actualColor,
+                "Failed rebuild preserves channel bytes");
+    };
+    rejects({
+        {NAN, 0, 0, 0}
+    });
+    rejects({
+        {-1000, -1000, -1000, 0}
+    });
+    // Valid individual coordinates exceed the configured hierarchy span together;
+    // this fails after source upload and partial private topology work.
+    rejects({
+        {-8000000, 0, 0, 0},
+        {8000000,  0, 0, 0}
+    });
+    auto filtered = points;
+    filtered.insert(filtered.begin() + 1, {-1000, -1000, -1000, 0});
+    const uint32_t filteredColors[] = {colors[0], 0x01020304, colors[1]};
+    auto filteredGpu = runtime.buffer(filtered.size() * 16, 16, filtered.data());
+    auto filteredColor = runtime.buffer(sizeof(filteredColors), 4, filteredColors);
+    surface.reconstruct(filteredGpu, uint32_t(filtered.size()), filteredColor);
+    require(surface.positions().size() == points.size(), "Invalid SPH particle is excluded");
+    require(surface.readAtlas() == atlas && surface.readColor() == actualColor,
+            "Filtering preserves original color associations");
+    surface.reconstruct(gpu, uint32_t(points.size()));
+    gvdb::portable::ChannelSnapshotDesc absent, oldScalar, oldColor;
+    require(surface.snapshot()->getChannel(1, absent) == nvrhi::FE_NOT_FOUND,
+            "Uncolored replacement drops color channel");
+    require(NVRHI_SUCCEEDED(retained->getChannel(0, oldScalar)) &&
+                NVRHI_SUCCEEDED(retained->getChannel(1, oldColor)),
+            "Previous colored publication survives replacement");
+    require(oldScalar.raw.byteOffset == 0 && oldScalar.raw.byteSize == atlas.size() * 4 &&
+                oldColor.raw.byteOffset == 0,
+            "Retained owned ranges");
+    std::vector<float> oldValues(atlas.size());
+    std::vector<uint32_t> oldColors(actualColor.size());
+    runtime.read(oldScalar.raw.buffer, oldValues.data(), oldValues.size() * 4);
+    runtime.read(oldColor.raw.buffer, oldColors.data(), oldColors.size() * 4);
+    require(oldValues == atlas && oldColors == actualColor,
+            "Old snapshot GPU bytes remain immutable after owner replacement");
 }
 }  // namespace
 void runFluidTopologyTests() {
@@ -174,24 +240,34 @@ void runFluidTopologyTests() {
                 maximum.z == 320,
             "Legacy initial topology bounds are (96,64,96)..(320,192,320)");
     expectNear(initial.parameters.physical.x, 3, 1e-6f, "World smoothing support");
-    require(initial.parameters.wall.w == 1 && initial.parameters.wall.y == 100,
-            "Legacy wave preset selected");
+    require(initial.parameters.wall.w == 1 && initial.parameters.wall.y == 100, "Legacy wave preset selected");
     require(initial.colors.front() == 0xff333333, "Legacy first particle color");
     const auto reset = makeInitialFluid(32);
     require(std::memcmp(initial.positions.data(), reset.positions.data(), 32 * sizeof(Float4)) == 0,
             "Portable seeded reset is deterministic");
-    const auto support = buildFluidTopology({{-31.75f, 16.25f, 16.25f, 0}, {31.75f, 16.25f, 16.25f, 0}});
+    const auto support = buildFluidTopology({
+        {-31.75f, 16.25f, 16.25f, 0},
+        {31.75f,  16.25f, 16.25f, 0}
+    });
     std::set<std::tuple<int, int, int>> origins;
     const auto level = support.levels.front();
     for (uint32_t n = 0; n < level.nodes.z; ++n) {
         const auto* node = support.nodes.data() + (level.nodes.x + size_t(n) * level.nodes.y) / 4;
         origins.emplace(int32_t(node[1]), int32_t(node[2]), int32_t(node[3]));
     }
-    require(origins == std::set<std::tuple<int, int, int>>{{-64, 0, 0}, {-32, 0, 0}, {0, 0, 0}, {32, 0, 0}},
+    require(origins ==
+                std::set<std::tuple<int, int, int>>{
+                    {-64, 0, 0},
+                    {-32, 0, 0},
+                    {0,   0, 0},
+                    {32,  0, 0}
+    },
             "Independent signed full-rebuild support activates exact boundary leaves");
     bool rejected = false;
     try {
-        buildFluidTopology({{std::numeric_limits<float>::quiet_NaN(), 16, 16, 0}});
+        buildFluidTopology({
+            {std::numeric_limits<float>::quiet_NaN(), 16, 16, 0}
+        });
     } catch (const std::invalid_argument&) {
         rejected = true;
     }
@@ -272,7 +348,12 @@ void runFluidTests(ethereal::slang::ComputeRuntime& runtime, const std::filesyst
         build.logDimensions = {1, 1};
         PackedVolume packed;
         std::string error;
-        require(buildTopology({{0, 0, 0, 0}}, build, packed, error), "Signed-range analytic topology");
+        require(buildTopology(
+                    {
+                        {0, 0, 0, 0}
+        },
+                    build, packed, error),
+                "Signed-range analytic topology");
         auto res = packed.volume.atlasResolutionAndApron;
         std::vector<float> scalar(size_t(res.x) * res.y * res.z, 2);
         SlangVolume gpu(runtime, packed, scalar.data(), scalar.size());
@@ -281,7 +362,11 @@ void runFluidTests(ethereal::slang::ComputeRuntime& runtime, const std::filesyst
         v.threshold = {4, 3, -1, 0};
         v.extinct = {-1, 1, 0, 0};
         v.cutoff = {0, .0001f, 0, 0};
-        v.transfer = {{1, 0, 0, .1f}, {0, 1, 0, .5f}, {0, 0, 1, .9f}};
+        v.transfer = {
+            {1, 0, 0, .1f},
+            {0, 1, 0, .5f},
+            {0, 0, 1, .9f}
+        };
         sample::SceneDescription analytic;
         analytic.volumes = {v};
         analytic.materials.emplace_back();
@@ -344,8 +429,7 @@ void runFluidTests(ethereal::slang::ComputeRuntime& runtime, const std::filesyst
     require(scene.mouseDrag(1, 0, 10, 1, view) && view.lightDirection.x != light.x,
             "Shift distance controls light");
     require(scene.key('1', view) && view.topology, "Topology toggle");
-    require(scene.key('2', view) && scene.overlayLines().size() == 512,
-            "Every eighth particle velocity line");
+    require(scene.key('2', view) && scene.overlayLines().size() == 512, "Every eighth particle velocity line");
     for (const auto& line : scene.overlayLines())
         require(std::isfinite(line.start.w) && std::isfinite(line.color.x),
                 "Packed color bits never become overlay coordinates");

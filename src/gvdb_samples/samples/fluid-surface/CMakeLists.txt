@@ -1,14 +1,28 @@
 if(ETHEREAL_WITH_SLANG AND TARGET gvdb_slang_runtime)
     include(../sample-utils/SceneAssets.cmake)
+    include(../sample-utils/OwnedVolumeSurface.cmake)
+    include(../../gvdb/GVDBNvrhiGatherApi.cmake)
+    include(../../gvdb/GVDBNvrhiApronApi.cmake)
+    set(fluid_owned_config "")
+    foreach(pair "GVDBAtlasRepack relocateAtlas" "GVDBPointStreamConversion convertPointStream" "GVDBAtlasGather gatherOwnedAtlas" "GVDBAtlasMutation mutateAtlas")
+        separate_arguments(parts UNIX_COMMAND "${pair}")
+        list(GET parts 0 module)
+        list(GET parts 1 entry)
+        string(APPEND fluid_owned_config "\"${CMAKE_CURRENT_SOURCE_DIR}/../../gvdb/slang/${module}.slang\" -T cs -E ${entry}\n")
+    endforeach()
+    file(CONFIGURE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/fluid-owned.cfg" CONTENT "${fluid_owned_config}" @ONLY)
+    ethereal_compile_shaders(TARGET gvdb_fluid_owned_shaders SLANG CUDA ALL_PLATFORMS
+        CONFIG "${CMAKE_CURRENT_BINARY_DIR}/fluid-owned.cfg"
+        OUTPUT_DIRECTORY "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/shaders/gvdb_fluid_owned")
     file(CONFIGURE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/fluid-surface.cfg" CONTENT
         "\"${CMAKE_CURRENT_SOURCE_DIR}/FluidSurface.slang\" -T cs -E publishFluidAtlas\n" @ONLY)
     ethereal_compile_shaders(TARGET gvdb_fluid_surface_shaders SLANG CUDA ALL_PLATFORMS
         CONFIG "${CMAKE_CURRENT_BINARY_DIR}/fluid-surface.cfg"
         OUTPUT_DIRECTORY "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/shaders/gvdb_slang")
     add_executable(fluid-surface main.cpp PortableFluid.cpp FluidScene.cpp FluidTests.cpp)
-    target_link_libraries(fluid-surface PRIVATE gvdb_slang_runtime gvdb_volume_viewer gvdb_scene_assets)
+    target_link_libraries(fluid-surface PRIVATE gvdb_slang_runtime gvdb_volume_viewer gvdb_scene_assets gvdb_owned_surface gvdb::nvrhi_api)
     target_compile_definitions(fluid-surface PRIVATE "GVDB_SAMPLES_ASSETS_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/../assets\"")
-    add_dependencies(fluid-surface gvdb_fluid_surface_shaders gvdb_slang_shaders)
+    add_dependencies(fluid-surface gvdb_fluid_owned_shaders gvdb_fluid_surface_shaders gvdb_slang_shaders)
     if(TARGET gvdb_scene_rt)
         target_link_libraries(fluid-surface PRIVATE gvdb_scene_rt)
         target_compile_definitions(fluid-surface PRIVATE ETHEREAL_FLUID_RT=1)

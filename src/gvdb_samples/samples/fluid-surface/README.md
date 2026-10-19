@@ -15,7 +15,7 @@ The default RT path preserves the original fluid and ground material, five shadi
 
 Controls are Space for simulation, 1 for topology, 2 for every eighth particle's velocity line, 3 for shading, 4 for particle color, R for reset and grave accent for the Inspector/debug overlays. Left drag orbits, middle drag pans, right drag changes distance; Shift-left/right controls the light. The Inspector retains the simulation, topology, fluid, color, shading and reset controls. Generic viewer mode/section shortcuts are consumed.
 
-Preserved numerical contracts include the 400 x 200 x 400 domain, original initialization block, density 400, mass .00020543, simulation scale .005, physical smoothing radius .015, viscosity .5, slope .1, wave force 100/frequency 6, acceleration 150 and velocity 3 limits. Opt-in `SphParameters.wall.w=1` implements both original moving X walls and insertion cells [1, resolution - 3]; mode 0 keeps the existing SPH pool rules. The retained call `fromBranching(3,3,3,3,5)` takes arguments from root to leaf. The portable hierarchy therefore uses leaf-first log dimensions `{5,3,3,3,3}`, with 32-voxel leaves and cumulative widths 32, 256, 2048, 16384 and 131072. All five level descriptors remain present; unused upper levels contain no active nodes. Reconstruction uses radius-two support, four-voxel subcells, unquantized positions, scalar background/aprons 3, and the exact shared atlas slots for raw RGBA8 colors. Point binning, SPH, gather and atlas/apron updates run on the device; sparse topology construction currently reads positions back and builds CPU node tables each frame.
+Preserved numerical contracts include the 400 x 200 x 400 domain, original initialization block, density 400, mass .00020543, simulation scale .005, physical smoothing radius .015, viscosity .5, slope .1, wave force 100/frequency 6, acceleration 150 and velocity 3 limits. Opt-in `SphParameters.wall.w=1` implements both original moving X walls and insertion cells [1, resolution - 3]; mode 0 keeps the existing SPH pool rules. The retained call `fromBranching(3,3,3,3,5)` takes arguments from root to leaf. The portable hierarchy therefore uses leaf-first log dimensions `{5,3,3,3,3}`, with 32-voxel leaves and cumulative widths 32, 256, 2048, 16384 and 131072. All five level descriptors remain present; unused upper levels contain no active nodes. Reconstruction uses radius-two support, four-voxel subcells, unquantized positions, scalar background/aprons 3, and the exact shared atlas slots for raw RGBA8 colors. SPH, point conversion, gather and atlas/apron updates run on the device. Public preparation builds stable bins and host topology from explicit position readback; all GPU volume storage belongs to public publications.
 
 The RT transfer table has 16,384 entries and inclusive endpoint 16,300. The retained threshold {iso 0, min 3, max -1} deliberately has a negative denominator. Combined with the original positive scalar cutoff and black/transparent TF first entry, the legacy deep shading choice can produce transparent fluid; it is retained rather than silently replaced with a different density mapping. Empty-skip is the original first-allocated-leaf debug mode.
 
@@ -38,3 +38,23 @@ The legacy color texture has a separate retained bug: its RGBA8_UINT array uses 
 Validation evidence: build/fluid-topology-cpu.log, build/fluid-topology-compute-tests.log, build/fluid-topology-rt-full-tests.log, build/fluid-topology-*-validation.log, build/fluid-topology-*-memcheck.log, build/fluid-topology-cross-api.json build/fluid-legacy-color-probe.log and build/fluid-legacy-color-corrected-comparison.json. The matching reference images are build/fluid-new.png and build/fluid-legacy-color-corrected.png; build/fluid-legacy.png preserves the uncorrected reference.
 
 The prior application remains in legacy-main.cpp with its original FluidSystem and CUDA kernels. Non-Slang legacy builds select it explicitly.
+
+## Public reconstruction ownership
+
+FluidSurface now creates authenticated public points, activates the exact signed
+floor-support leaf origins, and publishes owned scalar/color gather and scalar
+aprons. A private replacement owner is made visible only after all stages succeed.
+Invalid SPH sentinels are filtered with their associated colors; failed early and
+late rebuilds preserve prior channel bytes, and retained old snapshots survive
+replacement. Compute surface rendering and mixed RT bind the same raw snapshot.
+Topology overlays/statistics use public host pools; diagnostic readback is explicit.
+The retained CPU topology builder and legacy GPU helpers remain reference tests.
+
+The 19 fluid tests, including full 1.5M-particle cases, pass. Added rollback/filter/
+lifetime cases pass all seven compute/RT analytic variants. Both graphics adapters
+pass native validation, CUDA memcheck reports zero errors, and graphics-only fluid
+plus interactive acceptance passes 24/24. Tests-disabled/CUDA-discovery-disabled
+production renders on AMD D3D11. Compared with preserved portable captures, full
+RT images are identical; compact compute changes at most four pixels by one byte,
+compact RT changes one byte, and full D3D11 changes one byte. Evidence is under
+`build/m5-fluid-owned`; these comparisons are not a broad performance guarantee.

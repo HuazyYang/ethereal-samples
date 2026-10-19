@@ -60,6 +60,11 @@ FluidScene::FluidScene(ethereal::slang::ComputeRuntime& runtime, AppOptions opti
     if (m_options.shading < 0 || m_options.shading > 4 || (m_options.compute && m_options.shading > 1))
         throw std::invalid_argument(
             "Compute fluid rendering supports off or levelset; other shading requires RT");
+    if (m_options.compute)
+        m_computeSurface = std::make_unique<sample::OwnedVolumeSurface>(
+            runtime.device(), donut::app::GetDirectoryWithExecutable() / "shaders/gvdb_owned" /
+                                  donut::app::GetShaderTypeName(runtime.device()->getGraphicsAPI()) /
+                                  "OwnedVolumeSurface_renderSurface.bin");
     if (m_options.compact) {
         m_target = {200, 98, 200};
         m_distance = 130;
@@ -110,14 +115,7 @@ void FluidScene::rebuild() {
     updateScene();
 }
 void FluidScene::updateScene() {
-    sample::SceneVolume v;
-    const auto& gpu = m_surface.volume();
-    v.info = gpu.info();
-    v.scalar = gpu.atlas();
-    v.nodes = gpu.nodes();
-    v.children = gpu.children();
-    v.levels = gpu.levels();
-    v.color = m_options.color ? m_surface.color() : nullptr;
+    auto v = sample::SceneVolume::from(m_surface.snapshot(), 0, m_options.color ? 1 : UINT32_MAX);
     v.transfer = m_transfer;
     v.transferLastIndex = 16300;
     v.steps = {.25f, 16, .25f, .001f};
@@ -150,14 +148,48 @@ void FluidScene::updateScene() {
 #endif
     resetSamples();
 }
+bool FluidScene::topologyOverlay(std::vector<sample::VolumeOverlayLine>& output) const {
+    output.clear();
+    const auto& host = m_surface.topology();
+    const Float4 colors[] = {
+        {.1f, 1,   .2f, 1},
+        {1,   .7f, .1f, 1},
+        {.1f, .6f, 1,   1},
+        {1,   .2f, .8f, 1}
+    };
+    for (uint32_t level = 0; level < host.getConfiguration().levelCount; ++level) {
+        const auto pool = host.getPool(0, level);
+        if (pool.count && (!pool.data || pool.stride != sizeof(portable::Node)))
+            throw std::logic_error("Fluid node pool");
+        if (pool.count > (1000000 - output.size()) / 12)
+            throw std::invalid_argument("Fluid overlay too large");
+        for (uint64_t i = 0; i < pool.count; ++i) {
+            portable::Node node;
+            std::memcpy(&node, static_cast<const uint8_t*>(pool.data) + i * pool.stride, sizeof(node));
+            const float width = float(host.getRange(int32_t(level)));
+            auto vertex = [&](uint32_t c) {
+                return Float4{float(node.position.x) + (c & 1 ? width : 0),
+                              float(node.position.y) + (c & 2 ? width : 0),
+                              float(node.position.z) + (c & 4 ? width : 0), 0};
+            };
+            for (uint32_t c = 0; c < 8; ++c)
+                for (uint32_t axis = 0; axis < 3; ++axis)
+                    if (!(c & (1u << axis)))
+                        output.push_back({vertex(c), vertex(c | (1u << axis)), colors[level % 4]});
+        }
+    }
+    return true;
+}
 void FluidScene::resetSamples() {
     m_samples = 0;
 #if ETHEREAL_FLUID_RT
-    if (m_renderer) m_renderer->resetAccumulation();
+    if (m_renderer)
+        m_renderer->resetAccumulation();
 #endif
 }
 void FluidScene::setShading(int value) {
-    if (value == m_options.shading) return;
+    if (value == m_options.shading)
+        return;
     const bool wasOff = m_options.shading == 0;
     m_options.shading = value;
     if (wasOff && value)
@@ -167,7 +199,10 @@ void FluidScene::setShading(int value) {
 }
 std::vector<Float4> FluidScene::transfer() const {
     // The portable level-set renderer uses white when no particle color is present.
-    return {{1, 1, 1, 1}, {1, 1, 1, 1}};
+    return {
+        {1, 1, 1, 1},
+        {1, 1, 1, 1}
+    };
 }
 void FluidScene::updateView(sample::VolumeViewOptions& view) {
     const auto b = basis(m_angles), light = basis(m_lightAngles);
@@ -216,7 +251,7 @@ slang::RaycastOutput FluidScene::renderCustom(const slang::RaycastParameters& ca
 #if ETHEREAL_FLUID_RT
     if (m_renderer) {
         // Dataset time advances even when reconstruction is disabled by Off.
-        m_renderer->setRandomSeed(4732,m_frame);
+        m_renderer->setRandomSeed(4732, m_frame);
         auto output = m_renderer->render(camera);
         m_samples = m_renderer->sampleCount();
         return output;
@@ -230,22 +265,27 @@ slang::RaycastOutput FluidScene::renderCustom(const slang::RaycastParameters& ca
         return {m_runtime->buffer(n * 16, 16, color.data()), m_runtime->buffer(n * 4, 4, depth.data()),
                 camera.image.x, camera.image.y};
     }
-    return {};
+    m_runtime->flush();
+    return m_computeSurface->render(m_surface.snapshot(), 0, m_options.color ? 1 : UINT32_MAX, camera,
+                                    m_transfer, 3);
 }
 std::vector<sample::VolumeOverlayLine> FluidScene::overlayLines() const {
     std::vector<sample::VolumeOverlayLine> lines;
-    if (!m_showGui || !m_showFluid) return lines;
+    if (!m_showGui || !m_showFluid)
+        return lines;
     const auto positions = m_simulation->readPositions(), velocities = m_simulation->readVelocities();
     lines.reserve((positions.size() + 7) / 8);
     for (size_t i = 0; i < positions.size(); i += 8) {
         const auto p = positions[i], v = velocities[i];
         uint32_t c;
         std::memcpy(&c, &p.w, 4);
-        if (p.x == -1000 && p.y == -1000 && p.z == -1000) continue;
-        lines.push_back(
-            {{p.x, p.y, p.z, 0},
-             {p.x + v.x + .1f, p.y + v.y + .1f, p.z + v.z + .1f, 0},
-             {float(c & 255) / 255, float((c >> 8) & 255) / 255, float((c >> 16) & 255) / 255, 1}});
+        if (p.x == -1000 && p.y == -1000 && p.z == -1000)
+            continue;
+        lines.push_back({
+            {p.x,                  p.y,                         p.z,                          0},
+            {p.x + v.x + .1f,      p.y + v.y + .1f,             p.z + v.z + .1f,              0},
+            {float(c & 255) / 255, float((c >> 8) & 255) / 255, float((c >> 16) & 255) / 255, 1}
+        });
     }
     return lines;
 }
@@ -312,14 +352,15 @@ void FluidScene::buildUI(sample::VolumeViewOptions& view) {
     ImGui::Checkbox("Simulate", &m_options.simulate);
     ImGui::Checkbox("Topology", &m_topology);
     ImGui::Checkbox("Fluid", &m_showFluid);
-    if (ImGui::Checkbox("Color", &m_options.color)) updateScene();
+    if (ImGui::Checkbox("Color", &m_options.color))
+        updateScene();
     int style = m_options.shading;
     if (ImGui::Combo("Shading", &style,
-                     m_options.compute
-                         ? "Off\0Level set\0"
-                         : "Off\0Level set\0Trilinear surface\0Volume (deep)\0Empty skipping\0"))
+                     m_options.compute ? "Off\0Level set\0"
+                                       : "Off\0Level set\0Trilinear surface\0Volume (deep)\0Empty skipping\0"))
         setShading(style);
-    if (ImGui::Button("Reset")) reset();
+    if (ImGui::Button("Reset"))
+        reset();
     ImGui::TextUnformatted(describe().c_str());
     ImGui::TextUnformatted("Space simulate; 1 topology; 2 fluid; 3 shading; 4 color; R reset; ` UI");
     updateView(view);
@@ -330,7 +371,7 @@ std::string FluidScene::describe() const {
         b, sizeof(b),
         "Fluid %s: %u particles, frame %u sample %u, t %.3f; %u bricks; fluid %.1f ms surface %.1f ms",
         m_options.compute ? "compute" : "Slang RT", particleCount(), m_frame, m_samples,
-        m_simulation->parameters().integration.x, m_surface.packed().levels[0].nodes.z, m_fluidMs,
+        m_simulation->parameters().integration.x, uint32_t(m_surface.topology().getPool(0, 0).count), m_fluidMs,
         m_surfaceMs);
     return b;
 }
@@ -356,7 +397,8 @@ uint32_t FluidScene::verifyVolumeContribution() {
     uint32_t hits = 0;
     for (size_t i = 0; i < a.size(); ++i)
         hits += std::isfinite(a[i]) && a[i] >= 0 && a[i] < m_lastCamera.march.z && a[i] + .01f < b[i];
-    if (!hits) throw std::runtime_error("Fluid image has no verified fluid-volume contribution");
+    if (!hits)
+        throw std::runtime_error("Fluid image has no verified fluid-volume contribution");
     return hits;
 #else
     throw std::runtime_error("Fluid RT was not built");

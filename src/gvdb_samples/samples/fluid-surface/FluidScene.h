@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 #include <sample-utils/SlangSceneRT.h>
+#include <sample-utils/OwnedVolumeSurface.h>
 
 #include "PortableFluid.h"
 #include "VolumeViewer.h"
@@ -16,6 +17,7 @@ class FluidScene final : public sample::VolumeScene {
     AppOptions m_options;
     std::unique_ptr<slang::SlangSphSimulation> m_simulation;
     FluidSurface m_surface;
+    std::unique_ptr<sample::OwnedVolumeSurface> m_computeSurface;
     nvrhi::BufferHandle m_colors;
     std::vector<slang::Float4> m_transfer;
     sample::SceneDescription m_scene;
@@ -36,12 +38,12 @@ class FluidScene final : public sample::VolumeScene {
     void resetSamples();
     void setShading(int);
 
-   public:
+ public:
     FluidScene(ethereal::slang::ComputeRuntime&, AppOptions);
-    slang::SlangVolume& volume() override { return m_surface.volume(); }
-    const slang::PackedVolume& packed() const override { return m_surface.packed(); }
+    portable::SnapshotHandle ownedSnapshot() const override { return m_surface.snapshot(); }
+    slang::VolumeInfo volumeInfo() override { return ownedSnapshot()->getDesc().volume; }
+    bool topologyOverlay(std::vector<sample::VolumeOverlayLine>&) const override;
     std::vector<slang::Float4> transfer() const override;
-    nvrhi::IBuffer* colorAtlas() const override { return m_options.color ? m_surface.color() : nullptr; }
     void animate(float, sample::VolumeViewOptions&) override;
     slang::RaycastOutput renderCustom(const slang::RaycastParameters&,
                                       const sample::VolumeViewOptions&) override;

@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 #include <gvdb/GVDBSlangSph.h>
-#include <gvdb/GVDBSlangVolume.h>
+#include <gvdb/GVDBNvrhiApi.h>
+#include <gvdb/slang/GVDBPortableData.h>
 
 #include <memory>
 namespace gvdb::samples::fluid {
@@ -18,18 +19,21 @@ InitialFluid makeInitialFluid(uint32_t requested = 1500000, bool compact = false
 slang::PackedVolume buildFluidTopology(const std::vector<slang::Float4>& positions);
 class FluidSurface {
     ethereal::slang::ComputeRuntime* m_runtime;
-    slang::PackedVolume m_packed;
-    std::unique_ptr<slang::SlangVolume> m_volume;
-    nvrhi::BufferHandle m_color;
+    struct State;
+    std::unique_ptr<State> m_state;
     std::vector<slang::Float4> m_positions;
 
-   public:
-    explicit FluidSurface(ethereal::slang::ComputeRuntime& runtime) : m_runtime(&runtime) {}
+ public:
+    explicit FluidSurface(ethereal::slang::ComputeRuntime& runtime);
+    ~FluidSurface();
     // Radius-one level set, support radius two, four-voxel subcells, background three.
     void reconstruct(nvrhi::IBuffer* positions, uint32_t count, nvrhi::IBuffer* colors = nullptr);
-    slang::SlangVolume& volume() const { return *m_volume; }
-    const slang::PackedVolume& packed() const { return m_packed; }
-    nvrhi::IBuffer* color() const { return m_color; }
+    portable::SnapshotHandle snapshot() const;
+    const portable::IGVDBHostVolume& topology() const;
+    // Explicit diagnostics; reconstruction and rendering use the public publication.
+    slang::PackedVolume readTopology() const;
+    std::vector<float> readAtlas() const;
+    std::vector<uint32_t> readColor() const;
     const std::vector<slang::Float4>& positions() const { return m_positions; }
 };
 }  // namespace gvdb::samples::fluid
