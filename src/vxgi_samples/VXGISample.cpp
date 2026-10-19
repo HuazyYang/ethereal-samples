@@ -103,6 +103,10 @@ class VXGISample : public donut::app::ApplicationBase {
         m_TextureCache =
             MAKE_RC_OBJ_PTR(donut::engine::TextureCache, GetDevice(),
                             nativeFS, nullptr);
+        // Like the original VXGI sample, this pipeline has no sRGB stage: the G-buffer albedo is UNORM, lighting is
+        // evaluated on the raw texel values and written to a UNORM swap chain. Decoding the glTF base-color textures as
+        // sRGB here would darken the image, since nothing re-encodes it on output.
+        m_TextureCache->SetSRGBOverride(donut::engine::SRGBMode::ForceLinear);
 
         SetAsynchronousLoadingEnabled(false);
         BeginLoadingScene(nativeFS, sceneFilePath);
