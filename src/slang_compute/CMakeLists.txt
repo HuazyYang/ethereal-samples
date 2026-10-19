@@ -200,3 +200,5 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/../gvdb_samples/gvdb/GVDBNvrhiVoxelizeApi.c
 include("${CMAKE_CURRENT_SOURCE_DIR}/../gvdb_samples/gvdb/GVDBNvrhiPointQuantizeApi.cmake")
 
 include("${CMAKE_CURRENT_LIST_DIR}/../gvdb_samples/gvdb/GVDBNvrhiDepositApi.cmake")
+
+include("${CMAKE_CURRENT_LIST_DIR}/../gvdb_samples/gvdb/GVDBNvrhiObstacleApi.cmake")

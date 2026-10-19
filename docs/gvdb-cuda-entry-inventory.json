@@ -134,9 +134,12 @@
       "remaining": "Sparse MAC/PIC-FLIP utility exists; exact legacy diagnostics/export contracts and owned channels remain. Reference contains no complete FLIP solver."
     },
     "obstacle-mapping": {
-      "status": "pending",
-      "replacementFiles": [],
-      "remaining": "Obstacle-volume subcell mapping needs an explicit replacement and tests."
+      "status": "owned-validated",
+      "replacementFiles": [
+        "gvdb/GVDBNvrhiObstacleApi.cpp",
+        "gvdb/slang/GVDBObstacleMapping.slang"
+      ],
+      "remaining": "Authenticated retained two-volume mapping, copied slot permutation/exclusion, signed half-open active-leaf lookup, explicit GPU/CPU query results and root/boundary repairs pass four-API/native/memory/package acceptance on Windows. Broader consumers, Linux and performance/reference gates remain."
     },
     "gather": {
       "status": "owned-validated",
