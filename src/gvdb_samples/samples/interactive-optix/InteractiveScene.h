@@ -25,7 +25,7 @@ class InteractiveScene final : public sample::VolumeScene
     ethereal::slang::ComputeRuntime &m_runtime;
     std::shared_ptr<const Input> m_input;
     Options m_options;
-    slang::SlangVolume m_volume;
+    portable::SnapshotHandle m_volume;
     sample::SceneDescription m_scene;
     sample::SlangSceneRT m_renderer;
     dm::float3 m_cameraAngles{-20, 30, 0}, m_cameraTarget{0, 0, 0};
@@ -40,10 +40,8 @@ class InteractiveScene final : public sample::VolumeScene
 
   public:
     InteractiveScene(ethereal::slang::ComputeRuntime &, std::shared_ptr<const Input>, Options = {});
-    slang::SlangVolume &volume() override
-    {
-        return m_volume;
-    }
+    portable::SnapshotHandle ownedSnapshot() const override { return m_volume; }
+    slang::VolumeInfo volumeInfo() override { return m_volume->getDesc().volume; }
     const slang::PackedVolume &packed() const override
     {
         return m_input->volume.packed;

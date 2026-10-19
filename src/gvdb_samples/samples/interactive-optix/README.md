@@ -58,3 +58,14 @@ on the 0-255 scale is 1.183 for deep volume and 2.028 for trilinear surface;
 Maximum channel differences are 250 and 231. Independent stochastic samples,
 corrected accumulation and pixel-center rays preclude a bitwise parity claim.
 Captures are `build/interactive-{legacy,new}-{volume,surface}.png`.
+
+## Public volume ownership
+
+The application imports its CPU VBX input through the public serializer, records
+an explicit scalar apron refresh, and renders the retained raw snapshot directly.
+There is no legacy SlangVolume GPU allocation. The same publication supplies
+viewer metadata and RT bindings; copied scene descriptions retain it after the
+application scene is destroyed. All15 analytic/asset tests pass on D3D12, Vulkan
+and CUDA/OptiX, and all12 four-mode captures exactly match the preserved portable
+reference. Both graphics adapters pass native validation and CUDA memcheck reports
+zero errors. A tests-disabled graphics production build also passes on AMD D3D12.

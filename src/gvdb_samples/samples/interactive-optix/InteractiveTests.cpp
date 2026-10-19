@@ -60,6 +60,17 @@ void runSelfTests(ethereal::slang::ComputeRuntime &runtime)
     input->mesh.positions = {{6, 0, 0, 1}, {6, 1, 2, 1}, {6, 2, 0, 1}};
     input->mesh.indices = {0, 1, 2};
     InteractiveScene scene(runtime, input);
+    const auto snapshot=scene.ownedSnapshot();
+    require(snapshot && snapshot->getDevice()==runtime.device(), "Interactive public same-device snapshot");
+    require(scene.description().volumes[0].ownedSnapshot==snapshot && scene.description().volumes[0].rawScalar,
+            "Interactive renderer uses retained raw snapshot");
+    auto malformed=std::make_shared<Input>(*input);
+    malformed->volume.atlas.pop_back();
+    bool invalidRejected=false;
+    try { InteractiveScene invalid(runtime,malformed); }
+    catch(const std::exception&) { invalidRejected=true; }
+    require(invalidRejected && scene.ownedSnapshot()==snapshot, "Malformed input rejects without changing visible snapshot");
+
     sample::VolumeViewOptions view;
     view.width = view.height = 1;
     scene.animate(0, view);
@@ -172,6 +183,15 @@ void runSelfTests(ethereal::slang::ComputeRuntime &runtime)
     close(view.horizontalFov, 30, "original horizontal FOV");
     require(defaults.description().volumes[0].transferLastIndex == 16300, "legacy transfer lookup endpoint");
     require(defaults.description().materials.size() == 2, "distinct surface/deep material records");
+    sample::SceneDescription retained;
+    {
+        InteractiveScene temporary(runtime,input);
+        retained=temporary.description();
+    }
+    require(retained.volumes[0].ownedSnapshot, "Scene description retains snapshot after application destruction");
+    sample::SlangSceneRT retainedRenderer(runtime,artifact(runtime.device()));
+    retainedRenderer.setScene(retained);
+    require(countHits(runtime,retainedRenderer.render(p,0))==1, "Retained raw scene renders after application destruction");
     std::puts("PASS interactive scene modes, attenuation, transforms, material/transfer defaults, controls and "
               "progressive rollover");
 }

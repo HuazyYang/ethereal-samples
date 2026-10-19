@@ -6,6 +6,7 @@
 #include <donut/app/ApplicationBase.h>
 #include <imgui.h>
 #include <sample-utils/SceneAssets.h>
+#include <sample-utils/OwnedVolumeIO.h>
 #include <stdexcept>
 namespace gvdb::samples::interactive
 {
@@ -90,11 +91,22 @@ std::vector<slang::Float4> referenceTransfer()
 InteractiveScene::InteractiveScene(ethereal::slang::ComputeRuntime &runtime, std::shared_ptr<const Input> input,
                                    Options options)
     : m_runtime(runtime), m_input(checkedInput(std::move(input))), m_options(options),
-      m_volume(runtime, m_input->volume.packed, m_input->volume.atlas.data(), m_input->volume.atlas.size()),
       m_renderer(runtime, artifact(runtime.device()))
 {
     setMaxSamples(options.maxSamples);
-    m_volume.updateApron();
+    // CPU input is encoded once; public import owns the only GPU publication.
+    std::vector<uint8_t> encoded;
+    std::string error;
+    if (!slang::saveVBX(m_input->volume, encoded, error))
+        throw std::runtime_error(error);
+    runtime.flush();
+    const auto shaders = donut::app::GetDirectoryWithExecutable() / "shaders/gvdb_owned" /
+                         donut::app::GetShaderTypeName(runtime.device()->getGraphicsAPI());
+    sample::OwnedVolumeLoadOptions load;
+    load.refreshApronChannels = 1;
+    load.mutationArtifact = shaders / "GVDBAtlasMutation_mutateAtlas.bin";
+    m_volume = sample::loadOwnedVBX(runtime.device(), shaders / "GVDBAtlasRepack_relocateAtlas.bin",
+                                   encoded.data(), encoded.size(), load);
     auto volume = sample::SceneVolume::from(m_volume);
     volume.transfer = referenceTransfer();
     volume.transferLastIndex = 16300;
