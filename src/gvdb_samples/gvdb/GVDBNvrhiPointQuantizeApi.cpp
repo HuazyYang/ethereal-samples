@@ -116,6 +116,7 @@ Program loadProgram(IDevice* device, const void* bytes, uint64_t size, const cha
 struct Kernels {
     DeviceHandle device;
     Program encode, decode;
+    PointAttribute attribute = PointAttribute::Position;
 };
 struct Identity {};
 NVRHI_CLASS_CLSID(QuantizeTicket, "e3cd67a9-bcf1-4983-b317-c7d0ed79a8be")
@@ -131,10 +132,10 @@ class QuantizeTicket final : public ObjectImpl<IGVDBPointQuantizeTicket> {
     std::shared_ptr<Identity> identity;
     detail::ResolvedPointSet source;
     Parameters parameters{};
-    BufferHandle constants, codes, decoded, codeStaging, positionStaging;
+    BufferHandle constants, codes, decoded, codeStaging, valueStaging;
     BindingSetHandle encodeBindings, decodeBindings;
     std::vector<uint8_t> hostCodes;
-    uint64_t codeBytes = 0, codeAllocation = 0, positionBytes = 0;
+    uint64_t codeBytes = 0, codeAllocation = 0, valueBytes = 0;
     bool recorded = false, completed = false;
     IDevice* getDevice() const noexcept override { return kernels->device.Get(); }
     void getBounds(Float4& minimum, Float4& range) const noexcept override {
@@ -157,10 +158,10 @@ class QuantizeTicket final : public ObjectImpl<IGVDBPointQuantizeTicket> {
                 }
                 return result;
             };
-            auto newCodes = read(codeStaging, codeBytes), positions = read(positionStaging, positionBytes);
+            auto newCodes = read(codeStaging, codeBytes), positions = read(valueStaging, valueBytes);
             PointSetHandle result;
-            check(detail::clonePointSetPositions(source.retained, getDevice(), decoded, std::move(positions),
-                                                 &result));
+            check(detail::clonePointSetFloatAttribute(source.retained, getDevice(), kernels->attribute, decoded,
+                                                      std::move(positions), &result));
             hostCodes = std::move(newCodes);
             completed = true;
             *output = result.Detach();
@@ -200,27 +201,54 @@ class Quantize final : public ObjectImpl<IGVDBPointQuantize> {
         *output = nullptr;
         return guarded([&] {
             require(desc.structSize == sizeof(desc) && !desc.reserved && !desc.reserved2 && !budget.reserved);
-            require(uint32_t(desc.bounds) <= uint32_t(PointQuantizationBounds::LegacyPadded));
+            const bool velocity = kernels->attribute == PointAttribute::Velocity;
+            require(desc.bounds == PointQuantizationBounds::Explicit ||
+                    desc.bounds == (velocity ? PointQuantizationBounds::AttributeExtrema
+                                             : PointQuantizationBounds::LegacyPadded));
             require(finite(desc.minimum) && finite(desc.range));
             detail::ResolvedPointSet source;
             check(detail::resolvePointSet(desc.points, getDevice(), source));
             const uint64_t count = source.info.count;
             require(count <= budget.maxPoints, FE_OUT_OF_MEMORY);
             require(count <= UINT32_MAX / 16, FE_UNSUPPORTED);
+            BorrowedPointStream selectedStream;
+            check(source.retained->getStream(kernels->attribute, selectedStream));
+            Float4 lower = source.info.boundsMin, upper = source.info.boundsMax;
+            if (velocity) {
+                BorrowedBytes data;
+                check(source.retained->getData(PointAttribute::Velocity, data));
+                lower = upper = {};
+                for (uint64_t i = 0; i < count; ++i) {
+                    Float4 v{};
+                    std::memcpy(
+                        &v, static_cast<const uint8_t*>(data.data) + size_t(i) * selectedStream.byteStride, 12);
+                    require(finite(v));
+                    if (!i)
+                        lower = upper = v;
+                    else {
+                        lower = {std::min(lower.x, v.x), std::min(lower.y, v.y), std::min(lower.z, v.z), 0};
+                        upper = {std::max(upper.x, v.x), std::max(upper.y, v.y), std::max(upper.z, v.z), 0};
+                    }
+                }
+            }
             Float4 minimum = desc.minimum, range = desc.range;
-            if (desc.bounds == PointQuantizationBounds::LegacyPadded) {
+            if (desc.bounds != PointQuantizationBounds::Explicit) {
                 minimum = {};
                 range = {1, 1, 1, 0};
                 if (count) {
-                    const float lo[] = {source.info.boundsMin.x, source.info.boundsMin.y,
-                                        source.info.boundsMin.z};
-                    const float hi[] = {source.info.boundsMax.x, source.info.boundsMax.y,
-                                        source.info.boundsMax.z};
+                    const float lo[] = {lower.x, lower.y, lower.z};
+                    const float hi[] = {upper.x, upper.y, upper.z};
                     float m[3], r[3];
                     for (uint32_t axis = 0; axis < 3; ++axis) {
-                        require(std::abs(lo[axis]) <= 4000000 && std::abs(hi[axis]) <= 4000000, FE_UNSUPPORTED);
-                        m[axis] = lo[axis] < 0 ? lo[axis] - 1.f : std::max(0.f, lo[axis] - 1.f);
-                        r[axis] = (hi[axis] + 2.f) - m[axis];
+                        if (velocity) {
+                            m[axis] = lo[axis];
+                            r[axis] = hi[axis] == lo[axis] ? 1.f : hi[axis] - lo[axis];
+                        } else {
+                            require(std::abs(lo[axis]) <= 4000000 && std::abs(hi[axis]) <= 4000000,
+                                    FE_UNSUPPORTED);
+                            m[axis] = lo[axis] < 0 ? lo[axis] - 1.f : std::max(0.f, lo[axis] - 1.f);
+                            r[axis] = (hi[axis] + 2.f) - m[axis];
+                        }
                     }
                     minimum = {m[0], m[1], m[2], 0};
                     range = {r[0], r[1], r[2], 0};
@@ -232,11 +260,12 @@ class Quantize final : public ObjectImpl<IGVDBPointQuantize> {
                             double(std::abs(minima[axis])) + ranges[axis] <= double(FLT_MAX) * .5,
                         FE_UNSUPPORTED);
             const uint64_t codeBytes = count * 6, codeAllocation = (codeBytes + 3) & ~uint64_t(3),
-                           positionBytes = count * source.positionStream.byteStride;
-            const uint64_t gpuBytes = count ? 256 + 2 * (codeAllocation + positionBytes) : 0;
-            uint64_t hostBytes = codeBytes + positionBytes;
-            for (auto attribute : {PointAttribute::Velocity, PointAttribute::Color})
-                if (source.info.attributeMask & (1u << uint32_t(attribute))) {
+                           valueBytes = count * selectedStream.byteStride;
+            const uint64_t gpuBytes = count ? 256 + 2 * (codeAllocation + valueBytes) : 0;
+            uint64_t hostBytes = codeBytes + valueBytes;
+            for (auto attribute : {PointAttribute::Position, PointAttribute::Velocity, PointAttribute::Color})
+                if (attribute != kernels->attribute &&
+                    (source.info.attributeMask & (1u << uint32_t(attribute)))) {
                     BorrowedBytes bytes;
                     check(source.retained->getData(attribute, bytes));
                     require(bytes.byteCount <= UINT64_MAX - hostBytes, FE_UNSUPPORTED);
@@ -251,10 +280,9 @@ class Quantize final : public ObjectImpl<IGVDBPointQuantize> {
             ticket->source = std::move(source);
             ticket->codeBytes = codeBytes;
             ticket->codeAllocation = codeAllocation;
-            ticket->positionBytes = positionBytes;
+            ticket->valueBytes = valueBytes;
             ticket->parameters = {
-                {uint32_t(count), uint32_t(ticket->source.positionStream.byteStride),
-                 ticket->source.positionStream.components, 0},
+                {uint32_t(count), uint32_t(selectedStream.byteStride), selectedStream.components, 0},
                 minimum,
                 range
             };
@@ -277,13 +305,13 @@ class Quantize final : public ObjectImpl<IGVDBPointQuantize> {
                 };
                 ticket->constants = allocate(256, false, true);
                 ticket->codes = allocate(codeAllocation, true);
-                ticket->decoded = allocate(positionBytes, true);
+                ticket->decoded = allocate(valueBytes, true);
                 ticket->codeStaging = allocate(codeAllocation, false, false, true);
-                ticket->positionStaging = allocate(positionBytes, false, false, true);
+                ticket->valueStaging = allocate(valueBytes, false, false, true);
                 BindingSetDesc bindings;
                 bindings.trackLiveness = true;
                 bindings.addItem(BindingSetItem::ConstantBuffer(0, ticket->constants));
-                bindings.addItem(BindingSetItem::RawBuffer_SRV(0, ticket->source.positionStream.buffer));
+                bindings.addItem(BindingSetItem::RawBuffer_SRV(0, selectedStream.buffer));
                 bindings.addItem(BindingSetItem::RawBuffer_UAV(0, ticket->codes));
                 bindings.addItem(BindingSetItem::RawBuffer_UAV(1, ticket->decoded));
                 check(getDevice()->createBindingSet(bindings, kernels->encode.layout, &ticket->encodeBindings));
@@ -318,16 +346,15 @@ class Quantize final : public ObjectImpl<IGVDBPointQuantize> {
                 dispatch(kernels->encode, ticket->encodeBindings, uint32_t(ticket->codeAllocation / 4));
                 dispatch(kernels->decode, ticket->decodeBindings, ticket->parameters.info.x);
                 context.commands->copyBuffer(ticket->codeStaging, 0, ticket->codes, 0, ticket->codeAllocation);
-                context.commands->copyBuffer(ticket->positionStaging, 0, ticket->decoded, 0,
-                                             ticket->positionBytes);
+                context.commands->copyBuffer(ticket->valueStaging, 0, ticket->decoded, 0, ticket->valueBytes);
             }
             ticket->recorded = true;
         });
     }
 };
 }  // namespace
-nvrhi::FRESULT gvdbCreateNvrhiPointQuantize(uint32_t version, const PointQuantizeCreateDesc* desc,
-                                            IGVDBPointQuantize** output) noexcept {
+static nvrhi::FRESULT createQuantize(uint32_t version, const PointQuantizeCreateDesc* desc,
+                                     IGVDBPointQuantize** output, PointAttribute attribute) noexcept {
     if (!output)
         return nvrhi::FE_INVALID_ARGS;
     *output = nullptr;
@@ -336,6 +363,7 @@ nvrhi::FRESULT gvdbCreateNvrhiPointQuantize(uint32_t version, const PointQuantiz
         require(desc && desc->structSize == sizeof(*desc) && !desc->reserved && desc->device);
         auto kernels = std::make_shared<Kernels>();
         kernels->device = desc->device;
+        kernels->attribute = attribute;
         kernels->encode =
             loadProgram(desc->device, desc->encodeArtifact, desc->encodeArtifactBytes, "encodePointU16");
         kernels->decode =
@@ -343,5 +371,13 @@ nvrhi::FRESULT gvdbCreateNvrhiPointQuantize(uint32_t version, const PointQuantiz
         auto result = MAKE_RC_OBJ_PTR(Quantize, std::move(kernels));
         *output = result.Detach();
     });
+}
+nvrhi::FRESULT gvdbCreateNvrhiPointQuantize(uint32_t version, const PointQuantizeCreateDesc* desc,
+                                            IGVDBPointQuantize** output) noexcept {
+    return createQuantize(version, desc, output, PointAttribute::Position);
+}
+nvrhi::FRESULT gvdbCreateNvrhiVelocityQuantize(uint32_t version, const PointQuantizeCreateDesc* desc,
+                                               IGVDBPointQuantize** output) noexcept {
+    return createQuantize(version, desc, output, PointAttribute::Velocity);
 }
 }  // namespace gvdb::portable

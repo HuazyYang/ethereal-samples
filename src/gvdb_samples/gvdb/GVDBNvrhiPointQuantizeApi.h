@@ -4,7 +4,9 @@
 namespace gvdb::portable {
 enum class PointQuantizationBounds : uint32_t {
     Explicit = 0,
-    LegacyPadded = 1
+    LegacyPadded = 1,
+    // Velocity factory only: unpadded XYZ extrema, constant-axis range one.
+    AttributeExtrema = 2
 };
 struct PointQuantizeCreateDesc {
     uint32_t structSize = sizeof(PointQuantizeCreateDesc), reserved = 0;
@@ -36,8 +38,8 @@ struct IGVDBPointQuantizeTicket : nvrhi::IRHIObject {
     virtual nvrhi::IDevice* getDevice() const noexcept = 0;
     virtual void getBounds(Float4& minimum, Float4& range) const noexcept = 0;
     // Caller has submitted and waited. One successful completion; no implicit wait.
-    // Output is an authenticated immutable PointSet of actual GPU decoded positions.
-    // Position component count/W bits and velocity/color data remain unchanged.
+    // Output is an authenticated immutable PointSet of actual GPU decoded selected attribute.
+    // Selected component count/W bits and all other attributes remain unchanged.
     // Failure clears output and permits retry; factory/source owner may be released.
     virtual nvrhi::FRESULT finishAfterCallerCompletion(IGVDBPointSet** output) noexcept = 0;
     // Six bytes per point, original ordinal order, little-endian ushort3. Available
@@ -52,7 +54,7 @@ struct IGVDBPointQuantize : nvrhi::IRHIObject {
     NVRHI_DECLARE_UUID_TRAITS(IGVDBPointQuantize)
     virtual nvrhi::IDevice* getDevice() const noexcept = 0;
     // Retains a completed authenticated same-device PointSet; no CPU/GPU recomputation
-    // of its positions, implicit submission, or topology mutation. Budgets cover new
+    // of its GPU values, implicit submission, or topology mutation. Budgets cover new
     // GPU storage and retained host result bytes, excluding already-owned input data.
     virtual nvrhi::FRESULT prepare(const PointQuantizeRequestDesc&, const PointQuantizePreparationBudget&,
                                    IGVDBPointQuantizeTicket** output) noexcept = 0;
@@ -66,5 +68,15 @@ GVDB_NVRHI_C_API nvrhi::FRESULT gvdbCreateNvrhiPointQuantize(uint32_t apiVersion
 inline nvrhi::FRESULT createPointQuantize(const PointQuantizeCreateDesc& desc,
                                           IGVDBPointQuantize** output) noexcept {
     return gvdbCreateNvrhiPointQuantize(c_GVDBNvrhiApiVersion, &desc, output);
+}
+// Uses the same artifacts and ticket ABI, selecting velocity instead of position.
+// Requires a present finite-XYZ velocity stream. Explicit or AttributeExtrema bounds;
+// LegacyPadded is position-only. Returned PointSet retains exact position bounds.
+GVDB_NVRHI_C_API nvrhi::FRESULT gvdbCreateNvrhiVelocityQuantize(uint32_t apiVersion,
+                                                                const PointQuantizeCreateDesc*,
+                                                                IGVDBPointQuantize** output) noexcept;
+inline nvrhi::FRESULT createVelocityQuantize(const PointQuantizeCreateDesc& desc,
+                                             IGVDBPointQuantize** output) noexcept {
+    return gvdbCreateNvrhiVelocityQuantize(c_GVDBNvrhiApiVersion, &desc, output);
 }
 }  // namespace gvdb::portable

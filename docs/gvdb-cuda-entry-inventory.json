@@ -99,7 +99,7 @@
         "gvdb/slang/GVDBPointQuantize.slang",
         "gvdb/GVDBNvrhiPointQuantizeApi.cpp"
       ],
-      "remaining": "Public normalized-ushort position bounds/encode/decode and exact canonical velocity/color preservation are validated on Windows. Legacy packed ushort velocity encoding/subcell storage and platform/performance gates remain; this is not IEEE half."
+      "remaining": "Public normalized-ushort position and velocity factories now expose actual GPU codes/decoded attributes with exact unmodified attribute transport. Velocity uses explicit or unpadded extrema bounds with constant-axis repair; four APIs, both native adapters, CUDA memcheck and installed consumers pass. Expanded public subcell storage/orchestration and platform/performance gates remain; this is not IEEE half."
     },
     "keys": {
       "status": "portable-foundation",

@@ -21,4 +21,8 @@ nvrhi::FRESULT resolvePointSet(IGVDBPointSet*,nvrhi::IDevice*,ResolvedPointSet& 
 // Revalidates finite XYZ and computes exact bounds; never submits or waits.
 nvrhi::FRESULT clonePointSetPositions(IGVDBPointSet*,nvrhi::IDevice*,nvrhi::IBuffer*,
     std::vector<uint8_t> positions,IGVDBPointSet** output) noexcept;
+// Same trusted seam for either canonical float attribute. Velocity replacement
+// preserves position bounds; all selected XYZ values must be finite.
+nvrhi::FRESULT clonePointSetFloatAttribute(IGVDBPointSet*,nvrhi::IDevice*,PointAttribute,
+    nvrhi::IBuffer*,std::vector<uint8_t> values,IGVDBPointSet** output) noexcept;
 } // namespace gvdb::portable::detail

@@ -261,7 +261,10 @@ void artifactFailures(const g::PointQuantizeCreateDesc& accepted, const std::vec
         }));
     }
 }
-void run(IDevice* device, uint32_t count, uint32_t components, bool padded) {
+void run(IDevice* device, uint32_t count, uint32_t components, bool padded, bool velocity = false) {
+    const auto selected = velocity ? g::PointAttribute::Velocity : g::PointAttribute::Position;
+    const uint32_t selectedIndex = uint32_t(selected);
+    const auto factory = velocity ? g::createVelocityQuantize : g::createPointQuantize;
     Harness h(device);
     const auto base = donut::app::GetDirectoryWithExecutable() / "shaders";
     const auto target = donut::app::GetShaderTypeName(device->getGraphicsAPI());
@@ -291,14 +294,14 @@ void run(IDevice* device, uint32_t count, uint32_t components, bool padded) {
         float extra;
         std::memcpy(&extra, &w, 4);
         positions[i] = {float(int(i % 17) - 8) / 2, float(i % 9), float(int(i % 11) - 5), extra};
-        velocities[i] = {float(i), extra, -float(i), extra};
+        velocities[i] = {float(i) - 2.f, velocity ? -7.f : extra, -float(i), extra};
         colors[i] = 0xff000000u | (i * 997u & 0x00ffffffu);
     }
     g::PointSetDesc sourceDesc;
-    sourceDesc.positions.stream = {
-        positions.data(), positions.size() * 16, 0, 16, count, g::PointComponent::Float32, components};
-    sourceDesc.velocities.stream = {
-        velocities.data(), velocities.size() * 16, 0, 16, count, g::PointComponent::Float32, 4};
+    sourceDesc.positions.stream = {positions.data(),           positions.size() * 16,     0, 16, count,
+                                   g::PointComponent::Float32, velocity ? 4u : components};
+    sourceDesc.velocities.stream = {velocities.data(),          velocities.size() * 16,    0, 16, count,
+                                    g::PointComponent::Float32, velocity ? components : 4u};
     sourceDesc.colors.stream = {colors.data(), colors.size() * 4, 0, 4, count, g::PointComponent::UInt8, 4};
     g::PointUploadTicketHandle upload;
     check(points->preparePoints(sourceDesc, {}, &upload), "Prepare quantization source");
@@ -326,15 +329,47 @@ void run(IDevice* device, uint32_t count, uint32_t components, bool padded) {
     if (count == 1 && components == 3 && !padded)
         artifactFailures(create, encode, decode);
     g::PointQuantizeHandle operation, other;
-    check(g::createPointQuantize(create, &operation), "Create quantizer");
-    check(g::createPointQuantize(create, &other), "Create foreign quantizer");
+    check(factory(create, &operation), "Create quantizer");
+    check(factory(create, &other), "Create foreign quantizer");
     queryIdentity(operation.Get());
+    if (velocity && count == 1 && components == 3 && !padded) {
+        for (unsigned invalid = 0; invalid < 3; ++invalid) {
+            auto badSource = sourceDesc;
+            auto badVelocities = velocities;
+            if (invalid == 0)
+                badSource.velocities = {};
+            else {
+                badVelocities[0].x = invalid == 1 ? INFINITY : std::numeric_limits<float>::quiet_NaN();
+                badSource.velocities.stream.data = badVelocities.data();
+            }
+            g::PointUploadTicketHandle badUpload;
+            check(points->preparePoints(badSource, {}, &badUpload), "Prepare absent/nonfinite velocity input");
+            h.begin();
+            check(points->recordPoints(h.context(), badUpload), "Record invalid velocity input");
+            h.submit();
+            g::PointSetHandle badSet;
+            check(badUpload->finishAfterCallerCompletion(&badSet), "Retain canonical invalid velocity");
+            g::PointQuantizeRequestDesc badRequest;
+            badRequest.points = badSet;
+            auto* rejected = reinterpret_cast<g::IGVDBPointQuantizeTicket*>(uintptr_t(1));
+            const auto status = operation->prepare(badRequest, {}, &rejected);
+            require(status == (invalid == 0 ? FE_NOT_FOUND : FE_INVALID_ARGS) && !rejected,
+                    "Missing/nonfinite velocity rejected before recording");
+        }
+    }
     g::PointQuantizeRequestDesc request;
     request.points = original;
     request.minimum = {-2, 0, -4, 0};
     request.range = {4, 8, 16, 0};
     if (padded)
-        request.bounds = g::PointQuantizationBounds::LegacyPadded;
+        request.bounds =
+            velocity ? g::PointQuantizationBounds::AttributeExtrema : g::PointQuantizationBounds::LegacyPadded;
+    if (velocity && !count) {
+        g::PointQuantizeTicketHandle empty;
+        require(operation->prepare(request, {}, &empty) == FE_NOT_FOUND && !empty,
+                "Empty uploaded PointSet has no optional velocity attribute");
+        return;
+    }
     auto rejects = [&](g::PointQuantizeRequestDesc bad, g::PointQuantizePreparationBudget budget = {}) {
         auto* output = reinterpret_cast<g::IGVDBPointQuantizeTicket*>(uintptr_t(1));
         require(NVRHI_FAILED(operation->prepare(bad, budget, &output)) && !output,
@@ -357,7 +392,11 @@ void run(IDevice* device, uint32_t count, uint32_t components, bool padded) {
     bad.points = nullptr;
     rejects(bad);
     bad = request;
-    bad.bounds = g::PointQuantizationBounds(2);
+    bad.bounds = g::PointQuantizationBounds(3);
+    rejects(bad);
+    bad = request;
+    bad.bounds =
+        velocity ? g::PointQuantizationBounds::LegacyPadded : g::PointQuantizationBounds::AttributeExtrema;
     rejects(bad);
     bad = request;
     bad.minimum.w = INFINITY;
@@ -381,7 +420,8 @@ void run(IDevice* device, uint32_t count, uint32_t components, bool padded) {
     const uint64_t codeBytes = uint64_t(count) * 6, pad = (codeBytes + 3) & ~uint64_t(3),
                    positionBytes = uint64_t(count) * components * 4;
     const uint64_t gpu = count ? 256 + 2 * (pad + positionBytes) : 0;
-    const uint64_t host = codeBytes + positionBytes + originalBytes[1].size() + originalBytes[2].size();
+    const uint64_t host =
+        codeBytes + originalBytes[0].size() + originalBytes[1].size() + originalBytes[2].size();
     if (count) {
         budget = {};
         budget.maxPoints = count - 1;
@@ -406,7 +446,25 @@ void run(IDevice* device, uint32_t count, uint32_t components, bool padded) {
     queryIdentity(ticket.Get());
     g::Float4 minimum, range;
     ticket->getBounds(minimum, range);
-    if (padded) {
+    const auto originalInfo = original->getDesc();
+    if (padded && velocity) {
+        const float minima[] = {minimum.x, minimum.y, minimum.z}, ranges[] = {range.x, range.y, range.z};
+        for (uint32_t axis = 0; axis < 3; ++axis) {
+            float lo = 0, hi = 0;
+            for (uint32_t i = 0; i < count; ++i) {
+                float v;
+                std::memcpy(&v, originalBytes[1].data() + size_t(i) * components * 4 + axis * 4, 4);
+                if (!i)
+                    lo = hi = v;
+                else {
+                    lo = std::min(lo, v);
+                    hi = std::max(hi, v);
+                }
+            }
+            require(minima[axis] == lo && ranges[axis] == (hi == lo ? 1.f : hi - lo),
+                    "Exact velocity extrema and constant-axis repair");
+        }
+    } else if (padded) {
         const auto info = original->getDesc();
         const float lo[] = {info.boundsMin.x, info.boundsMin.y, info.boundsMin.z};
         const float hi[] = {info.boundsMax.x, info.boundsMax.y, info.boundsMax.z};
@@ -440,16 +498,23 @@ void run(IDevice* device, uint32_t count, uint32_t components, bool padded) {
     h.submit();
     check(ticket->finishAfterCallerCompletion(&evaluated), "Complete quantized immutable points");
     require(evaluated->getDesc().count == count, "Preserved point count");
+    if (velocity) {
+        const auto info = evaluated->getDesc();
+        require(!std::memcmp(&info.boundsMin, &originalInfo.boundsMin, 16) &&
+                    !std::memcmp(&info.boundsMax, &originalInfo.boundsMax, 16),
+                "Velocity quantization preserves position bounds");
+    }
     g::BorrowedBytes codes, values;
     check(ticket->getCodes(codes), "Completed packed codes");
-    check(evaluated->getData(g::PointAttribute::Position, values), "Completed canonical positions");
+    check(evaluated->getData(selected, values), "Completed canonical positions");
     require(codes.byteCount == codeBytes && values.byteCount == positionBytes, "Exact logical result sizes");
     const float minima[] = {minimum.x, minimum.y, minimum.z}, ranges[] = {range.x, range.y, range.z};
     for (uint32_t i = 0; i < count; ++i) {
         for (uint32_t axis = 0; axis < 3; ++axis) {
             float source, value;
             uint16_t code;
-            std::memcpy(&source, originalBytes[0].data() + size_t(i) * components * 4 + axis * 4, 4);
+            std::memcpy(&source, originalBytes[selectedIndex].data() + size_t(i) * components * 4 + axis * 4,
+                        4);
             std::memcpy(&code, static_cast<const uint8_t*>(codes.data) + (size_t(i) * 3 + axis) * 2, 2);
             std::memcpy(&value,
                         static_cast<const uint8_t*>(values.data) + size_t(i) * components * 4 + axis * 4, 4);
@@ -457,17 +522,21 @@ void run(IDevice* device, uint32_t count, uint32_t components, bool padded) {
             require(std::abs(int(code) - int(normalized * 65535.)) <= 1,
                     "Independent normalized code interval");
             const double expected = (double(code) / 65535.) * ranges[axis] + minima[axis];
-            require(
-                std::isfinite(value) && std::abs(value - expected) <= 2e-6 * std::max(1., std::abs(expected)),
-                "Decoded actual-code reference");
+            // Bound binary32 divide/multiply/add (including reciprocal lowering).
+            // Relative-to-result tolerance alone fails at cancellation near zero.
+            const double tolerance =
+                4 * std::numeric_limits<float>::epsilon() * (std::abs(double(minima[axis])) + ranges[axis]) +
+                2e-6 * std::max(1., std::abs(expected));
+            require(std::isfinite(value) && std::abs(value - expected) <= tolerance,
+                    "Decoded actual-code reference with forward rounding bound");
         }
         if (components == 4)
-            require(!std::memcmp(originalBytes[0].data() + size_t(i) * 16 + 12,
+            require(!std::memcmp(originalBytes[selectedIndex].data() + size_t(i) * 16 + 12,
                                  static_cast<const uint8_t*>(values.data) + size_t(i) * 16 + 12, 4),
                     "Exact W payload preservation");
     }
-    for (uint32_t i = 1; i < 3; ++i)
-        if (count) {
+    for (uint32_t i = 0; i < 3; ++i)
+        if (count && i != selectedIndex) {
             g::BorrowedBytes bytes;
             check(evaluated->getData(g::PointAttribute(i), bytes), "Preserved attribute");
             require(bytes.byteCount == originalBytes[i].size() &&
@@ -485,7 +554,7 @@ void run(IDevice* device, uint32_t count, uint32_t components, bool padded) {
         for (size_t i = size_t(codeBytes); i < bytes.size(); ++i)
             require(bytes[i] == 0, "Zero odd-record padding");
         g::BorrowedPointStream stream;
-        check(evaluated->getStream(g::PointAttribute::Position, stream), "Decoded GPU positions");
+        check(evaluated->getStream(selected, stream), "Decoded GPU positions");
         const auto positions = h.read(stream.buffer, stream.byteSize);
         require(!std::memcmp(positions.data(), values.data, positions.size()),
                 "CPU/GPU decoded position coherence");
@@ -513,7 +582,8 @@ int main(int argc, const char** argv) {
             for (uint32_t components : {3u, 4u})
                 for (uint32_t count : {0u, 1u, 3u, 258u})
                     for (bool padded : {false, true})
-                        run(device.device, count, components, padded);
+                        for (bool velocity : {false, true})
+                            run(device.device, count, components, padded, velocity);
         }
         require(problems == 0, "Native validation warnings/errors");
         std::puts(

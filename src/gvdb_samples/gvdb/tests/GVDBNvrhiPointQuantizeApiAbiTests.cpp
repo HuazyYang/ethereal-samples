@@ -37,6 +37,15 @@ int main() {
         return 7;
     if (g::createPointQuantize(desc, nullptr) != FE_INVALID_ARGS)
         return 8;
+    output = sentinel;
+    if (g::gvdbCreateNvrhiVelocityQuantize(g::c_GVDBNvrhiApiVersion + 1, &desc, &output) != FE_UNSUPPORTED ||
+        output)
+        return 9;
+    output = sentinel;
+    if (g::createVelocityQuantize(desc, &output) != FE_INVALID_ARGS || output)
+        return 10;
+    if (g::createVelocityQuantize(desc, nullptr) != FE_INVALID_ARGS)
+        return 11;
     std::puts("GVDB point quantize ABI defaults/version/size/reserved/null outputs PASS");
     return 0;
 }

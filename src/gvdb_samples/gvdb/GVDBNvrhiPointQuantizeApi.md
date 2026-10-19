@@ -61,3 +61,29 @@ and completion remain explicit obligations.
 For point-cloud gathering, keep original points for association and use the
 returned decoded points as `GatherEvaluationDesc.evaluationPoints`. Quantization
 does not implicitly activate topology, bin points, gather or publish a volume.
+
+## Velocity encoding
+
+`createVelocityQuantize` / `gvdbCreateNvrhiVelocityQuantize` selects the canonical
+velocity stream using the same offline artifacts, descriptors and ticket ABI.
+XYZ velocities must be finite. Missing velocity returns `FE_NOT_FOUND`, including
+empty uploaded PointSets whose optional attributes are absent. Nonfinite XYZ
+returns `FE_INVALID_ARGS`; arbitrary W payload bits remain supported. Position
+bytes, GPU buffer and bounds, color bytes, component counts and ordinal order
+remain unchanged. Completion uses actual GPU-decoded velocity data and retains
+other GPU buffers; it never substitutes a host-computed result.
+
+Use Explicit bounds or `PointQuantizationBounds::AttributeExtrema`. The latter
+uses unpadded signed velocity extrema and substitutes range one for a constant
+axis, matching the retained host velocity-bounds repair. `LegacyPadded` is only
+accepted by the position factory; AttributeExtrema is only accepted by velocity.
+Both factories retain the same numeric-domain checks and saturation arithmetic.
+Code comparisons allow one interval; decoded-value error is bounded against the
+actual codes using binary32 operation scales, including cancellation near zero.
+
+The five-buffer formula above uses the selected stream stride S. Retained host
+bytes are `6*N` plus all canonical attribute bytes (selected decoded values and
+copies of the other attributes). Input buffers are excluded. Preparation scans
+retained CPU velocity values for finite extrema; it does not read back or submit.
+This operator does not duplicate points into subcells or replace the remaining
+public subcell storage work.

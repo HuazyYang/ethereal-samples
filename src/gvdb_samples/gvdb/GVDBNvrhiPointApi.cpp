@@ -414,29 +414,39 @@ nvrhi::FRESULT resolvePointSet(IGVDBPointSet* input,nvrhi::IDevice* device,Resol
         output=std::move(result);return FS_OK;
     });
 }
-nvrhi::FRESULT clonePointSetPositions(IGVDBPointSet* input,nvrhi::IDevice* device,nvrhi::IBuffer* buffer,
-    std::vector<uint8_t> positions,IGVDBPointSet** output) noexcept {
+nvrhi::FRESULT clonePointSetFloatAttribute(IGVDBPointSet* input,nvrhi::IDevice* device,PointAttribute attribute,
+    nvrhi::IBuffer* buffer,std::vector<uint8_t> values,IGVDBPointSet** output) noexcept {
     if(!output)return FE_INVALID_ARGS;*output=nullptr;
     return guarded([&] {
+        require(attribute==PointAttribute::Position||attribute==PointAttribute::Velocity);
         const auto source=implementation<PointSet>(input);require(device&&source->device.Get()==device);
-        const uint32_t components=source->attributes[0].components;
-        require(positions.size()==source->info.count*components*4);
-        require(positions.empty() || (buffer&&buffer->getDesc().canHaveRawViews&&buffer->getDesc().byteSize>=positions.size()));
-        auto info=source->info;info.boundsMin=info.boundsMax={};
+        const uint32_t selected=uint32_t(attribute);
+        require(source->info.attributeMask&(1u<<selected),FE_NOT_FOUND);
+        const uint32_t components=source->attributes[selected].components;
+        require(values.size()==source->info.count*components*4);
+        require(values.empty() || (buffer&&buffer->getDesc().canHaveRawViews&&buffer->getDesc().byteSize>=values.size()));
+        auto info=source->info;
+        if(attribute==PointAttribute::Position)info.boundsMin=info.boundsMax={};
         for(uint64_t i=0;i<info.count;++i) {
-            Float4 value{};std::memcpy(&value,positions.data()+size_t(i)*components*4,12);
+            Float4 value{};std::memcpy(&value,values.data()+size_t(i)*components*4,12);
             require(std::isfinite(value.x)&&std::isfinite(value.y)&&std::isfinite(value.z));
-            if(!i)info.boundsMin=info.boundsMax=value;
-            else {
-                info.boundsMin={std::min(info.boundsMin.x,value.x),std::min(info.boundsMin.y,value.y),std::min(info.boundsMin.z,value.z),0};
-                info.boundsMax={std::max(info.boundsMax.x,value.x),std::max(info.boundsMax.y,value.y),std::max(info.boundsMax.z,value.z),0};
+            if(attribute==PointAttribute::Position) {
+                if(!i)info.boundsMin=info.boundsMax=value;
+                else {
+                    info.boundsMin={std::min(info.boundsMin.x,value.x),std::min(info.boundsMin.y,value.y),std::min(info.boundsMin.z,value.z),0};
+                    info.boundsMax={std::max(info.boundsMax.x,value.x),std::max(info.boundsMax.y,value.y),std::max(info.boundsMax.z,value.z),0};
+                }
             }
         }
         std::array<AttributeData,3> data;
-        data[0]={buffer,std::move(positions),PointComponent::Float32,components};
-        for(uint32_t i=1;i<3;++i)if(info.attributeMask&(1u<<i))data[i]=source->attributes[i];
+        for(uint32_t i=0;i<3;++i)if(i!=selected&&(info.attributeMask&(1u<<i)))data[i]=source->attributes[i];
+        data[selected]={buffer,std::move(values),PointComponent::Float32,components};
         auto result=MAKE_RC_OBJ_PTR(PointSet,device,info,std::move(data));*output=result.Detach();return FS_OK;
     });
+}
+nvrhi::FRESULT clonePointSetPositions(IGVDBPointSet* input,nvrhi::IDevice* device,nvrhi::IBuffer* buffer,
+    std::vector<uint8_t> positions,IGVDBPointSet** output) noexcept {
+    return clonePointSetFloatAttribute(input,device,PointAttribute::Position,buffer,std::move(positions),output);
 }
 } // namespace detail
 nvrhi::FRESULT gvdbCreateNvrhiPointOps(uint32_t apiVersion,const PointOpsCreateDesc* desc,IGVDBPointOps** output) noexcept {
