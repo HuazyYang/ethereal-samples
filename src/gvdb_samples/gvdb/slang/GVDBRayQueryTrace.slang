@@ -3,9 +3,17 @@ bool finite3(float3 v) { return all((asuint(v) & uint3(0x7fffffffu)) < uint3(0x7
 float texel(int3 p) {
     uint index=flatten3(uint3(clamp(p,int3(0),int3(g_Parameters.volume.atlasResolutionAndApron.xyz)-1)),g_Parameters.volume.atlasResolutionAndApron.xyz);
 #ifdef GVDB_RAY_QUERY_RAW
-    return asfloat(g_Atlas.Load(index*4));
+    float value=asfloat(g_Atlas.Load(index*4));
 #else
-    return g_Atlas[index];
+    float value=g_Atlas[index];
+#endif
+#ifdef GVDB_RAY_QUERY_BORDER_OPTION
+    // Always load a valid clamped address, then select border. Avoid duplicating
+    // divergent early returns at every tap of the expanded tricubic stencil.
+    bool border=g_Parameters.options.w!=0 && (any(p<0)||any(p>=int3(g_Parameters.volume.atlasResolutionAndApron.xyz)));
+    return border?0:value;
+#else
+    return value;
 #endif
 }
 float atlasSample(float3 p) {

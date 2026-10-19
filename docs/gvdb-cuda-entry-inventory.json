@@ -208,9 +208,13 @@
       "remaining": "Owned volume/surface rendering binds retained raw snapshots. Each additional legacy shading mode still needs explicit controls/equations/visual acceptance and owned scene adoption."
     },
     "tricubic": {
-      "status": "pending",
-      "replacementFiles": [],
-      "remaining": "No complete tricubic sampling contract; do not silently substitute trilinear."
+      "status": "sample-validated",
+      "replacementFiles": [
+        "gvdb/slang/GVDBTricubicTrace.slang",
+        "samples/sample-utils/OwnedVolumeTricubic.cpp",
+        "samples/sample-utils/OwnedVolumeTricubicTests.cpp"
+      ],
+      "remaining": "Retained quadratic tensor of integer-position linear fetches, zero-border/clamp, finite-bracket refinement, gradient/color/shadow and exhaustion pass four APIs, both Windows graphics adapters, CUDA memory and production checks. Retained raw snapshots are used; exact legacy images, broader performance and Linux remain."
     },
     "ray-query": {
       "status": "portable-foundation",

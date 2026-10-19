@@ -3,6 +3,7 @@
 #include "ExampleDevice.h"
 #include "../sample-utils/OwnedVolumeRaycast.h"
 #include "../sample-utils/OwnedVolumeIO.h"
+#include "../sample-utils/OwnedVolumeTricubic.h"
 #include <donut/core/math/math.h>
 #include <stb_image_write.h>
 #include <algorithm>
@@ -32,13 +33,13 @@ std::vector<gvdb::slang::Float4> transferFunction() {
 }
 int main(int argc,const char** argv) {
     try {
-        int width=1024,height=768;float step=0.25f;bool surface=false;
+        int width=1024,height=768;float step=0.25f;bool surface=false,tricubic=false;
         std::filesystem::path input=std::filesystem::path(GVDB_SAMPLES_ASSETS_DIR)/"explosion.vbx",output="out_rendtofile.png";
         for(int i=1;i<argc;++i) {
             const auto argument=[&]()->const char* {if(++i>=argc)throw std::invalid_argument("Missing option value");return argv[i];};
             if(!std::strcmp(argv[i],"--help")) {
                 std::puts("render-to-file [-dx11|-dx12|-vk|-cuda] [--adapter N] [--validation]\n"
-                    "  [--input volume.vbx] [--output image.png] [--width N] [--height N] [--step N] [--surface]");
+                    "  [--input volume.vbx] [--output image.png] [--width N] [--height N] [--step N] [--surface|--tricubic]");
                 return 0;
             }
             if(!std::strcmp(argv[i],"--input"))input=argument();
@@ -47,7 +48,9 @@ int main(int argc,const char** argv) {
             else if(!std::strcmp(argv[i],"--height"))height=std::stoi(argument());
             else if(!std::strcmp(argv[i],"--step"))step=std::stof(argument());
             else if(!std::strcmp(argv[i],"--surface"))surface=true;
+            else if(!std::strcmp(argv[i],"--tricubic"))tricubic=true;
         }
+        if(surface&&tricubic)throw std::invalid_argument("Choose either --surface or --tricubic");
         if(width<1||height<1||uint64_t(width)*height>16*1024*1024||!std::isfinite(step)||step<=0)
             throw std::invalid_argument("Invalid image dimensions or ray step");
         ethereal::slang::ExampleDevice device(argc,argv);
@@ -82,7 +85,10 @@ int main(int argc,const char** argv) {
         p.background={0.1f,0.2f,0.4f,1};p.light=vector4(center+dm::float3(-radius,radius*2,-radius),0.1f);
         runtime.flush(); // Exclude asset upload from GPU render timing.
         const auto start=std::chrono::steady_clock::now();
-        auto rendered=gvdb::sample::raycastOwnedVolume(runtime,volume,0,p,transferFunction(),surface);
+        auto rendered=tricubic?gvdb::sample::renderOwnedTricubic(runtime,volume,0,UINT32_MAX,p):
+            gvdb::sample::raycastOwnedVolume(runtime,volume,0,p,transferFunction(),surface);
+        if(tricubic){std::vector<float> depths(size_t(width)*height);runtime.read(rendered.depth,depths.data(),depths.size()*4);
+            for(float depth:depths)if(std::isnan(depth)||depth<0)throw std::runtime_error("Tricubic traversal exhausted or invalid");}
         std::vector<gvdb::slang::Float4> color(size_t(width)*height);
         runtime.read(rendered.color,color.data(),color.size()*sizeof(color[0]));
         const double milliseconds=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count();
