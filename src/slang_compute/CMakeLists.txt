@@ -204,3 +204,5 @@ include("${CMAKE_CURRENT_LIST_DIR}/../gvdb_samples/gvdb/GVDBNvrhiDepositApi.cmak
 include("${CMAKE_CURRENT_LIST_DIR}/../gvdb_samples/gvdb/GVDBNvrhiObstacleApi.cmake")
 
 include("${CMAKE_CURRENT_LIST_DIR}/../gvdb_samples/gvdb/GVDBNvrhiSubcellApi.cmake")
+
+include("${CMAKE_CURRENT_SOURCE_DIR}/../gvdb_samples/gvdb/GVDBNvrhiGridQueryApi.cmake")

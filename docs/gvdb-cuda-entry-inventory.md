@@ -6,13 +6,13 @@ The grouping records implementation roles, not positional CUDA ABI compatibility
 
 | State | Entries | Meaning |
 | --- | ---: | --- |
-| owned-validated | 41 | Public volume-backed operators and device queries passed recorded Windows tests; platform and consumer gates remain. |
+| owned-validated | 43 | Public volume-backed operators and device queries passed recorded Windows tests; platform and consumer gates remain. |
 | sample-validated | 14 | Migrated sample paths exercise these replacement roles; public ownership and broader acceptance remain. |
 | portable-foundation | 23 | A portable helper/program exists; the listed public contract or integration work remains. |
-| partial | 22 | Related functionality exists, but the old behavior is not fully covered. |
+| partial | 20 | Related functionality exists, but the old behavior is not fully covered. |
 | pending | 0 | No completed replacement/disposition is claimed. |
 
-OptiX `__exception__main` now has an explicit diagnostic/backend disposition: opt-in SDK context validation, tagged host callbacks and failed completion replace per-pixel black recovery. The existing public shader-stage design is preserved. Zero pending roles does not mean complete parity: the 22 partial roles, public integration and project acceptance gates below remain open.
+OptiX `__exception__main` now has an explicit diagnostic/backend disposition: opt-in SDK context validation, tagged host callbacks and failed completion replace per-pixel black recovery. The existing public shader-stage design is preserved. Zero pending roles does not mean complete parity: the 20 partial roles, public integration and project acceptance gates below remain open.
 
 Other material gaps are explicit in the JSON: public normalized-ushort position quantization and inverse-distance level-set color now have explicit factories. Weighted color preserves the unnormalized sum and defines saturation/zero-distance behavior; public packed ushort velocity encoding now has a separate factory with exact retained attributes; public expanded subcell storage now preserves stable original ordinals and exact canonical attributes, with signed cell locations and composed position/velocity quantization. Broader consumer and platform acceptance remains. Public reduction now excludes inactive/unused slots and aprons, including poisoned imported data. Public point topology uses checked signed host candidates and does not inherit the separate GPU key helper's nonnegative 16-bit limit. Section/compositing and individual raycast/RT shading modes need separate legacy-equation/control/visual acceptance. The existing PIC/FLIP transfer utility is not a complete FLIP solver; the retained fluid samples use SPH.
 
@@ -21,3 +21,5 @@ The public point factory (`f18a6b9`), authenticated append candidate (`ca793cc`)
 Tricubic density surfaces now use retained raw snapshots and the original quadratic tensor of linear atlas fetches, with explicit zero-border/clamp addressing and finite refinement repairs. Four-API analytic/asset tests, both native graphics adapters, CUDA memory checks and tests-disabled production pass. These results do not establish exact legacy image parity or authorize reference retirement.
 
 The sample CUDA path now supplies a message callback and enables SDK validation for ray tracing with `--validation`. The NVRHI backend documents failure/output handling in `ethereal-nvrhi/docs/cuda-slang-backend.md` in the aggregate workspace; no public exception stage or black-pixel continuation is promised.
+
+Public scalar-grid and Y-face diagnostic queries now consume authenticated retained snapshots/points with selectable R32 channels, explicit caller completion and actual GPU results. Signed floor lookup, zero misses, aligned comparison loads and explicit nonfinite tap handling replace the unsafe legacy diagnostic cases. Four APIs, native NVIDIA/AMD validation, CUDA memory checking and installed static/shared consumers pass. Broader consumer/platform/performance acceptance remains.

@@ -132,11 +132,13 @@
       "remaining": "Public central/six-neighbor/XZ support and deterministic last/average color pass four Windows APIs, both native graphics adapters, CUDA memory checking and static/shared installed consumers. Stable ordinal accumulation replaces raced scatter writes. Linux and broad consumer/performance acceptance remain."
     },
     "velocity": {
-      "status": "partial",
+      "status": "owned-validated",
       "replacementFiles": [
-        "gvdb/slang/GVDBVelocity.slang"
+        "gvdb/slang/GVDBVelocity.slang",
+        "gvdb/GVDBNvrhiGridQueryApi.cpp",
+        "gvdb/slang/GVDBGridQuery.slang"
       ],
-      "remaining": "Sparse MAC/PIC-FLIP utility exists; exact legacy diagnostics/export contracts and owned channels remain. Reference contains no complete FLIP solver."
+      "remaining": "Public authenticated retained scalar-grid reads and Y-face interpolation diagnostics pass four Windows APIs, native NVIDIA/AMD graphics validation, CUDA memory checking and installed static/shared consumers. Selected R32 channels, signed floor addressing, aligned comparison and zero misses repair legacy undefined reads/output boundaries; no bit-exact undefined CUDA behavior or complete FLIP solver is claimed. Broader consumers, Linux and performance/reference gates remain."
     },
     "obstacle-mapping": {
       "status": "owned-validated",
