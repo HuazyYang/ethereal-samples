@@ -208,3 +208,5 @@ include("${CMAKE_CURRENT_LIST_DIR}/../gvdb_samples/gvdb/GVDBNvrhiSubcellApi.cmak
 include("${CMAKE_CURRENT_SOURCE_DIR}/../gvdb_samples/gvdb/GVDBNvrhiGridQueryApi.cmake")
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/../gvdb_samples/gvdb/GVDBNvrhiPointInsertionApi.cmake")
+
+include("${CMAKE_CURRENT_SOURCE_DIR}/../gvdb_samples/gvdb/GVDBNvrhiPointSplitApi.cmake")
