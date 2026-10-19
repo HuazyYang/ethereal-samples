@@ -3,6 +3,7 @@
 #pragma once
 #include "SceneMaterial.h"
 #include <gvdb/GVDBSlangVolume.h>
+#include <gvdb/GVDBNvrhiApi.h>
 #include <filesystem>
 #include <memory>
 #include <vector>
@@ -21,6 +22,11 @@ struct SceneMesh {
 struct SceneVolume {
     slang::VolumeInfo info{};
     nvrhi::BufferHandle scalar, nodes, children, levels, color;
+    // Raw snapshot channels are consumed directly, without a staging atlas copy.
+    portable::SnapshotHandle ownedSnapshot;
+    bool rawScalar = false;
+    // Raw view bases are 16-byte aligned; level bases align to sizeof(LevelInfo).
+    nvrhi::BufferRange scalarRange, nodesRange, childrenRange, levelsRange, colorRange;
     std::vector<slang::Float4> transfer;
     // Inclusive lookup endpoint; UINT32_MAX uses the full table. Legacy 16384-entry
     // tables use 16300 explicitly, leaving their original reserved tail intact.
@@ -35,6 +41,8 @@ struct SceneVolume {
     slang::Float4 threshold{.1f, 0, 1, 0};
     // Snapshot retains GPU buffers. Replace it after a topology/atlas relocation.
     static SceneVolume from(const slang::SlangVolume& volume);
+    static SceneVolume from(portable::SnapshotHandle volume, uint32_t scalarChannel = 0,
+                            uint32_t colorChannel = UINT32_MAX);
 };
 struct SceneInstance {
     enum class Kind : uint32_t {

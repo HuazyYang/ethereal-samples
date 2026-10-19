@@ -20,11 +20,12 @@ template<class F> FRESULT guarded(F&& function) noexcept {
     catch(const std::length_error&){return FE_OUT_OF_MEMORY;}
     catch(...){return FE_GENERIC_ERROR;}
 }
-class Gather final:public ObjectImpl<IGVDBGather> {
+class Gather final:public ObjectImpl<IGVDBGatherEvaluation> {
     VolumeHandle m_volume; // Released last: private operator borrows this stable owner.
     std::unique_ptr<NvrhiGather> m_gather;
  public:
     NVRHI_BEGIN_INTERFACE_TABLE_INLINE(Gather)
+        NVRHI_IMPLEMENTS_INTERFACE(IGVDBGatherEvaluation)
         NVRHI_IMPLEMENTS_INTERFACE(IGVDBGather)
         NVRHI_IMPLEMENTS_INTERFACE(IRHIObject)
     NVRHI_END_INTERFACE_TABLE()
@@ -33,16 +34,26 @@ class Gather final:public ObjectImpl<IGVDBGather> {
     IGVDBVolume* getVolume() const noexcept override{return m_volume.Get();}
     FRESULT prepare(const GatherRequestDesc& desc,const GatherPreparationBudget& budget,
         IGVDBGenerationTicket** output) noexcept override {
+        GatherEvaluationDesc evaluation;
+        evaluation.request=desc;evaluation.evaluationPoints=desc.points;
+        return prepareEvaluation(evaluation,budget,output);
+    }
+    FRESULT prepareEvaluation(const GatherEvaluationDesc& evaluation,const GatherPreparationBudget& budget,
+        IGVDBGenerationTicket** output) noexcept override {
         if(!output)return FE_INVALID_ARGS;*output=nullptr;
         return guarded([&] {
+            require(evaluation.structSize==sizeof(GatherEvaluationDesc)&&!evaluation.reserved);
+            const auto& desc=evaluation.request;
             require(desc.structSize==sizeof(GatherRequestDesc)&&!desc.reserved&&!desc.reserved2&&!budget.reserved);
             require(desc.accumulate<=1);
             require(desc.supportRadius==-1 || (std::isfinite(desc.supportRadius)&&desc.supportRadius>=0));
             require(std::isfinite(desc.translation.x)&&std::isfinite(desc.translation.y)&&std::isfinite(desc.translation.z)&&std::isfinite(desc.translation.w));
             detail::ResolvedPointSet points;
             check(detail::resolvePointSet(desc.points,m_volume->getDevice(),points));
+            detail::ResolvedPointSet evaluated;
+            check(detail::resolvePointSet(evaluation.evaluationPoints,m_volume->getDevice(),evaluated));
             std::unique_ptr<PreparedGeneration> ticket;
-            check(m_gather->prepare(desc,budget,points,ticket));
+            check(m_gather->prepare(desc,budget,points,evaluated,ticket));
             return detail::wrapGeneration(m_volume->getDevice(),std::move(ticket),output);
         });
     }

@@ -146,6 +146,23 @@ s::SceneVolume volume(ComputeRuntime &runtime, float density, int shift = 0, boo
     };
     return result;
 }
+s::SceneVolume rawVolume(ComputeRuntime &runtime, s::SceneVolume value) {
+    auto copy = [&](BufferHandle &buffer, BufferRange &range, uint32_t prefix, uint32_t stride, bool raw) {
+        const uint64_t size = buffer->getDesc().byteSize;
+        std::vector<uint8_t> bytes(size_t(size + prefix), 0xeb);
+        runtime.read(buffer, bytes.data() + prefix, size_t(size));
+        buffer = runtime.buffer(bytes.size(), stride, bytes.data(), raw);
+        range = {prefix, size};
+    };
+    copy(value.scalar, value.scalarRange, 32, 0, true);
+    value.rawScalar = true;
+    copy(value.nodes, value.nodesRange, 16, 0, true);
+    copy(value.children, value.childrenRange, 32, 0, true);
+    copy(value.levels, value.levelsRange, 64, sizeof(g::LevelInfo), false);
+    if (value.color)
+        copy(value.color, value.colorRange, 48, 0, true);
+    return value;
+}
 float packedChannel(float value) { return std::floor(std::clamp(value, 0.f, 1.f) * 255.f + .5f) / 255.f; }
 g::Float4 deepExpected(g::Float4 transfer, g::Float4 behind, g::Float4 tint = {1, 1, 1, 1},
                        uint32_t samples = 14) {
@@ -237,11 +254,11 @@ void deepCameraClipping(ComputeRuntime &runtime, s::SlangSceneRT &renderer) {
                 "deep camera clipping remains independent of nearest triangle");
     std::puts("PASS deep near/far integration, clipped continuation and traversal independence");
 }
-void volumeModes(ComputeRuntime &runtime, s::SlangSceneRT &renderer) {
+void volumeModes(ComputeRuntime &runtime, s::SlangSceneRT &renderer, bool raw = false) {
     const g::Float4 color{.25f, .5f, .75f, 1};
     s::SceneDescription scene;
     scene.materials = {ambient(color)};
-    scene.volumes = {volume(runtime, 1)};
+    scene.volumes = {raw ? rawVolume(runtime, volume(runtime, 1)) : volume(runtime, 1)};
     scene.instances = {instance(s::SceneInstance::Kind::Volume, 0, 0, 0, 0, 0)};
     scene.volumes[0].mode = s::SceneVolumeMode::Surface;
     scene.volumes[0].threshold.x = .5f;
@@ -252,7 +269,7 @@ void volumeModes(ComputeRuntime &runtime, s::SlangSceneRT &renderer) {
     // Legacy surface shading displaces the first sample two index units along
     // the outward normal; its reported distance is measured from that position.
     expectNear(pixel.depth, .75f, "retained surface offset distance");
-    scene.volumes[0] = volume(runtime, 0);
+    scene.volumes[0] = raw ? rawVolume(runtime, volume(runtime, 0)) : volume(runtime, 0);
     scene.volumes[0].mode = s::SceneVolumeMode::LevelSet;
     scene.volumes[0].threshold.x = .1f;
     renderer.updateVolume(0, scene.volumes[0]);
@@ -275,7 +292,7 @@ void volumeArrayEndpoints(ComputeRuntime &runtime, s::SlangSceneRT &renderer) {
             {.8f,  .1f, .05f, .25f},
             {.05f, .1f, .8f,  .5f }
         };
-        scene.volumes.push_back(item);
+        scene.volumes.push_back(n == 7 ? rawVolume(runtime, item) : item);
     }
     scene.instances = {instance(s::SceneInstance::Kind::Volume, 0, 0, 0, 0, 0),
                        instance(s::SceneInstance::Kind::Volume, 7, 0, -700, 4, 0)};
@@ -603,6 +620,19 @@ void invalidInputs(ComputeRuntime &runtime, s::SlangSceneRT &renderer) {
     bad.volumes[0].children = runtime.buffer(4, 0, nullptr, true);
     reject([&] { renderer.setScene(bad); }, "incomplete child reference rejected");
     bad = withVolume;
+    bad.volumes[0].scalarRange = {UINT64_MAX - 3, 8};
+    reject([&] { renderer.setScene(bad); }, "overflowing scalar range rejected");
+    bad = withVolume;
+    bad.volumes[0].scalarRange = {0, 4};
+    reject([&] { renderer.setScene(bad); }, "undersized scalar range rejected");
+    bad = withVolume;
+    bad.volumes[0] = rawVolume(runtime, bad.volumes[0]);
+    bad.volumes[0].scalarRange.byteOffset = 4;
+    reject([&] { renderer.setScene(bad); }, "misaligned raw view rejected before native binding");
+    bad = withVolume;
+    bad.volumes[0].rawScalar = true;
+    reject([&] { renderer.setScene(bad); }, "structured-only buffer rejected as raw");
+    bad = withVolume;
     bad.volumes[0].transfer[0].w = -1;
     reject([&] { renderer.setScene(bad); }, "negative extinction transfer rejected");
     bad = withVolume;
@@ -640,6 +670,7 @@ int run(IDevice *device, const std::filesystem::path &library) {
     deepComposition(runtime, renderer);
     deepCameraClipping(runtime, renderer);
     volumeModes(runtime, renderer);
+    volumeModes(runtime, renderer, true);
     volumeArrayEndpoints(runtime, renderer);
     transformAndReplacement(runtime, renderer, library);
     environmentAndAccumulation(runtime, renderer);
@@ -662,6 +693,7 @@ int main(int argc, const char **argv) {
     try {
         std::filesystem::path library;
         bool cudaRequested = false, validation = false;
+        int adapter = -1;
         for (int i = 1; i < argc; ++i) {
             if (!std::strcmp(argv[i], "--library") && i + 1 < argc)
                 library = argv[++i];
@@ -669,6 +701,13 @@ int main(int argc, const char **argv) {
                 cudaRequested = true;
             else if (!std::strcmp(argv[i], "--validation"))
                 validation = true;
+            else if (!std::strcmp(argv[i], "--adapter")) {
+                require(++i < argc, "--adapter requires an ordinal");
+                const std::string text = argv[i];
+                size_t consumed = 0;
+                adapter = std::stoi(text, &consumed);
+                require(adapter >= 0 && consumed == text.size(), "Invalid adapter ordinal");
+            }
         }
         int result = 77;
         if (cudaRequested) {
@@ -677,6 +716,7 @@ int main(int argc, const char **argv) {
             cuda::DeviceDesc desc;
             desc.errorCB = messages;
             desc.enableOptiX = true;
+            desc.deviceOrdinal = adapter < 0 ? 0 : adapter;
             auto device = cuda::createDevice(desc);
             if (!device) {
                 std::puts("SKIP CUDA unavailable");
@@ -697,10 +737,12 @@ int main(int argc, const char **argv) {
             auto manager = TakeOver(donut::app::DeviceManager::Create(api));
             require(bool(manager), "Requested graphics backend unavailable");
             donut::app::DeviceCreationParameters params;
+            params.adapterIndex = adapter;
             params.enableNvrhiValidationLayer = true;
             params.enableDebugRuntime = validation;
             params.enableRayTracingExtensions = true;
             require(manager->CreateHeadlessDevice(params), "Graphics device creation failed");
+            std::printf("Scene RT adapter %d: %s\n", adapter, manager->GetRendererString());
             if (library.empty())
                 library = donut::app::GetDirectoryWithExecutable() / "shaders/gvdb_slang" /
                           donut::app::GetShaderTypeName(api) / "SlangSceneRT.bin";

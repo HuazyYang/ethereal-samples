@@ -5,6 +5,9 @@ int main() {
     namespace g=gvdb::portable;
     using namespace nvrhi;
     static_assert(uint32_t(g::GatherKind::Density)==0 && uint32_t(g::GatherKind::LevelSet)==1);
+    g::GatherEvaluationDesc evaluation;
+    static_assert(std::is_base_of_v<g::IGVDBGather,g::IGVDBGatherEvaluation>);
+    if(evaluation.structSize!=80 || evaluation.reserved || evaluation.evaluationPoints || evaluation.request.structSize!=64)return 9;
     g::GatherRequestDesc request;
     g::GatherPreparationBudget budget;
     if(request.structSize!=64 || request.colorChannel!=UINT32_MAX || request.subcellWidth!=2 || request.radius!=1 || request.accumulate || request.supportRadius!=-1 || request.reserved2)return 1;

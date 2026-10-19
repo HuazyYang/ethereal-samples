@@ -140,7 +140,7 @@
         "gvdb/GVDBNvrhiGather.cpp",
         "gvdb/GVDBNvrhiGatherApi.cpp"
       ],
-      "remaining": "Public ordinary R32 density/level-set and optional RGBA8 gathers use authenticated PointSets, stable signed/shifted subcell bins, separate support/distance radii and explicit channel publication. Windows four-backend/native/memory/package checks pass. Normalized-ushort weighted color, broader consumers and Linux remain; velocity is not read by retained gathers."
+      "remaining": "Public ordinary R32 density/level-set and optional RGBA8 gathers use authenticated PointSets, stable signed/shifted subcell bins, separate support/distance radii and separate association/evaluation positions. Point-cloud now uses public owner/apron/filter and raw snapshots; both complete Windows matrices, two-adapter native, memory and static/shared package checks pass. Public quantization, normalized-ushort weighted color, broader consumers and Linux remain; velocity is not read by retained gathers."
     },
     "weighted-ushort-gather": {
       "status": "partial",

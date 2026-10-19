@@ -1,4 +1,4 @@
-﻿# Slang point-cloud sample
+# Slang point-cloud sample
 
 `point-cloud` loads the original `teapot.scn` and `points.dat`, reconstructs each packed point frame with Slang, and renders the point volume plus the scene meshes through NVRHI. D3D12, Vulkan RT and CUDA/OptiX use the shared Slang mixed renderer. D3D11 and the explicit `--renderer compute` path render the point volume through the portable compute surface renderer. Compute rendering does not include polygon meshes, recursive material effects or environment lighting.
 
@@ -35,3 +35,22 @@ Validation on 2026-10-18:
 At 128x96 the compute D3D11/D3D12/Vulkan PNGs are identical; CUDA differs by one byte value in two pixels. Mixed RT PNGs have sparse differences from floating-point and secondary-ray divergence: D3D12 versus Vulkan differs in 10 pixels with mean absolute RGB byte error 0.00705; CUDA differs in 41 pixels with mean error 0.00798. Maximum errors are 57 and 44 respectively. Bit-identical RT output is not claimed.
 
 Logs are under the aggregate build directory: `point-cloud-app-build.log`, `point-cloud-app-input-tests.log`, `point-cloud-app-asset-tests.log`, `point-cloud-final-window-*.log`, `corrected-reconstruction-*-memcheck.log`, and `checkpoint-4-point-cloud-*-memcheck.log`. The previous source remains available as `legacy-main.cpp`; non-Slang builds retain that target.
+
+## Public snapshot ownership (2026-10-19)
+
+Frames now publish through `IGVDBVolume` and the public gather/apron/filter APIs.
+`IGVDBGatherEvaluation` keeps original point-to-cell membership while evaluating
+the GPU-quantized positions. A fresh owner replaces the visible snapshot only
+after successful preparation/publication; retained previous snapshots stay valid.
+The compute preview and mixed RT renderer consume raw snapshot channels directly,
+and topology overlays use public host pools. GPU quantization remains an explicit
+app stage followed by readback and copied PointSet upload; this is not a public
+quantization operator or acceptance of weighted ushort color gathering.
+
+Ownership acceptance: complete matrices pass 334/334 and graphics-only 252/252,
+with no skips; both graphics adapters pass native reconstruction/app controls,
+and CUDA memory checks are clean. Installed static/shared gather consumers each
+pass 2/2. All four compute captures exactly match the preserved portable images;
+RT changes at most one byte in two color channels. Tests-disabled production
+matches DX11 exactly, and three bounded native compute windows pass. Logs and
+image comparisons are under `build/m5-owned-point-cloud` in the aggregate.

@@ -10,7 +10,7 @@ struct SceneParameters { SceneCamera camera; uint4 state, random; float4 pointLi
 struct SceneVolume {
     VolumeInfo info;
     float4 steps, extinct, cutoff, threshold;
-    uint4 options; // resource slot, color enabled, inclusive transfer endpoint, volume mode
+    uint4 options; // resource slot, bit0 color/bit1 raw scalar, inclusive transfer endpoint, volume mode
 };
 struct SceneMaterial {
     float4 ambient, diffuse, specular, environment;
@@ -28,6 +28,7 @@ StructuredBuffer<SceneMaterial> g_Materials : register(t7);
 Texture2D<float4> g_Environment : register(t8);
 SamplerState g_EnvironmentSampler : register(s0);
 StructuredBuffer<float> g_Scalars[8] : register(t16);
+ByteAddressBuffer g_RawScalars[8] : register(t64);
 ByteAddressBuffer g_Nodes[8] : register(t24);
 ByteAddressBuffer g_Children[8] : register(t32);
 StructuredBuffer<LevelInfo> g_Levels[8] : register(t40);
@@ -89,6 +90,11 @@ bool voxelAddress(SceneVolume volume,int3 cell,out uint address) {
     address=flatten3(uint3(leaf.atlasPosition+cell-leaf.position),volume.info.atlasResolutionAndApron.xyz);
     return true;
 }
+float scalarLoad(SceneVolume volume,uint address) {
+    uint slot=volumeSlot(volume);
+    if((volume.options.y&2)!=0)return asfloat(g_RawScalars[slot].Load(address*4));
+    return g_Scalars[slot][address];
+}
 float scalarValue(SceneVolume volume,float3 position,out bool supported) {
     supported=false;
     if(!all(isfinite(position))||any(abs(position)>8388607))return volume.threshold.w;
@@ -101,7 +107,7 @@ float scalarValue(SceneVolume volume,float3 position,out bool supported) {
             for(uint corner=0;corner<8;++corner) {
                 int3 offset=int3(corner&1,(corner>>1)&1,(corner>>2)&1);
                 float3 w=lerp(1-fraction,fraction,float3(offset));
-                result+=w.x*w.y*w.z*g_Scalars[slot][flatten3(uint3(leaf.atlasPosition+local+offset),volume.info.atlasResolutionAndApron.xyz)];
+                result+=w.x*w.y*w.z*scalarLoad(volume,flatten3(uint3(leaf.atlasPosition+local+offset),volume.info.atlasResolutionAndApron.xyz));
             }
             return result;
         }
@@ -113,13 +119,13 @@ float scalarValue(SceneVolume volume,float3 position,out bool supported) {
         if(weight<=0)continue;
         uint address;bool present=voxelAddress(volume,lower+offset,address);
         supported=supported||present;
-        result+=weight*(present?g_Scalars[slot][address]:volume.threshold.w);
+        result+=weight*(present?scalarLoad(volume,address):volume.threshold.w);
     }
     return result;
 }
 float scalarValue(SceneVolume volume,float3 position) {bool supported;return scalarValue(volume,position,supported);}
 float3 volumeColor(SceneVolume volume,float3 position) {
-    if(volume.options.y==0)return float3(1);
+    if((volume.options.y&1)==0)return float3(1);
     uint address;
     if(!voxelAddress(volume,int3(floor(position)),address))return float3(1);
     return unpackColor(g_Colors[volumeSlot(volume)].Load(address*4)).xyz;

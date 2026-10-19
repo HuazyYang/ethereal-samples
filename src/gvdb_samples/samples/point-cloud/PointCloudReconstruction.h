@@ -1,8 +1,12 @@
-﻿// Per-frame point-cloud reconstruction using the unified NVRHI runtime.
+// Per-frame point-cloud reconstruction using the unified NVRHI runtime.
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 #include "PointCloudInput.h"
-#include <gvdb/GVDBSlangVolume.h>
+#include <gvdb/GVDBNvrhiApi.h>
+#include <gvdb/slang/GVDBPortableData.h>
+namespace ethereal::slang {
+class ComputeRuntime;
+}
 #include <memory>
 namespace gvdb::samples::pointcloud {
 struct ReconstructionSettings {
@@ -15,22 +19,26 @@ struct PointLine {
 };
 class PointCloudReconstruction {
     ethereal::slang::ComputeRuntime* m_runtime;
-    slang::PackedVolume m_packed;
-    std::unique_ptr<slang::SlangVolume> m_volume;
+    struct State;
+    std::unique_ptr<State> m_state;
+    std::unique_ptr<State> createState() const;
     nvrhi::BufferHandle m_positions;
     std::vector<slang::Float4> m_hostPositions;
     QuantizationBounds m_quantization{};
     uint64_t m_generation = 0;
 
  public:
-    explicit PointCloudReconstruction(ethereal::slang::ComputeRuntime& runtime)
-        : m_runtime(&runtime) {}
+    explicit PointCloudReconstruction(ethereal::slang::ComputeRuntime& runtime);
+    ~PointCloudReconstruction();
     // Successful reconstruction replaces the previous frame atomically. Failure
     // leaves the previous volume available. There is no accumulation mode.
     void reconstruct(const PointFrame& frame, const ReconstructionSettings& settings = {});
-    bool hasVolume() const { return bool(m_volume); }
-    slang::SlangVolume& volume() const;
-    const slang::PackedVolume& packed() const { return m_packed; }
+    bool hasVolume() const { return m_generation != 0; }
+    portable::SnapshotHandle snapshot() const;
+    const portable::IGVDBHostVolume& topology() const;
+    std::vector<float> readAtlas() const;
+    // Explicit diagnostic readback of the publication; never used for reconstruction/rendering.
+    slang::PackedVolume readTopology() const;
     nvrhi::IBuffer* positions() const { return m_positions; }
     const std::vector<slang::Float4>& hostPositions() const { return m_hostPositions; }
     const QuantizationBounds& quantization() const { return m_quantization; }

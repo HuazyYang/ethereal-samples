@@ -1,8 +1,8 @@
-﻿// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: Apache-2.0
 #include "PointCloudAppScene.h"
 #include <imgui.h>
 #include <sample-utils/ObjLoader.h>
-#include <gvdb/slang/GVDBTopologyBuilder.h>
+#include <cstring>
 #include <donut/app/ApplicationBase.h>
 #include <donut/core/log.h>
 #include <stb_image.h>
@@ -48,6 +48,11 @@ PointCloudAppScene::PointCloudAppScene(ethereal::slang::ComputeRuntime& runtime,
       m_options(std::move(options)),
       m_reconstruction(runtime),
       m_transfer(pointTransfer()) {
+    if (m_options.compute)
+        m_surface = std::make_unique<sample::OwnedVolumeSurface>(
+            runtime.device(), donut::app::GetDirectoryWithExecutable() / "shaders/gvdb_owned" /
+                                  donut::app::GetShaderTypeName(runtime.device()->getGraphicsAPI()) /
+                                  "OwnedVolumeSurface_renderSurface.bin");
     const auto& s = m_options.scene;
     if (!std::isfinite(s.renderScale) || s.renderScale <= 0)
         throw std::invalid_argument("Point-cloud scale must be finite and positive");
@@ -90,19 +95,6 @@ PointCloudAppScene::PointCloudAppScene(ethereal::slang::ComputeRuntime& runtime,
         instance.kind = sample::SceneInstance::Kind::Volume;
         instance.material = uint32_t(s.pointMaterial);
         m_scene.instances.push_back(instance);
-    } else {
-        std::string error;
-        if (!slang::buildTopology(
-                {
-                    {0, 0, 0, 0}
-        },
-                {}, m_emptyPacked, error))
-            throw std::runtime_error(error);
-        const auto r = m_emptyPacked.volume.atlasResolutionAndApron;
-        std::vector<float> farValues(size_t(r.x) * r.y * r.z, 3);
-        m_emptyVolume =
-            std::make_unique<slang::SlangVolume>(runtime, m_emptyPacked, farValues.data(), farValues.size());
-        m_emptyPacked = {};
     }
     const auto addMesh = [&](sample::SceneMesh mesh, int material) {
         sample::SceneInstance instance;
@@ -188,13 +180,7 @@ sample::SceneMesh PointCloudAppScene::loadMesh(const std::filesystem::path& path
 }
 sample::SceneVolume PointCloudAppScene::sceneVolume() const {
     const auto& s = m_options.scene;
-    sample::SceneVolume volume;
-    const auto& gpu = m_reconstruction.volume();
-    volume.info = gpu.info();
-    volume.scalar = gpu.atlas();
-    volume.nodes = gpu.nodes();
-    volume.children = gpu.children();
-    volume.levels = gpu.levels();
+    auto volume = sample::SceneVolume::from(m_reconstruction.snapshot());
     volume.mode = sample::SceneVolumeMode::LevelSet;
     volume.transfer = m_transfer;
     volume.transferLastIndex = 16300;
@@ -204,11 +190,37 @@ sample::SceneVolume PointCloudAppScene::sceneVolume() const {
     volume.threshold = f4(s.range, 3);
     return volume;
 }
-slang::SlangVolume& PointCloudAppScene::volume() {
-    return m_reconstruction.hasVolume() ? m_reconstruction.volume() : *m_emptyVolume;
-}
-const slang::PackedVolume& PointCloudAppScene::packed() const {
-    return m_reconstruction.hasVolume() ? m_reconstruction.packed() : m_emptyPacked;
+bool PointCloudAppScene::topologyOverlay(std::vector<sample::VolumeOverlayLine>& output) const {
+    output.clear();
+    const auto& host = m_reconstruction.topology();
+    const Float4 colors[] = {
+        {.1f, 1,   .2f, 1},
+        {1,   .7f, .1f, 1},
+        {.1f, .6f, 1,   1},
+        {1,   .2f, .8f, 1}
+    };
+    for (uint32_t level = 0; level < host.getConfiguration().levelCount; ++level) {
+        const auto pool = host.getPool(0, level);
+        if (pool.count && (!pool.data || pool.stride != sizeof(portable::Node)))
+            throw std::logic_error("Point-cloud node pool");
+        if (pool.count > (1000000 - output.size()) / 12)
+            throw std::invalid_argument("Point-cloud overlay too large");
+        for (uint64_t i = 0; i < pool.count; ++i) {
+            portable::Node node;
+            std::memcpy(&node, static_cast<const uint8_t*>(pool.data) + i * pool.stride, sizeof(node));
+            const float width = float(host.getRange(int32_t(level)));
+            auto vertex = [&](uint32_t c) {
+                return Float4{float(node.position.x) + (c & 1 ? width : 0),
+                              float(node.position.y) + (c & 2 ? width : 0),
+                              float(node.position.z) + (c & 4 ? width : 0), 0};
+            };
+            for (uint32_t c = 0; c < 8; ++c)
+                for (uint32_t axis = 0; axis < 3; ++axis)
+                    if (!(c & (1u << axis)))
+                        output.push_back({vertex(c), vertex(c | (1u << axis)), colors[level % 4]});
+        }
+    }
+    return true;
 }
 void PointCloudAppScene::resetSamples() {
     m_samples = 0;
@@ -304,6 +316,8 @@ slang::RaycastOutput PointCloudAppScene::renderCustom(const slang::RaycastParame
     } else
 #endif
     {
+        m_runtime->flush();
+        result = m_surface->render(m_reconstruction.snapshot(), 0, UINT32_MAX, camera, m_transfer, 3);
         ++m_samples;
     }
     m_advance = m_samples >= m_maxSamples;
@@ -326,10 +340,11 @@ void PointCloudAppScene::buildUI(sample::VolumeViewOptions& view) {
     ImGui::Text("Frame %d, sample %u / %u, %zu points", m_frame, m_samples, m_maxSamples,
                 m_reconstruction.hostPositions().size());
     if (m_reconstruction.hasVolume()) {
-        const auto r = m_reconstruction.packed().volume.atlasResolutionAndApron;
+        const auto r = m_reconstruction.snapshot()->getDesc().volume.atlasResolutionAndApron;
         const double voxels = double(r.x) * r.y * r.z;
         ImGui::Text("Bricks: %u, %.1f MVoxels, scalar atlas %.1f MB",
-                    m_reconstruction.packed().levels[0].nodes.z, voxels / 1e6, voxels * 4 / (1024 * 1024));
+                    m_reconstruction.snapshot()->getDesc().activeLeafCount, voxels / 1e6,
+                    voxels * 4 / (1024 * 1024));
     }
     if (m_options.compute)
         ImGui::TextUnformatted("Compute level-set preview");
@@ -413,7 +428,7 @@ std::string PointCloudAppScene::describe() const {
     std::snprintf(text, sizeof(text), "Point-cloud %s frame%d poly%d sample%u/%u points%zu bricks%u",
                   m_options.compute ? "compute" : "Slang RT", m_frame, m_polyFrame, m_samples, m_maxSamples,
                   m_reconstruction.hostPositions().size(),
-                  m_reconstruction.hasVolume() ? m_reconstruction.packed().levels[0].nodes.z : 0);
+                  m_reconstruction.hasVolume() ? m_reconstruction.snapshot()->getDesc().activeLeafCount : 0);
     return text;
 }
 }  // namespace gvdb::samples::pointcloud

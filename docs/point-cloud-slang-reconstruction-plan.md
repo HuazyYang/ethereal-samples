@@ -30,3 +30,15 @@ The application has now been migrated to `PointCloudAppScene` plus the shared mi
 ## Branch-order correction
 
 The legacy `fromBranching(r4,r3,r2,r1,r0)` signature reverses argument order. The final argument 4 means leaf16, not leaf8. Reconstruction now uses `{4,3,3,3,3}` and 16-voxel support alignment. Analytic fixtures explicitly assert leaf16/apron18 and independently enumerate support voxels to compare the complete leaf set. Corrected reconstruction fixtures pass on all four APIs, including an independent complete leaf-set reference. Earlier leaf8 counts, memory sizes and image acceptance are historical and superseded; current application captures are tracked in the sample README.
+
+## Public owner adoption (2026-10-19)
+
+Reconstruction now uses public host activation, volume generations, separate gather
+association/evaluation PointSets, apron updates and smoothing. GPU quantization is
+performed once per input ordinal; original positions still determine membership.
+The app explicitly reads decoded GPU values into copied PointSet uploads. A fresh
+owner per frame preserves prior snapshots on late failures. Compute and mixed RT
+render directly from public raw snapshots; overlays use public host topology.
+`readTopology` is an explicit diagnostic snapshot readback used by independent
+fixtures, never a reconstruction or rendering authority. Public quantization and
+the separate inverse-distance color role remain open.

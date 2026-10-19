@@ -51,6 +51,26 @@ struct IGVDBGather : nvrhi::IRHIObject {
         IGVDBGenerationTicket** output) noexcept = 0;
 };
 using GatherHandle = nvrhi::AutoPtr<IGVDBGather>;
+// Association and evaluation streams correspond by ordinal, with equal counts.
+// request.points controls cell coverage; evaluationPoints supplies distances/colors.
+struct GatherEvaluationDesc {
+    uint32_t structSize = sizeof(GatherEvaluationDesc), reserved = 0;
+    GatherRequestDesc request;
+    IGVDBPointSet* evaluationPoints = nullptr;
+};
+static_assert(sizeof(GatherEvaluationDesc)==80 && offsetof(GatherEvaluationDesc,evaluationPoints)==72);
+static_assert(std::is_standard_layout_v<GatherEvaluationDesc> && std::is_trivially_copyable_v<GatherEvaluationDesc>);
+NVRHI_IID(IGVDBGatherEvaluation,"12a88aed-5362-4754-8216-b55abf287e2b")
+struct IGVDBGatherEvaluation : IGVDBGather {
+    NVRHI_DECLARE_UUID_TRAITS(IGVDBGatherEvaluation)
+    // Query this extension from the existing factory. Both PointSets must be
+    // authenticated, completed and on the owner's device; caller supplies their
+    // ordinal correspondence. Translation applies to both. All other prepare
+    // contracts and budgets are unchanged; old interfaces/layouts remain intact.
+    virtual nvrhi::FRESULT prepareEvaluation(const GatherEvaluationDesc&,
+        const GatherPreparationBudget&,IGVDBGenerationTicket** output) noexcept = 0;
+};
+using GatherEvaluationHandle = nvrhi::AutoPtr<IGVDBGatherEvaluation>;
 GVDB_NVRHI_C_API nvrhi::FRESULT gvdbCreateNvrhiGather(uint32_t apiVersion,
     const GatherCreateDesc*,IGVDBGather** output) noexcept;
 inline nvrhi::FRESULT createGather(const GatherCreateDesc& desc,IGVDBGather** output) noexcept {

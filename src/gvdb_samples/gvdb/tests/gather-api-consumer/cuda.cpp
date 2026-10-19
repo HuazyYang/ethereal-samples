@@ -45,20 +45,25 @@ int main(int argc,char** argv) {
     g::GatherCreateDesc create;create.volume=owner;create.artifact=artifact.data();create.artifactBytes=artifact.size();
     g::GatherHandle gather;CHECK(g::createGather(create,&gather));
     REQUIRE(gather->getVolume()==owner.Get());
+    g::GatherEvaluationHandle extension;
+    CHECK(gather->QueryInterface(uuid_of<g::IGVDBGatherEvaluation>(),reinterpret_cast<void**>(extension.GetAddressOf())));
     g::GatherRequestDesc request;request.points=points;request.channel=31;request.colorChannel=7;request.subcellWidth=1;request.radius=1;request.supportRadius=2;
     std::array<g::ReadbackHandle,3> results;
     commands->open();
     for(uint32_t pass=0;pass<3;++pass) {
         request.kind=pass==0?g::GatherKind::Density:g::GatherKind::LevelSet;
         request.translation={pass==0?0.f:100.f,0,0,0};request.accumulate=pass==2;
-        CHECK(gather->prepare(request,{},&generation));
+        if(pass==0) {
+            g::GatherEvaluationDesc evaluation;evaluation.request=request;evaluation.evaluationPoints=points;
+            CHECK(extension->prepareEvaluation(evaluation,{},&generation));
+        } else CHECK(gather->prepare(request,{},&generation));
         if(pass==2)points=nullptr; // Prepared commands must retain GPU streams themselves.
         CHECK(owner->recordAndPublish(context,generation));
         g::SnapshotHandle snapshot;CHECK(owner->getSnapshot(&snapshot));
         CHECK(owner->prepareReadback(snapshot,(uint32_t(1)<<31)|(uint32_t(1)<<7),&results[pass]));
         CHECK(owner->recordReadback(context,results[pass]));
     }
-    owner=nullptr;gather=nullptr;generation=nullptr;
+    owner=nullptr;gather=nullptr;extension=nullptr;generation=nullptr;
     commands->close();device->executeCommandList(commands);REQUIRE(device->waitForIdle());
     for(uint32_t pass=0;pass<3;++pass) {
         CHECK(results[pass]->finishAfterCallerCompletion());

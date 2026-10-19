@@ -111,6 +111,11 @@ void runPointCloudAppTests(ethereal::slang::ComputeRuntime& runtime) {
         "Legacy transfer table endpoint");
     expectNear(description.volumes[0].transfer[8192].y, 1, "Transfer midpoint");
     expectNear(description.volumes[0].threshold.w, 3, "Missing level-set scalar");
+    require(description.volumes[0].ownedSnapshot == scene.ownedSnapshot() && description.volumes[0].rawScalar &&
+                description.volumes[0].scalar->getDesc().structStride == 0,
+            "Mixed scene consumes public raw snapshot directly");
+    std::vector<sample::VolumeOverlayLine> topology;
+    require(scene.topologyOverlay(topology) && !topology.empty(), "Public host topology overlay");
     expectNear(description.meshes[1].positions[0].x, -1, "Initial polygon-series transform");
     auto image = sample::renderVolumeView(runtime, scene, view);
     scene.animate(0, view);
@@ -122,7 +127,8 @@ void runPointCloudAppTests(ethereal::slang::ComputeRuntime& runtime) {
     require(scene.polygonFrame() == 1, "Polygon frame advances independently");
     expectNear(scene.sceneDescription().meshes[1].positions[0].x, 29,
                "Polygon geometry replaced with next frame");
-    require(scene.packed().volume.boundsMax.x < 0, "Frame replacement retains no old positive topology");
+    require(scene.ownedSnapshot()->getDesc().volume.boundsMax.x < 0,
+            "Frame replacement retains no old positive topology");
     require(scene.key('1', view) && scene.overlayLines().size() == 1, "Point-overlay key and glyph");
     require(scene.key('2', view) && view.topology, "Topology toggle");
     require(scene.key('V', view) && scene.key('I', view), "Unsupported generic modes consumed");

@@ -17,7 +17,8 @@ class NvrhiGather {
     NvrhiGather& operator=(const NvrhiGather&) = delete;
     static nvrhi::FRESULT create(const GatherOperatorDesc&,std::unique_ptr<NvrhiGather>& output) noexcept;
     nvrhi::FRESULT prepare(const GatherRequestDesc&,const GatherPreparationBudget&,
-        const detail::ResolvedPointSet&,std::unique_ptr<PreparedGeneration>& output) noexcept;
+        const detail::ResolvedPointSet& associations,const detail::ResolvedPointSet& evaluation,
+        std::unique_ptr<PreparedGeneration>& output) noexcept;
  private:
     struct Impl;
     std::unique_ptr<Impl> m_impl;

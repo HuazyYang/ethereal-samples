@@ -1,4 +1,7 @@
-# Standalone input/reconstruction slice; legacy point-cloud application is unchanged.
+# Production public-owner reconstruction; optional independent fixtures.
+include("${CMAKE_CURRENT_LIST_DIR}/../../gvdb/GVDBNvrhiGatherApi.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/../../gvdb/GVDBNvrhiApronApi.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/../../gvdb/GVDBNvrhiVoxelFilterApi.cmake")
 set(point_cloud_dir "${CMAKE_CURRENT_LIST_DIR}")
 set(point_cloud_assets "${point_cloud_dir}/../assets")
 set(point_cloud_shader_config "")
@@ -13,8 +16,22 @@ add_library(gvdb_point_cloud_input STATIC "${point_cloud_dir}/PointCloudInput.cp
 target_include_directories(gvdb_point_cloud_input PUBLIC "${point_cloud_dir}" "${point_cloud_dir}/../.." "${point_cloud_dir}/..")
 target_link_libraries(gvdb_point_cloud_input PUBLIC donut_core)
 add_library(gvdb_point_cloud_reconstruction STATIC "${point_cloud_dir}/PointCloudReconstruction.cpp")
-target_link_libraries(gvdb_point_cloud_reconstruction PUBLIC gvdb_point_cloud_input gvdb_slang_runtime)
+target_link_libraries(gvdb_point_cloud_reconstruction PUBLIC gvdb_point_cloud_input gvdb_slang_runtime gvdb::nvrhi_api PRIVATE donut_app)
+set(point_cloud_owned_config "")
+foreach(pair "GVDBAtlasRepack relocateAtlas" "GVDBPointStreamConversion convertPointStream" "GVDBAtlasGather gatherOwnedAtlas" "GVDBAtlasMutation mutateAtlas" "GVDBAtlasFilters filterAtlas")
+    separate_arguments(parts UNIX_COMMAND "${pair}")
+    list(GET parts 0 module)
+    list(GET parts 1 entry)
+    string(APPEND point_cloud_owned_config "\"${point_cloud_dir}/../../gvdb/slang/${module}.slang\" -T cs -E ${entry}\n")
+endforeach()
+file(CONFIGURE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/point-cloud-owned.cfg" CONTENT "${point_cloud_owned_config}" @ONLY)
+ethereal_compile_shaders(TARGET gvdb_point_cloud_owned_shaders SLANG CUDA ALL_PLATFORMS
+    CONFIG "${CMAKE_CURRENT_BINARY_DIR}/point-cloud-owned.cfg"
+    OUTPUT_DIRECTORY "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/shaders/gvdb_point_cloud"
+    INCLUDE_DIRECTORIES "${point_cloud_dir}/../../gvdb/slang")
+add_dependencies(gvdb_point_cloud_reconstruction gvdb_point_cloud_owned_shaders)
 add_dependencies(gvdb_point_cloud_reconstruction gvdb_point_cloud_shaders gvdb_slang_shaders)
+if(BUILD_TESTING)
 add_executable(gvdb_point_cloud_input_tests "${point_cloud_dir}/PointCloudInputTests.cpp")
 target_link_libraries(gvdb_point_cloud_input_tests PRIVATE gvdb_point_cloud_input)
 add_test(NAME gvdb_point_cloud_input COMMAND gvdb_point_cloud_input_tests "${point_cloud_assets}")
@@ -42,3 +59,5 @@ foreach(api DX11 DX12 VULKAN CUDA)
         set_tests_properties(gvdb_point_cloud_asset_${api} PROPERTIES TIMEOUT 600 RUN_SERIAL TRUE)
     endif()
 endforeach()
+
+endif()

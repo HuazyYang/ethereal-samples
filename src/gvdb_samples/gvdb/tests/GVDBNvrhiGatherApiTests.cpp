@@ -56,14 +56,23 @@ struct Device {
     AutoPtr<IMessageCallback> callback;
     Device(int argc, const char** argv) {
         bool useCuda = false, validation = false;
+        int adapter = -1;
         for (int i = 1; i < argc; ++i) {
             useCuda |= !std::strcmp(argv[i], "-cuda");
             validation |= !std::strcmp(argv[i], "--validation");
+            if (!std::strcmp(argv[i], "--adapter")) {
+                require(++i < argc, "--adapter requires an ordinal");
+                const std::string text = argv[i];
+                size_t consumed = 0;
+                adapter = std::stoi(text, &consumed);
+                require(adapter >= 0 && consumed == text.size(), "invalid adapter ordinal");
+            }
         }
         if (useCuda) {
 #if ETHEREAL_TEST_CUDA
             cuda::DeviceDesc desc;
             desc.enableOptiX = false;
+            desc.deviceOrdinal = adapter < 0 ? 0 : adapter;
             callback = MAKE_RC_OBJ_PTR(Messages);
             desc.errorCB = callback;
             device = cuda::createDevice(desc);
@@ -75,12 +84,19 @@ struct Device {
                 donut::app::DeviceManager::Create(donut::app::GetGraphicsAPIFromCommandLine(argc, argv)));
             require(bool(manager), "create graphics manager");
             donut::app::DeviceCreationParameters desc;
+            desc.adapterIndex = adapter;
             desc.enableNvrhiValidationLayer = true;
             desc.enableDebugRuntime = validation;
             require(manager->CreateHeadlessDevice(desc), "create graphics device");
             device = manager->GetDevice();
         }
         require(bool(device), "create test device");
+        if (manager)
+            std::printf("Gather backend %s; adapter %d (%s): %s\n",
+                        donut::app::GetShaderTypeName(device->getGraphicsAPI()), adapter,
+                        adapter < 0 ? "automatic" : "explicit", manager->GetRendererString());
+        else
+            std::printf("Gather backend CUDA; device ordinal %d\n", adapter < 0 ? 0 : adapter);
     }
     ~Device() {
         if (device)
@@ -394,7 +410,7 @@ bool selected(const std::array<int64_t, 3>& cell, const std::array<float, 3>& po
     }
     return true;
 }
-Expected oracle(const Layout& previous, const Input& input, const Settings& request) {
+Expected oracle(const Layout& previous, const Input& input, const Settings& request, const Input* evaluation = nullptr) {
     Expected result;
     result.layout = previous;
     auto& out = result.layout;
@@ -437,9 +453,9 @@ Expected oracle(const Layout& previous, const Input& input, const Settings& requ
                         }
                     uint32_t count = 0;
                     for (size_t p = 0; p < input.positions.size(); ++p) {
-                        const auto point = translated(input.positions[p], request);
-                        if (!selected(cell, point, request))
+                        if (!selected(cell, translated(input.positions[p], request), request))
                             continue;
+                        const auto point = translated((evaluation ? evaluation->positions : input.positions)[p], request);
                         ++count;
                         const double dx = double(point[0]) - (leaf.origin.x + int32_t(localX)),
                                      dy = double(point[1]) - (leaf.origin.y + int32_t(localY)),
@@ -453,7 +469,7 @@ Expected oracle(const Layout& previous, const Input& input, const Settings& requ
                         }
                         if (request.colors)
                             for (uint32_t c = 0; c < 4; ++c) {
-                                const uint32_t b = (input.colors[p] >> (8 * c)) & 255;
+                                const uint32_t b = ((evaluation ? evaluation->colors : input.colors)[p] >> (8 * c)) & 255;
                                 rgba[c] += float(b) / 255.f;
                                 byteSum[c] += b;
                                 binaryLane[c] = binaryLane[c] && (b == 0 || b == 255);
@@ -1049,6 +1065,59 @@ void run(IDevice* device, const std::vector<char>& remap, const std::vector<char
         "association, density/levelset/accumulation, empty/poison/apron policies, channel31, "
         "budgets/stale/lifetimes");
 }
+void evaluationGather(IDevice* device, const std::vector<char>& remap,
+                      const std::vector<char>& conversion, const std::vector<char>& artifact) {
+    Harness h(device);
+    auto owner=makeVolume(device,remap);
+    auto source=originalLayout(); import(h,owner,source);
+    auto ops=pointOps(owner,conversion);
+    auto operation=gather(owner,artifact);
+    g::GatherEvaluationHandle extension;
+    check(operation->QueryInterface(uuid_of<g::IGVDBGatherEvaluation>(),
+        reinterpret_cast<void**>(extension.GetAddressOf())),"query evaluation extension");
+    queryIdentity(extension.Get());
+    g::GatherHandle base;
+    check(extension->QueryInterface(uuid_of<g::IGVDBGather>(),
+        reinterpret_cast<void**>(base.GetAddressOf())),"query original gather interface");
+    require(base==operation,"extension preserves original interface identity");
+    auto associations=cloud(), evaluations=associations;
+    // Deliberately change cell membership and colors; binning evaluated data
+    // would produce a different scalar/color result in both active leaves.
+    for(auto& p:evaluations.positions) p.x+=4;
+    std::reverse(evaluations.colors.begin(),evaluations.colors.end());
+    auto original=upload(h,ops,associations,3,false);
+    auto evaluated=upload(h,ops,evaluations,4);
+    g::GatherEvaluationDesc desc;
+    Settings settings;settings.levelSet=true;settings.width=1;settings.supportRadius=0;
+    desc.request=descriptor(original,settings);desc.evaluationPoints=evaluated;
+    auto reject=[&](g::GatherEvaluationDesc bad,g::GatherPreparationBudget budget={}) {
+        auto before=snapshot(owner);
+        auto* output=reinterpret_cast<g::IGVDBGenerationTicket*>(uintptr_t(1));
+        require(NVRHI_FAILED(extension->prepareEvaluation(bad,budget,&output))&&!output,
+            "invalid evaluation rejected and output cleared");
+        unchanged(before,snapshot(owner));
+    };
+    auto bad=desc;--bad.structSize;reject(bad);
+    bad=desc;bad.reserved=1;reject(bad);
+    bad=desc;bad.evaluationPoints=nullptr;reject(bad);
+    bad=desc;bad.request.points=nullptr;reject(bad);
+    auto shortInput=evaluations;shortInput.positions.pop_back();shortInput.colors.pop_back();
+    auto shorter=upload(h,ops,shortInput);bad=desc;bad.evaluationPoints=shorter;reject(bad);
+    bad=desc;bad.evaluationPoints=original;reject(bad); // Evaluation colors required.
+    g::GatherPreparationBudget budget;budget.maxPointPairs=0;reject(desc,budget);
+    require(extension->prepareEvaluation(desc,{},nullptr)==FE_INVALID_ARGS,"null evaluation output");
+    auto expected=oracle(source,associations,settings,&evaluations);
+    const auto rebinned=oracle(source,evaluations,settings);
+    require(expected.layout.scalar!=rebinned.layout.scalar || expected.layout.color!=rebinned.layout.color,
+        "cross-boundary fixture distinguishes accidental rebinning");
+    g::GenerationTicketHandle ticket;
+    check(extension->prepareEvaluation(desc,{},&ticket),"prepare separate evaluation");
+    original=nullptr;evaluated=nullptr;extension=nullptr;operation=nullptr;base=nullptr;ops=nullptr;
+    publish(h,owner,ticket);
+    h.begin();auto read=recordRead(h,owner,snapshot(owner));h.submit();
+    verify(read,expected,"original associations with separate distances and colors");
+    std::puts("PASS separate gather association/evaluation, validation and lifetime");
+}
 void rootLeaf(IDevice* device, const std::vector<char>& remap, const std::vector<char>& conversion,
               const std::vector<char>& artifact, uint32_t logWidth) {
     Harness h(device);
@@ -1162,6 +1231,7 @@ int main(int argc, const char** argv) {
             const auto ownerBytes = readArtifact(remap), conversionBytes = readArtifact(conversion),
                        gatherBytes = readArtifact(artifact);
             run(device.device, ownerBytes, conversionBytes, gatherBytes);
+            evaluationGather(device.device, ownerBytes, conversionBytes, gatherBytes);
             for (uint32_t logWidth : {2u, 3u})
                 rootLeaf(device.device, ownerBytes, conversionBytes, gatherBytes, logWidth);
         }

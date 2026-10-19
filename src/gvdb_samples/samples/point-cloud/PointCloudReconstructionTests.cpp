@@ -125,7 +125,7 @@ void verify(ethereal::slang::ComputeRuntime& runtime, PointCloudReconstruction& 
             maximumCodeError = std::max(maximumCodeError, error);
         }
     }
-    const auto& topology = reconstruction.packed();
+    const auto& topology = reconstruction.readTopology();
     require(topology.levels[0].nodeExtent.x == 16 && topology.volume.atlasBrickCountAndWidth.w == 18,
             "Legacy fromBranching(...,4) requires leaf16 and apron18");
     // Independently enumerate integer support voxels, then partition into legacy
@@ -159,10 +159,10 @@ void verify(ethereal::slang::ComputeRuntime& runtime, PointCloudReconstruction& 
         actualLeaves[{int32_t(node[1]), int32_t(node[2]), int32_t(node[3])}] = true;
     }
     require(actualLeaves == expectedLeaves, "Independent legacy support topology");
-    const auto expected = reference(reconstruction.packed(), expectedPoints, settings, codes);
+    const auto expected = reference(reconstruction.readTopology(), expectedPoints, settings, codes);
     std::cout << "Normalized ushort3 quantization maximum code difference=" << maximumCodeError << '\n';
-    const auto atlas = reconstruction.volume().readAtlas();
-    const auto& packed = reconstruction.packed();
+    const auto atlas = reconstruction.readAtlas();
+    const auto& packed = reconstruction.readTopology();
     const auto resolution = packed.volume.atlasResolutionAndApron;
     const auto& level = packed.levels[0];
     uint64_t checked = 0;
@@ -252,7 +252,7 @@ void verifyAssetSamples(PointCloudReconstruction& reconstruction, const PointFra
             query.second = std::min(query.second, std::sqrt(dx * dx + dy * dy + dz * dz) - 1);
         }
     }
-    const auto& packed = reconstruction.packed();
+    const auto& packed = reconstruction.readTopology();
     const auto& level = packed.levels[0];
     const auto resolution = packed.volume.atlasResolutionAndApron;
     std::map<Coordinate, const uint32_t*> leafNodes;
@@ -311,11 +311,11 @@ int main(int argc, const char** argv) {
             ReconstructionSettings settings{scene.renderScale, uint32_t(scene.smooth), scene.smoothParams.x,
                                             scene.smoothParams.y};
             reconstruction.reconstruct(frame, settings);
-            const auto values = reconstruction.volume().readAtlas();
+            const auto values = reconstruction.readAtlas();
             uint64_t negative = 0;
             double sum = 0;
             float lo = INFINITY, hi = -INFINITY;
-            const auto& packed = reconstruction.packed();
+            const auto& packed = reconstruction.readTopology();
             const auto& level = packed.levels[0];
             require(level.nodeExtent.x == 16 && packed.volume.atlasBrickCountAndWidth.w == 18,
                     "Real point-cloud legacy leaf16 configuration");
@@ -351,6 +351,8 @@ int main(int argc, const char** argv) {
         reconstruction.reconstruct(positive, settings);
         verify(runtime, reconstruction, positive, settings);
         require(reconstruction.generation() == 1, "First generation");
+        auto retained = reconstruction.snapshot();
+        const auto originalValues = reconstruction.readAtlas();
         PointFrame negative{
             {-25, -17, -9, 0},
             {-13, -5, 3, 0},
@@ -361,7 +363,14 @@ int main(int argc, const char** argv) {
         settings.smoothingBias = -.2f;
         reconstruction.reconstruct(negative, settings);
         verify(runtime, reconstruction, negative, settings);
-        require(reconstruction.generation() == 2 && reconstruction.packed().volume.boundsMax.x <= 0,
+        gvdb::portable::ChannelSnapshotDesc oldChannel;
+        require(NVRHI_SUCCEEDED(retained->getChannel(0, oldChannel)), "Retained previous-frame channel");
+        require(oldChannel.raw.byteOffset == 0 && oldChannel.raw.byteSize == originalValues.size() * 4,
+                "Retained channel shape");
+        std::vector<float> retainedValues(originalValues.size());
+        runtime.read(oldChannel.raw.buffer, retainedValues.data(), retainedValues.size() * 4);
+        require(retainedValues == originalValues, "Prior snapshot survives owner replacement unchanged");
+        require(reconstruction.generation() == 2 && reconstruction.readTopology().volume.boundsMax.x <= 0,
                 "Second frame replaces prior positive topology");
         auto invalid = negative;
         invalid.minimum.x = NAN;
@@ -373,6 +382,18 @@ int main(int argc, const char** argv) {
         }
         require(rejected && reconstruction.generation() == 2, "Failed frame preserves previous generation");
         verify(runtime, reconstruction, negative, settings);
+        const auto beforeFailure = reconstruction.snapshot();
+        auto lateFailure = settings;
+        lateFailure.smoothingIterations = 4097;
+        rejected = false;
+        try {
+            reconstruction.reconstruct(positive, lateFailure);
+        } catch (const std::exception&) {
+            rejected = true;
+        }
+        require(rejected && reconstruction.generation() == 2 && reconstruction.snapshot() == beforeFailure,
+                "Late filter rejection preserves exact visible snapshot");
+        verify(runtime, reconstruction, negative, settings);
         PointFrame constant{
             {1, 1, 1, 0},
             {1, 1, 1, 0},
@@ -381,7 +402,7 @@ int main(int argc, const char** argv) {
         settings = {};
         reconstruction.reconstruct(constant, settings);
         verify(runtime, reconstruction, constant, settings);
-        require(reconstruction.packed().levels[0].nodes.z == 1, "Single-brick cloud support");
+        require(reconstruction.readTopology().levels[0].nodes.z == 1, "Single-brick cloud support");
         std::cout << "Point-cloud GPU reconstruction fixtures PASS\n";
         return 0;
     } catch (const std::exception& e) {

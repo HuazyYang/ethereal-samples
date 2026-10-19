@@ -99,3 +99,23 @@ weighted color remains unsupported: the retained variant sums color/distance
 without normalization and performs undefined nonfinite/out-of-range integer
 casts at zero distance. This API does not emulate those casts or silently add
 an epsilon/weight normalization.
+
+## Separate association and evaluation positions
+
+Query `IGVDBGatherEvaluation` from the existing factory and call
+`prepareEvaluation` with the 80-byte `GatherEvaluationDesc`. Its embedded
+`request.points` supplies original cell associations; `evaluationPoints`
+supplies distance positions and optional colors. Both sets must be completed,
+authenticated by this API binary, on the owner device, and have equal counts.
+The caller guarantees ordinal correspondence. Component counts/strides can
+differ; association colors are unused. Translation applies to both sets and
+must remain finite for both on a nonempty atlas. The usual empty-atlas policy
+still authenticates both but does not translate unused data.
+
+This preserves membership when a quantization or deformation stage moves a
+point across a subcell boundary. Budgets count association visits/pairs; no
+implicit rebinning, conversion or readback occurs. Prepared bindings retain
+evaluation storage after either PointSet or factory is released. Ordinary
+`prepare` uses one set for both roles and retains its original descriptor,
+vtable and behavior. Color equations remain ordinary gather equations; this
+extension does not implement normalized-ushort inverse-distance color.

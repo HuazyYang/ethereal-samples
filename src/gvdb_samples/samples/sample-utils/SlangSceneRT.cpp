@@ -90,20 +90,35 @@ void validateVolume(const SceneVolume& v) {
     require(uint64_t(r.x) * r.y <= UINT32_MAX && uint64_t(r.x) * r.y * r.z <= UINT32_MAX / 4,
             "Scene volume exceeds portable addressing");
     const uint64_t bytes = uint64_t(r.x) * r.y * r.z * 4;
-    require(v.scalar->getDesc().structStride == 4 && v.scalar->getDesc().byteSize >= bytes,
+    // DX raw SRV bases require 16-byte alignment, not just scalar alignment.
+    // Keep one portable scene contract and reject before native view creation.
+    require((!v.rawScalar || v.scalarRange.byteOffset % 16 == 0) && v.nodesRange.byteOffset % 16 == 0 &&
+                v.childrenRange.byteOffset % 16 == 0 && (!v.color || v.colorRange.byteOffset % 16 == 0) &&
+                v.levelsRange.byteOffset % sizeof(slang::LevelInfo) == 0,
+            "Scene view base alignment");
+    auto rangeSize = [](IBuffer* buffer, BufferRange range) {
+        const uint64_t size = buffer->getDesc().byteSize;
+        require(range.byteOffset <= size && range.byteOffset % 4 == 0, "Scene buffer range offset");
+        const uint64_t count =
+            (range.byteSize == 0 || range.byteSize == UINT64_MAX) ? size - range.byteOffset : range.byteSize;
+        require(count <= size - range.byteOffset, "Scene buffer range size");
+        return count;
+    };
+    require((v.rawScalar ? v.scalar->getDesc().canHaveRawViews : v.scalar->getDesc().structStride == 4) &&
+                rangeSize(v.scalar, v.scalarRange) >= bytes,
             "Scene scalar buffer has an invalid shape");
     require(i.hierarchy.z && i.hierarchy.z <= slang::kMaxLevels && i.hierarchy.x < i.hierarchy.z &&
                 v.levels->getDesc().structStride == sizeof(slang::LevelInfo) &&
-                v.levels->getDesc().byteSize >= uint64_t(i.hierarchy.z) * sizeof(slang::LevelInfo),
+                rangeSize(v.levels, v.levelsRange) >= uint64_t(i.hierarchy.z) * sizeof(slang::LevelInfo),
             "Scene hierarchy levels are invalid");
     for (auto* p : {v.nodes.Get(), v.children.Get()})
         require(p->getDesc().canHaveRawViews && p->getDesc().byteSize >= 4 &&
                     p->getDesc().byteSize <= uint64_t(UINT32_MAX) + 1,
                 "Scene topology requires portable raw buffers");
-    require(v.nodes->getDesc().byteSize >= 64 && v.children->getDesc().byteSize >= 8,
+    require(rangeSize(v.nodes, v.nodesRange) >= 64 && rangeSize(v.children, v.childrenRange) >= 8,
             "Scene topology buffers must hold complete node and child records");
     if (v.color)
-        require(v.color->getDesc().canHaveRawViews && v.color->getDesc().byteSize >= bytes,
+        require(v.color->getDesc().canHaveRawViews && rangeSize(v.color, v.colorRange) >= bytes,
                 "Scene color requires a packed RGBA8 atlas");
     require(finite(v.steps) && v.steps.x > 0 && v.steps.y > 0 && v.steps.z > 0 && v.steps.w >= 0 &&
                 finite(v.extinct) && v.extinct.x <= 0 && v.extinct.y >= 0 && finite(v.cutoff) &&
@@ -132,6 +147,41 @@ SceneVolume SceneVolume::from(const slang::SlangVolume& volume) {
     result.nodes = volume.nodes();
     result.children = volume.children();
     result.levels = volume.levels();
+    result.transfer = {
+        {0, 0, 0, 0},
+        {1, 1, 1, 1}
+    };
+    return result;
+}
+SceneVolume SceneVolume::from(portable::SnapshotHandle snapshot, uint32_t scalarChannel,
+                              uint32_t colorChannel) {
+    require(bool(snapshot), "Scene requires a snapshot");
+    SceneVolume result;
+    result.ownedSnapshot = snapshot;
+    result.rawScalar = true;
+    result.info = snapshot->getDesc().volume;
+    portable::ChannelSnapshotDesc scalar;
+    check(snapshot->getChannel(scalarChannel, scalar), "Scene snapshot scalar");
+    require(scalar.desc.format == portable::AtlasFormat::R32_FLOAT, "Scene snapshot scalar must be R32_FLOAT");
+    result.scalar = scalar.raw.buffer;
+    result.scalarRange = {scalar.raw.byteOffset, scalar.raw.byteSize};
+    auto topology = [&](portable::TopologyBuffer kind, BufferHandle& buffer, BufferRange& range) {
+        portable::BorrowedBufferBinding binding;
+        check(snapshot->getTopologyBuffer(kind, binding), "Scene snapshot topology");
+        buffer = binding.buffer;
+        range = {binding.byteOffset, binding.byteSize};
+    };
+    topology(portable::TopologyBuffer::Nodes, result.nodes, result.nodesRange);
+    topology(portable::TopologyBuffer::Children, result.children, result.childrenRange);
+    topology(portable::TopologyBuffer::Levels, result.levels, result.levelsRange);
+    if (colorChannel != UINT32_MAX) {
+        portable::ChannelSnapshotDesc color;
+        check(snapshot->getChannel(colorChannel, color), "Scene snapshot color");
+        require(color.desc.format == portable::AtlasFormat::RGBA8_UINT,
+                "Scene snapshot color must be RGBA8_UINT");
+        result.color = color.raw.buffer;
+        result.colorRange = {color.raw.byteOffset, color.raw.byteSize};
+    }
     result.transfer = {
         {0, 0, 0, 0},
         {1, 1, 1, 1}
@@ -411,7 +461,7 @@ struct SlangSceneRT::Impl {
                 v.extinct,
                 v.cutoff,
                 v.threshold,
-                {uint32_t(n), v.color ? 1u : 0u,
+                {uint32_t(n), (v.color ? 1u : 0u) | (v.rawScalar ? 2u : 0u),
                             v.transferLastIndex == UINT32_MAX ? uint32_t(v.transfer.size() - 1) : v.transferLastIndex,
                             uint32_t(v.mode)}
             });
@@ -494,18 +544,27 @@ struct SlangSceneRT::Impl {
                                                  BindingSetItem::StructuredBuffer_UAV(2, accumulation)};
         for (uint32_t n = 0; n < MaxVolumes; ++n) {
             const SceneVolume* v = n < scene.volumes.size() ? &scene.volumes[n] : nullptr;
-            available.push_back(
-                BindingSetItem::StructuredBuffer_SRV(16, v ? v->scalar.Get() : defaults[0].Get())
-                    .setArrayElement(n));
-            available.push_back(
-                BindingSetItem::RawBuffer_SRV(24, v ? v->nodes.Get() : defaults[1].Get()).setArrayElement(n));
-            available.push_back(BindingSetItem::RawBuffer_SRV(32, v ? v->children.Get() : defaults[1].Get())
+            available.push_back(BindingSetItem::StructuredBuffer_SRV(
+                                    16, v && !v->rawScalar ? v->scalar.Get() : defaults[0].Get(),
+                                    Format::UNKNOWN, v && !v->rawScalar ? v->scalarRange : BufferRange{})
+                                    .setArrayElement(n));
+            available.push_back(BindingSetItem::RawBuffer_SRV(24, v ? v->nodes.Get() : defaults[1].Get(),
+                                                              v ? v->nodesRange : BufferRange{})
+                                    .setArrayElement(n));
+            available.push_back(BindingSetItem::RawBuffer_SRV(32, v ? v->children.Get() : defaults[1].Get(),
+                                                              v ? v->childrenRange : BufferRange{})
                                     .setArrayElement(n));
             available.push_back(
-                BindingSetItem::StructuredBuffer_SRV(40, v ? v->levels.Get() : defaults[2].Get())
+                BindingSetItem::StructuredBuffer_SRV(40, v ? v->levels.Get() : defaults[2].Get(),
+                                                     Format::UNKNOWN, v ? v->levelsRange : BufferRange{})
                     .setArrayElement(n));
             available.push_back(
-                BindingSetItem::RawBuffer_SRV(48, v && v->color ? v->color.Get() : defaults[1].Get())
+                BindingSetItem::RawBuffer_SRV(48, v && v->color ? v->color.Get() : defaults[1].Get(),
+                                              v && v->color ? v->colorRange : BufferRange{})
+                    .setArrayElement(n));
+            available.push_back(
+                BindingSetItem::RawBuffer_SRV(64, v && v->rawScalar ? v->scalar.Get() : defaults[1].Get(),
+                                              v && v->rawScalar ? v->scalarRange : BufferRange{})
                     .setArrayElement(n));
             available.push_back(
                 BindingSetItem::StructuredBuffer_SRV(56, v ? transfers[n].Get() : defaults[3].Get())
@@ -568,8 +627,11 @@ void SlangSceneRT::setScene(const SceneDescription& scene) {
         copy.materials.emplace_back();
     for (const auto& m : copy.meshes)
         validateMesh(m);
-    for (const auto& v : copy.volumes)
+    for (const auto& v : copy.volumes) {
+        require(!v.ownedSnapshot || v.ownedSnapshot->getDevice() == m_impl->device.Get(),
+                "Scene snapshot device mismatch");
         validateVolume(v);
+    }
     for (const auto& m : copy.materials)
         packMaterial(m);
     for (const auto& i : copy.instances) {
@@ -586,6 +648,8 @@ void SlangSceneRT::setScene(const SceneDescription& scene) {
 }
 void SlangSceneRT::updateVolume(uint32_t index, const SceneVolume& volume) {
     require(index < m_impl->scene.volumes.size(), "Volume index is out of range");
+    require(!volume.ownedSnapshot || volume.ownedSnapshot->getDevice() == m_impl->device.Get(),
+            "Scene snapshot device mismatch");
     validateVolume(volume);
     m_impl->scene.volumes[index] = volume;
     m_impl->geometryDirty = m_impl->dataDirty = true;

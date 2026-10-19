@@ -192,7 +192,8 @@ FRESULT NvrhiGather::create(const GatherOperatorDesc& desc,std::unique_ptr<Nvrhi
     });
 }
 FRESULT NvrhiGather::prepare(const GatherRequestDesc& request,const GatherPreparationBudget& budget,
-    const detail::ResolvedPointSet& points,std::unique_ptr<PreparedGeneration>& output) noexcept {
+    const detail::ResolvedPointSet& associations,const detail::ResolvedPointSet& points,
+    std::unique_ptr<PreparedGeneration>& output) noexcept {
     return guarded([&] {
         require(request.channel<c_MaxChannels&&uint32_t(request.kind)<=uint32_t(GatherKind::LevelSet)&&request.accumulate<=1);
         require(request.subcellWidth==1||request.subcellWidth==2||request.subcellWidth==4||request.subcellWidth==8);
@@ -200,6 +201,8 @@ FRESULT NvrhiGather::prepare(const GatherRequestDesc& request,const GatherPrepar
         require(std::isfinite(request.supportRadius)&&(request.supportRadius==-1.f||request.supportRadius>=0));
         auto& state=*m_impl;
         require(points.retained&&points.retained->getDevice()==state.device.Get());
+        require(associations.retained&&associations.retained->getDevice()==state.device.Get());
+        require(associations.info.count==points.info.count);
         const bool colors=request.colorChannel!=UINT32_MAX;
         require(!colors||(request.colorChannel<c_MaxChannels&&request.colorChannel!=request.channel));
         require(!colors||(points.info.attributeMask&4u),FE_NOT_FOUND);
@@ -216,7 +219,16 @@ FRESULT NvrhiGather::prepare(const GatherRequestDesc& request,const GatherPrepar
         check(detail::VolumeMutationBuilder::begin(*state.owner,mask,{budget.maxAllocatedBytes,budget.maxBuffers},builder));
         if(!builder->hasWork()){check(builder->finish(output));return;}
         slang::PackedVolume topology;check(detail::VolumeAdoptionBuilder::exportTopology(*snapshot,topology));
-        auto bins=buildBins(topology,request,budget,points);
+        auto bins=buildBins(topology,request,budget,associations);
+        // Authentication guarantees finite source XYZ; translation must also stay
+        // finite for the evaluation stream, including points outside active cells.
+        for(uint64_t i=0;i<points.info.count;++i) {
+            std::array<float,3> position;
+            std::memcpy(position.data(),static_cast<const uint8_t*>(points.positions.data)+
+                size_t(i)*size_t(points.positionStream.byteStride),12);
+            require(std::isfinite(position[0]+request.translation.x)&&
+                std::isfinite(position[1]+request.translation.y)&&std::isfinite(position[2]+request.translation.z));
+        }
         const auto& destination=builder->destinationBindings();
         const auto& old=source.channels[request.channel].raw;const auto& target=destination.channels[request.channel];
         BufferHandle cells,indices,constants,dummyColor;

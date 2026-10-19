@@ -1,10 +1,11 @@
-﻿// Slang point-cloud application state shared by headless and windowed rendering.
+// Slang point-cloud application state shared by headless and windowed rendering.
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 #include "PointCloudScene.h"
 #include "PointCloudReconstruction.h"
 #include "VolumeViewer.h"
 #include <sample-utils/SlangSceneRT.h>
+#include <sample-utils/OwnedVolumeSurface.h>
 namespace gvdb::samples::pointcloud {
 struct AppOptions {
     SceneDesc scene;
@@ -16,12 +17,11 @@ class PointCloudAppScene final : public sample::VolumeScene {
     ethereal::slang::ComputeRuntime* m_runtime;
     AppOptions m_options;
     PointCloudReconstruction m_reconstruction;
+    std::unique_ptr<sample::OwnedVolumeSurface> m_surface;
     sample::SceneDescription m_scene;
 #if ETHEREAL_POINT_CLOUD_RT
     std::unique_ptr<sample::SlangSceneRT> m_renderer;
 #endif
-    std::unique_ptr<slang::SlangVolume> m_emptyVolume;
-    slang::PackedVolume m_emptyPacked;
     std::vector<slang::Float4> m_transfer;
     dm::float3 m_cameraAngles, m_cameraTarget, m_lightAngles, m_lightTarget;
     float m_cameraDistance, m_lightDistance;
@@ -38,8 +38,9 @@ class PointCloudAppScene final : public sample::VolumeScene {
 
  public:
     PointCloudAppScene(ethereal::slang::ComputeRuntime&, AppOptions);
-    slang::SlangVolume& volume() override;
-    const slang::PackedVolume& packed() const override;
+    portable::SnapshotHandle ownedSnapshot() const override { return m_reconstruction.snapshot(); }
+    slang::VolumeInfo volumeInfo() override { return ownedSnapshot()->getDesc().volume; }
+    bool topologyOverlay(std::vector<sample::VolumeOverlayLine>&) const override;
     std::vector<slang::Float4> transfer() const override { return m_transfer; }
     void animate(float, sample::VolumeViewOptions&) override;
     void buildUI(sample::VolumeViewOptions&) override;
