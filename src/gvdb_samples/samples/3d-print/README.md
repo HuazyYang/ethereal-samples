@@ -1,6 +1,6 @@
 # Slang 3D-print example
 
-The example loads the original `lucy.obj`, runs the portable GPU solid voxelizer,
+The example loads the original `lucy.obj`, runs the public GPU solid voxelizer,
 publishes a public owned sparse scalar snapshot, and renders through the shared volume viewer.
 D3D11, D3D12, Vulkan and CUDA use the same Slang compute kernels. CUDA uses the
 headless image path; graphics backends also provide an interactive window.
@@ -72,7 +72,11 @@ rebuild and verify that an invalid voxel size leaves the prior visible identity
 and configuration unchanged. `--frames N` bounds graphics windows for validation.
 
 Production artifacts build with tests and CUDA Toolkit discovery disabled. The
-mesh binning/solid voxelization helper still uses ComputeRuntime with explicit
-classification readback; a public mesh voxelization operator and its multi-stage
-completion contract remain outstanding. This checkpoint validates consumer
-ownership, not completion of the voxelization replacement or reference retirement.
+public IGVDBVoxelize operator copies the mesh, records triangle counts, completes
+checked bin sizing after a caller wait, then records classification. The caller
+submits/waits again before borrowing the dense CPU result. The ticket's temporary
+GPU resources are released before sparse generation. No ComputeRuntime voxelizer
+helper is used by this application. See [the public numerical and lifecycle
+contract](../../gvdb/GVDBNvrhiVoxelizeApi.md), including the corrected AMD integer-face
+boundary behavior. The previous portable shader/helper and legacy sources remain
+available; no reference retirement is authorized.

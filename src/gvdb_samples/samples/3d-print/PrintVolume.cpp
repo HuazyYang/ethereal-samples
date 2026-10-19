@@ -2,6 +2,7 @@
 #include "PrintVolume.h"
 #include "ComputeRuntime.h"
 #include <gvdb/GVDBNvrhiResampleApi.h>
+#include <gvdb/GVDBNvrhiVoxelizeApi.h>
 #include <donut/app/ApplicationBase.h>
 #include <cstring>
 #include <fstream>
@@ -157,17 +158,56 @@ void PrintVolume::rebuild(float voxelSize) {
         high[axis] = int32_t(b);
         resolution[axis] = uint32_t(b - a);
     }
-    VoxelizeParameters p{};
+    portable::VoxelizeRequestDesc p;
     p.boundsMinimum = {float(low[0]), float(low[1]), float(low[2]), 0};
     p.boundsMaximum = {float(high[0]), float(high[1]), float(high[2]), 0};
-    p.resolution = {resolution[0], resolution[1], resolution[2], 0};
+    p.resolution = {resolution[0], resolution[1], resolution[2]};
     p.values = {1, .5f, 0, 0};
     const auto matrix = dm::affineToHomogeneous(transform);
     for (int axis = 0; axis < 3; ++axis)
         p.transformRows[axis] = {matrix[0][axis], matrix[1][axis], matrix[2][axis], matrix[3][axis]};
-    auto grid = voxelizeMesh(*m_runtime, m_vertices, m_indices, p, VoxelFormat::R32_FLOAT);
-    std::vector<float> dense(grid.byteSize / 4);
-    m_runtime->read(grid.values, dense.data(), grid.byteSize);
+    m_runtime->flush();
+    auto state = std::make_unique<State>();
+    state->device = m_runtime->device();
+    check(state->device->createCommandList({}, &state->commands), "Print commands");
+    std::array<std::vector<char>, 4> binaries;
+    const char* names[] = {"GVDBMeshVoxelize_clearTriangleBins.bin", "GVDBMeshVoxelize_countTriangleBins.bin",
+                           "GVDBMeshVoxelize_scatterTriangleBins.bin", "GVDBMeshVoxelize_solidVoxelize.bin"};
+    portable::VoxelizeCreateDesc voxelCreate;
+    voxelCreate.device = state->device;
+    for (unsigned i = 0; i < 4; ++i) {
+        binaries[i] = artifact(*m_runtime, "gvdb_voxelize", names[i]);
+        voxelCreate.artifacts[i] = {binaries[i].data(), binaries[i].size()};
+    }
+    portable::VoxelizeHandle voxelizer;
+    check(portable::createVoxelize(voxelCreate, &voxelizer), "Print voxelizer");
+    p.vertices = m_vertices.data();
+    p.vertexCount = m_vertices.size();
+    p.indices = m_indices.data();
+    p.indexCount = m_indices.size();
+    portable::VoxelizeTicketHandle voxelTicket;
+    check(voxelizer->prepare(p, {}, &voxelTicket), "Print prepare voxelization");
+    submit(
+        state->device, state->commands,
+        [&](portable::RecordingContext context) {
+            check(voxelizer->recordCounts(context, voxelTicket), "Print count triangles");
+        },
+        true);
+    check(voxelTicket->finishCountsAfterCallerCompletion(), "Print size triangle bins");
+    submit(
+        state->device, state->commands,
+        [&](portable::RecordingContext context) {
+            check(voxelizer->recordVoxelization(context, voxelTicket), "Print classify voxels");
+        },
+        true);
+    portable::BorrowedBytes classified;
+    check(voxelTicket->finishAfterCallerCompletion(classified), "Print complete voxelization");
+    std::vector<float> dense(size_t(classified.byteCount / 4));
+    std::memcpy(dense.data(), classified.data, size_t(classified.byteCount));
+    // Dense CPU classification selects occupied sparse leaves. Release the
+    // operator's dense GPU buffers before allocating the sparse generation.
+    voxelTicket = nullptr;
+    voxelizer = nullptr;
     size_t surface = 0, interior = 0;
     for (float value : dense) {
         if (value == 1)
@@ -181,10 +221,7 @@ void PrintVolume::rebuild(float voxelSize) {
         throw std::runtime_error("Print voxelization produced no surface voxels");
     // CPU classification remains explicit; only public ownership is published.
     // Construct a fresh owner so any failed rebuild preserves the visible snapshot.
-    m_runtime->flush();
-    auto state = std::make_unique<State>();
-    state->device = m_runtime->device();
-    check(state->device->createCommandList({}, &state->commands), "Print commands");
+
     auto remap = artifact(*m_runtime, "gvdb_owned", "GVDBAtlasRepack_relocateAtlas.bin");
     portable::VolumeCreateDesc create;
     create.device = state->device;
@@ -236,7 +273,7 @@ void PrintVolume::rebuild(float voxelSize) {
     m_configuration.voxelSize = voxelSize;
     m_state = std::move(state);
     m_dense = std::move(dense);
-    m_resolution = p.resolution;
+    m_resolution = {p.resolution.x, p.resolution.y, p.resolution.z, 0};
     m_origin = origin;
     m_surfaceCount = surface;
     m_interiorCount = interior;

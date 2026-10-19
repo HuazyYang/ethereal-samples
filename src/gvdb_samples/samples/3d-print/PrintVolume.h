@@ -1,11 +1,13 @@
 // Indexed mesh -> GPU solid voxels -> sparse scalar topology, without gp/CUDA setup.
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
-#include <gvdb/GVDBSlangVoxelizer.h>
 #include <gvdb/GVDBNvrhiApi.h>
 #include <sample-utils/ObjLoader.h>
 #include <memory>
 #include <filesystem>
+namespace ethereal::slang {
+class ComputeRuntime;
+}
 namespace gvdb::samples {
 struct PrintConfiguration {
     float voxelSize = .5f, partSize = 100, rotationDegrees = -10, margin = .1f;

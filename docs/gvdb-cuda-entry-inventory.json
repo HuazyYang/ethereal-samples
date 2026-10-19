@@ -158,12 +158,13 @@
       "remaining": "Scan/stable radix replace algorithm roles, not positional CUDA ABIs; platform/performance gates remain."
     },
     "voxelization": {
-      "status": "portable-foundation",
+      "status": "owned-validated",
       "replacementFiles": [
-        "gvdb/slang/GVDBVoxelize.slang",
-        "gvdb/GVDBSlangVoxelizer.cpp"
+        "gvdb/slang/GVDBMeshVoxelize.slang",
+        "gvdb/slang/GVDBVoxelizeDivision.slang",
+        "gvdb/GVDBNvrhiVoxelizeApi.cpp"
       ],
-      "remaining": "Public voxelizer/owned sparse publication remains; numerical decision-boundary differences are documented."
+      "remaining": "Public device-only two-phase voxelizer and 3d-print consumer pass Windows analytic/Lucy, both native graphics adapters, CUDA memory and static/shared installed API checks. Exact geometric division fixes AMD integer-face misses; legacy boundary parity, broad performance and Linux remain."
     },
     "sph": {
       "status": "sample-validated",
