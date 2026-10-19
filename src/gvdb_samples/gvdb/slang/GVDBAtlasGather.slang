@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-// Ordinary density/level-set gathers over immutable raw owner allocations.
+// Ordinary and inverse-distance density/level-set gathers over immutable raw owner allocations.
 struct GatherParameters {
     uint4 resolutionAndApron;
     uint4 brickCountAndWidth;
@@ -26,9 +26,7 @@ uint packColor(float4 color) {
     uint4 bytes = uint4(color * 255.0) & uint4(255u);
     return bytes.x | (bytes.y << 8) | (bytes.z << 16) | (bytes.w << 24);
 }
-[shader("compute")]
-[numthreads(256,1,1)]
-void gatherOwnedAtlas(uint3 id : SV_DispatchThreadID) {
+void gatherAtlas(uint3 id, bool inverseDistance) {
     uint index = id.x + id.y * (65535u * 256u);
     if (index >= g_Parameters.work.x) return;
     uint3 resolution = g_Parameters.resolutionAndApron.xyz;
@@ -57,7 +55,7 @@ void gatherOwnedAtlas(uint3 id : SV_DispatchThreadID) {
             }
             if (points.y != 0) {
                 float3 world = float3(mapping.xyz + int3(interior));
-                float4 color = accumulate ? unpackColor(colorBits) : float4(0,0,0,1);
+                float4 color = inverseDistance ? float4(0) : (accumulate ? unpackColor(colorBits) : float4(0,0,0,1));
                 for (uint j = 0; j < points.y; ++j) {
                     uint point = g_Indices.Load((points.x + j) * 4u);
                     float3 position = asfloat(g_Positions.Load3(point * g_Parameters.work.w));
@@ -70,12 +68,25 @@ void gatherOwnedAtlas(uint3 id : SV_DispatchThreadID) {
                     // ties and NaNs, independent of backend min/max NaN conventions.
                     if (g_Parameters.options.x != 0 ? candidate < asfloat(bits) : candidate > asfloat(bits))
                         bits = asuint(candidate);
-                    if (colors) color += unpackColor(g_Colors.Load(point * 4u));
+                    if (colors) {
+                        float4 contribution = unpackColor(g_Colors.Load(point * 4u));
+                        if (inverseDistance) {
+                            // No weight normalization or epsilon. Define the zero-distance
+                            // limit lane by lane and saturate before any integer cast.
+                            if (distance == 0) contribution = float4(contribution > float4(0));
+                            else contribution /= distance;
+                            color = saturate(color + contribution);
+                        } else color += contribution;
+                    }
                 }
-                if (colors) colorBits = packColor(color / float(points.y + (accumulate ? 1u : 0u)));
+                if (colors) colorBits = packColor(inverseDistance ? color : color / float(points.y + (accumulate ? 1u : 0u)));
             }
         }
     }
     g_Destination.Store(index * 4u,bits);
     if (colors) g_DestinationColors.Store(index * 4u,colorBits);
 }
+[shader("compute")][numthreads(256,1,1)]
+void gatherOwnedAtlas(uint3 id : SV_DispatchThreadID) { gatherAtlas(id, false); }
+[shader("compute")][numthreads(256,1,1)]
+void gatherOwnedAtlasInverseDistance(uint3 id : SV_DispatchThreadID) { gatherAtlas(id, true); }

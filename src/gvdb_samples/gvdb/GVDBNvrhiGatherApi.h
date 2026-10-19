@@ -76,4 +76,13 @@ GVDB_NVRHI_C_API nvrhi::FRESULT gvdbCreateNvrhiGather(uint32_t apiVersion,
 inline nvrhi::FRESULT createGather(const GatherCreateDesc& desc,IGVDBGather** output) noexcept {
     return gvdbCreateNvrhiGather(c_GVDBNvrhiApiVersion,&desc,output);
 }
+// Separate artifact/entry and factory for unnormalized inverse-distance RGBA.
+// Only fresh LevelSet requests are accepted. Color starts at zero and saturates
+// per lane; zero distance saturates nonzero lanes and leaves zero lanes zero.
+// Uses the same original/evaluation association and explicit publication contracts.
+GVDB_NVRHI_C_API nvrhi::FRESULT gvdbCreateNvrhiInverseDistanceGather(uint32_t apiVersion,
+    const GatherCreateDesc*,IGVDBGather** output) noexcept;
+inline nvrhi::FRESULT createInverseDistanceGather(const GatherCreateDesc& desc,IGVDBGather** output) noexcept {
+    return gvdbCreateNvrhiInverseDistanceGather(c_GVDBNvrhiApiVersion,&desc,output);
+}
 } // namespace gvdb::portable

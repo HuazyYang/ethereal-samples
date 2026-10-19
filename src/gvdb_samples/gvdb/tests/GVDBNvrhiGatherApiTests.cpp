@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Public-interface fixture: never includes concrete HostVolume/NvrhiVolume headers.
 #include "GVDBNvrhiGatherApi.h"
+#include "GVDBNvrhiPointQuantizeApi.h"
 #include "GVDBNvrhiSerializer.h"
 #include "GVDBNvrhiPointApi.h"
 #include "slang/GVDBPortableVbx.h"
@@ -379,7 +380,7 @@ g::PointSetHandle upload(Harness& h, g::IGVDBPointOps* ops, const Input& input, 
     return result;
 }
 struct Settings {
-    bool levelSet = false, accumulate = false, colors = true;
+    bool levelSet = false, accumulate = false, colors = true, inverseDistance = false;
     uint32_t width = 2;
     float radius = 1;
     float supportRadius = -1;
@@ -441,6 +442,7 @@ Expected oracle(const Layout& previous, const Input& input, const Settings& requ
                     const auto cell = cellOrigin(leaf, localX, localY, localZ, request.width);
                     uint32_t scalar =
                         request.accumulate ? previous.scalar[at] : bitsOf(request.levelSet ? 3.f : 0.f);
+                    double weighted[4] = {};
                     float rgba[4] = {0, 0, 0, 1};
                     uint64_t byteSum[4] = {0, 0, 0, 255};
                     bool binaryLane[4] = {true, true, true, true};
@@ -470,6 +472,8 @@ Expected oracle(const Layout& previous, const Input& input, const Settings& requ
                         if (request.colors)
                             for (uint32_t c = 0; c < 4; ++c) {
                                 const uint32_t b = ((evaluation ? evaluation->colors : input.colors)[p] >> (8 * c)) & 255;
+                                const double d = std::sqrt(dx * dx + dy * dy + dz * dz);
+                                weighted[c] = std::min(255., weighted[c] + (d == 0 ? (b ? 255. : 0.) : double(b)/d));
                                 rgba[c] += float(b) / 255.f;
                                 byteSum[c] += b;
                                 binaryLane[c] = binaryLane[c] && (b == 0 || b == 255);
@@ -483,6 +487,24 @@ Expected oracle(const Layout& previous, const Input& input, const Settings& requ
                     else {
                         uint32_t packed = 0;
                         for (uint32_t c = 0; c < 4; ++c) {
+                            if (request.inverseDistance) {
+                                // Nonnegative byte-unit sum with sqrt/division and float
+                                // accumulation. Interior values admit only adjacent bytes;
+                                // exact zero and saturated endpoints remain strict.
+                                const double ideal=weighted[c];
+                                packed |= uint32_t(ideal) << (8*c);
+                                if (ideal > 0 && ideal < 255) {
+                                    const double t=(double(count)+16)*FLT_EPSILON;
+                                    const double error=512*t/(1-t);
+                                    const uint32_t lower=uint32_t(std::max(0.,ideal-error));
+                                    const uint32_t upper=uint32_t(std::min(255.,ideal+error));
+                                    require(upper-lower<=1,"Weighted reference interval is narrow");
+                                    result.colorLower[at][c]=uint16_t(lower);
+                                    result.colorUpper[at][c]=uint16_t(upper);
+                                    result.colorInterval[at]|=uint8_t(1u<<c);
+                                }
+                                continue;
+                            }
                             const float component = rgba[c] / float(count + (request.accumulate ? 1 : 0));
                             packed |= (uint32_t(component * 255.f) & 255u) << (8 * c);
                             const uint32_t denominator = count + (request.accumulate ? 1 : 0);
@@ -1118,6 +1140,67 @@ void evaluationGather(IDevice* device, const std::vector<char>& remap,
     verify(read,expected,"original associations with separate distances and colors");
     std::puts("PASS separate gather association/evaluation, validation and lifetime");
 }
+void inverseDistanceGather(IDevice* device,const std::vector<char>& remap,const std::vector<char>& conversion,
+                           const std::vector<char>& ordinary,const std::vector<char>& weighted,
+                           const std::vector<char>& encode,const std::vector<char>& decode) {
+    for(uint32_t fixture=0;fixture<7;++fixture) {
+        Harness h(device);auto owner=makeVolume(device,remap);const auto source=originalLayout();import(h,owner,source);
+        auto ops=pointOps(owner,conversion);
+        g::GatherCreateDesc create;create.volume=owner;create.artifact=ordinary.data();create.artifactBytes=ordinary.size();
+        g::GatherHandle operation;
+        require(NVRHI_FAILED(g::createInverseDistanceGather(create,&operation))&&!operation,"Ordinary artifact cannot implement weighted equation");
+        create.artifact=weighted.data();create.artifactBytes=weighted.size();
+        require(NVRHI_FAILED(g::createGather(create,&operation))&&!operation,"Weighted artifact cannot replace ordinary equation");
+        check(g::createInverseDistanceGather(create,&operation),"Create inverse-distance gather");
+        queryIdentity(operation.Get());
+        auto input=cloud();
+        if(fixture==1)input={{{-2,0,0,1},{-2,0,0,1}},{0x000001ff,0x00000000}};
+        if(fixture==2)input={{{-2,1e-20f,0,1}},{0x000001ff}};
+        if(fixture==3)input={{{100,100,100,1}},{0xffffffff}};
+        if(fixture==6)input={};
+        auto evaluations=input;
+        if(fixture==5)for(auto& p:evaluations.positions)p.x+=4;
+        auto points=upload(h,ops,input,4,fixture!=6),evaluated=points;
+        g::PointQuantizeTicketHandle quantized;
+        if(fixture==4) {
+            g::PointQuantizeCreateDesc q;q.device=device;q.encodeArtifact=encode.data();q.encodeArtifactBytes=encode.size();
+            q.decodeArtifact=decode.data();q.decodeArtifactBytes=decode.size();
+            g::PointQuantizeHandle quantizer;check(g::createPointQuantize(q,&quantizer),"Create weighted-source quantizer");
+            g::PointQuantizeRequestDesc request;request.points=points;request.bounds=g::PointQuantizationBounds::LegacyPadded;
+            check(quantizer->prepare(request,{},&quantized),"Prepare weighted-source quantization");
+            h.begin();check(quantizer->record(h.context(),quantized),"Record weighted-source quantization");h.submit();
+            check(quantized->finishAfterCallerCompletion(&evaluated),"Complete weighted-source quantization");
+            g::BorrowedBytes bytes;check(evaluated->getData(g::PointAttribute::Position,bytes),"Borrow actual decoded positions");
+            require(bytes.byteCount==evaluations.positions.size()*16,"Decoded weighted point count");
+            std::memcpy(evaluations.positions.data(),bytes.data,size_t(bytes.byteCount));
+        } else if(fixture==5)evaluated=upload(h,ops,evaluations,3);
+        Settings settings;settings.levelSet=true;settings.inverseDistance=true;settings.width=1;settings.supportRadius=2;settings.colors=fixture!=6;
+        g::GatherEvaluationHandle extension;
+        check(operation->QueryInterface(uuid_of<g::IGVDBGatherEvaluation>(),reinterpret_cast<void**>(extension.GetAddressOf())),"Weighted separate evaluation interface");
+        g::GatherEvaluationDesc request;request.request=descriptor(points,settings);request.evaluationPoints=evaluated;
+        auto reject=[&](g::GatherEvaluationDesc bad,g::GatherPreparationBudget budget={}) {
+            const auto before=snapshot(owner);
+            auto* output=reinterpret_cast<g::IGVDBGenerationTicket*>(uintptr_t(1));
+            require(NVRHI_FAILED(extension->prepareEvaluation(bad,budget,&output))&&!output,"Weighted invalid preparation clears output");
+            unchanged(before,snapshot(owner));
+        };
+        auto bad=request;bad.request.kind=g::GatherKind::Density;reject(bad);
+        bad=request;bad.request.accumulate=1;reject(bad);
+        bad=request;bad.evaluationPoints=nullptr;reject(bad);
+        const auto expected=oracle(source,input,settings,&evaluations);
+        if(expected.pairs) {g::GatherPreparationBudget budget;budget.maxPointPairs=expected.pairs-1;reject(request,budget);}
+        g::GatherPreparationBudget budget;budget.maxPointPairs=expected.pairs;budget.maxCells=expected.cells;budget.maxCandidateVisits=expected.visits;
+        g::GenerationTicketHandle ticket,stale;
+        check(extension->prepareEvaluation(request,budget,&ticket),"Prepare weighted gather exact association budget");
+        check(extension->prepareEvaluation(request,budget,&stale),"Prepare stale weighted ticket");
+        points=nullptr;evaluated=nullptr;quantized=nullptr;operation=nullptr;extension=nullptr;ops=nullptr;
+        publish(h,owner,ticket);
+        h.begin();require(NVRHI_FAILED(owner->recordAndPublish(h.context(),stale)),"Reject stale weighted publication");
+        auto read=recordRead(h,owner,snapshot(owner));h.submit();
+        verify(read,expected,"Independent inverse-distance color reference",0,settings.colors?2:UINT32_MAX);
+    }
+    std::puts("PASS inverse-distance gather: saturation, zero/near-zero, empty, signed, decoded points, separate associations, budgets, stale/lifetime");
+}
 void rootLeaf(IDevice* device, const std::vector<char>& remap, const std::vector<char>& conversion,
               const std::vector<char>& artifact, uint32_t logWidth) {
     Harness h(device);
@@ -1232,6 +1315,10 @@ int main(int argc, const char** argv) {
                        gatherBytes = readArtifact(artifact);
             run(device.device, ownerBytes, conversionBytes, gatherBytes);
             evaluationGather(device.device, ownerBytes, conversionBytes, gatherBytes);
+            inverseDistanceGather(device.device,ownerBytes,conversionBytes,gatherBytes,
+                readArtifact(base/"gvdb_gather"/type/"GVDBAtlasGather_gatherOwnedAtlasInverseDistance.bin"),
+                readArtifact(base/"gvdb_quantize"/type/"GVDBPointQuantize_encodePointU16.bin"),
+                readArtifact(base/"gvdb_quantize"/type/"GVDBPointQuantize_decodePointU16.bin"));
             for (uint32_t logWidth : {2u, 3u})
                 rootLeaf(device.device, ownerBytes, conversionBytes, gatherBytes, logWidth);
         }

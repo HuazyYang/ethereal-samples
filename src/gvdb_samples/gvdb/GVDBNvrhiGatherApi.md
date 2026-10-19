@@ -94,11 +94,8 @@ from silently truncating work.
 Signed positions, shifted grids, root-only leaves, deterministic ordering,
 fresh reset when there are no pairs, defined empty-cell colors, apron retention
 and unused-slot zeroing are explicit policies or corrections to retained paths;
-they do not promise legacy byte identity in those cases. Normalized-ushort
-weighted color remains unsupported: the retained variant sums color/distance
-without normalization and performs undefined nonfinite/out-of-range integer
-casts at zero distance. This API does not emulate those casts or silently add
-an epsilon/weight normalization.
+they do not promise legacy byte identity in those cases. The separate inverse-distance factory below supplies a defined replacement for
+normalized-ushort weighted color after public quantization.
 
 ## Separate association and evaluation positions
 
@@ -117,5 +114,34 @@ point across a subcell boundary. Budgets count association visits/pairs; no
 implicit rebinning, conversion or readback occurs. Prepared bindings retain
 evaluation storage after either PointSet or factory is released. Ordinary
 `prepare` uses one set for both roles and retains its original descriptor,
-vtable and behavior. Color equations remain ordinary gather equations; this
-extension does not implement normalized-ushort inverse-distance color.
+vtable and behavior. Color equations are selected by the factory, independently of this association
+extension.
+
+## Inverse-distance level-set factory
+
+`createInverseDistanceGather` returns the same interfaces but requires the
+`gatherOwnedAtlasInverseDistance` offline entry. Ordinary and weighted artifacts
+are not interchangeable: each factory validates its own entry name and exact
+resource/parameter layout. Existing ABI layouts, interface vtables, ordinary
+factory and ordinary color equations remain unchanged.
+
+The weighted factory accepts only `kind=LevelSet`, `accumulate=0`; unsupported
+modes fail before preparation/publication even for an empty atlas. Optional color
+still requires canonical RGBA bytes in the evaluation PointSet. No color channel
+is also supported. Scalar starts at 3 and takes minimum distance-minus-radius.
+For each associated point, color starts at zero and adds normalized RGBA divided
+by distance. There is no division by contributor count, total weights or epsilon.
+Each output lane saturates to [0,1] and truncates after multiplication by255.
+At a computed zero distance, a nonzero input lane saturates that output lane;
+a zero input lane contributes zero. This defines previously undefined legacy
+zero-distance and nonfinite/out-of-range integer casts; it does not emulate them.
+Nonnegative sums can saturate during accumulation without altering the real-valued
+bounded result. Native binary32 distance/division/summation can straddle adjacent
+byte boundaries. Tests compare against narrow derived intervals, with exact zero
+and clearly saturated cases checked strictly.
+
+Compose with `createPointQuantize`: use original points for association and the
+completed decoded PointSet for evaluation. Velocity is retained by quantization
+but is unused by both retained and new gather equations. Empty cells, active
+aprons, unused slots, same-device authentication, resource lifetime, budgets,
+stale-ticket rejection and explicit publication follow the ordinary contract.

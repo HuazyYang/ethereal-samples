@@ -16,6 +16,13 @@ if(NOT _gvdb_gather_api_added)
             CONFIG "${CMAKE_CURRENT_BINARY_DIR}/gvdb-owned-gather.cfg"
             OUTPUT_DIRECTORY "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/shaders/gvdb_gather")
     endif()
+    if(COMMAND ethereal_compile_shaders)
+        file(CONFIGURE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/gvdb-inverse-distance-gather.cfg"
+            CONTENT "\"${CMAKE_CURRENT_LIST_DIR}/slang/GVDBAtlasGather.slang\" -T cs -E gatherOwnedAtlasInverseDistance\n" @ONLY)
+        ethereal_compile_shaders(TARGET gvdb_inverse_distance_gather_shaders SLANG CUDA ALL_PLATFORMS
+            CONFIG "${CMAKE_CURRENT_BINARY_DIR}/gvdb-inverse-distance-gather.cfg"
+            OUTPUT_DIRECTORY "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/shaders/gvdb_gather")
+    endif()
     if(GVDB_NVRHI_BUILD_API_TESTS)
         add_executable(gvdb_nvrhi_gather_api_abi_tests "${CMAKE_CURRENT_LIST_DIR}/tests/GVDBNvrhiGatherApiAbiTests.cpp")
         target_link_libraries(gvdb_nvrhi_gather_api_abi_tests PRIVATE gvdb::nvrhi_api)

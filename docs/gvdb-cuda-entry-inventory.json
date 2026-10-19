@@ -95,9 +95,11 @@
     "normalized-ushort": {
       "status": "partial",
       "replacementFiles": [
-        "gvdb/slang/GVDBPointConversion.slang"
+        "gvdb/slang/GVDBPointConversion.slang",
+        "gvdb/slang/GVDBPointQuantize.slang",
+        "gvdb/GVDBNvrhiPointQuantizeApi.cpp"
       ],
-      "remaining": "Not IEEE half. Public bounds/quantization and velocity transport remain."
+      "remaining": "Public normalized-ushort position bounds/encode/decode and exact canonical velocity/color preservation are validated on Windows. Legacy packed ushort velocity encoding/subcell storage and platform/performance gates remain; this is not IEEE half."
     },
     "keys": {
       "status": "portable-foundation",
@@ -140,15 +142,18 @@
         "gvdb/GVDBNvrhiGather.cpp",
         "gvdb/GVDBNvrhiGatherApi.cpp"
       ],
-      "remaining": "Public ordinary R32 density/level-set and optional RGBA8 gathers use authenticated PointSets, stable signed/shifted subcell bins, separate support/distance radii and separate association/evaluation positions. Point-cloud now uses public owner/apron/filter and raw snapshots; both complete Windows matrices, two-adapter native, memory and static/shared package checks pass. Public quantization, normalized-ushort weighted color, broader consumers and Linux remain; velocity is not read by retained gathers."
+      "remaining": "Public ordinary density/level-set, separate association/evaluation and owned point-cloud source conversion/quantization are validated. Broader consumers and Linux remain; retained gathers do not read velocity."
     },
     "weighted-ushort-gather": {
-      "status": "partial",
+      "status": "owned-validated",
       "replacementFiles": [
-        "gvdb/slang/GVDBPointConversion.slang",
-        "gvdb/slang/GVDBGather.slang"
+        "gvdb/slang/GVDBPointQuantize.slang",
+        "gvdb/GVDBNvrhiPointQuantizeApi.cpp",
+        "gvdb/slang/GVDBAtlasGather.slang",
+        "gvdb/GVDBNvrhiGather.cpp",
+        "gvdb/GVDBNvrhiGatherApi.cpp"
       ],
-      "remaining": "Inverse-distance weighted color and zero-distance policy are not supplied by ordinary gather after quantization."
+      "remaining": "Public inverse-distance factory composes with authenticated GPU-decoded quantization. Unnormalized RGBA sum is preserved; saturation and zero-distance lanes are explicitly defined instead of undefined legacy casts. Four APIs, both native graphics adapters, CUDA memcheck and installed static/shared consumers pass. Linux, broad visual/performance and consumer gates remain."
     },
     "algorithms": {
       "status": "portable-foundation",

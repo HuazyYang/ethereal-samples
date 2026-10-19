@@ -2,6 +2,8 @@
 #include "GVDBNvrhiGatherApi.h"
 #include <nvrhi/cuda.h>
 #include <array>
+#include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <fstream>
@@ -16,7 +18,8 @@ uint32_t bits(float value){uint32_t result;std::memcpy(&result,&value,4);return 
 #define CHECK(c) REQUIRE(NVRHI_SUCCEEDED(c))
 int main(int argc,char** argv) {
     using namespace nvrhi;
-    REQUIRE(argc==4);
+    REQUIRE(argc==4||argc==5);
+    const uint32_t passes=argc==5?4:3;
     const auto remap=read(argv[1]),conversion=read(argv[2]),artifact=read(argv[3]);
     cuda::DeviceDesc native;native.enableOptiX=false;
     DeviceHandle device=cuda::createDevice(native);REQUIRE(device);
@@ -48,24 +51,31 @@ int main(int argc,char** argv) {
     g::GatherEvaluationHandle extension;
     CHECK(gather->QueryInterface(uuid_of<g::IGVDBGatherEvaluation>(),reinterpret_cast<void**>(extension.GetAddressOf())));
     g::GatherRequestDesc request;request.points=points;request.channel=31;request.colorChannel=7;request.subcellWidth=1;request.radius=1;request.supportRadius=2;
-    std::array<g::ReadbackHandle,3> results;
+    g::GatherHandle weighted;
+    if(argc==5) {
+        const auto binary=read(argv[4]);
+        create.artifact=binary.data();create.artifactBytes=binary.size();
+        CHECK(g::createInverseDistanceGather(create,&weighted));
+    }
+    std::array<g::ReadbackHandle,4> results;
     commands->open();
-    for(uint32_t pass=0;pass<3;++pass) {
+    for(uint32_t pass=0;pass<passes;++pass) {
         request.kind=pass==0?g::GatherKind::Density:g::GatherKind::LevelSet;
-        request.translation={pass==0?0.f:100.f,0,0,0};request.accumulate=pass==2;
+        request.translation={pass==0||pass==3?0.f:100.f,0,0,0};request.accumulate=pass==2;
         if(pass==0) {
             g::GatherEvaluationDesc evaluation;evaluation.request=request;evaluation.evaluationPoints=points;
             CHECK(extension->prepareEvaluation(evaluation,{},&generation));
-        } else CHECK(gather->prepare(request,{},&generation));
-        if(pass==2)points=nullptr; // Prepared commands must retain GPU streams themselves.
+        } else if(pass==3) CHECK(weighted->prepare(request,{},&generation));
+        else CHECK(gather->prepare(request,{},&generation));
+        if(pass+1==passes)points=nullptr; // Prepared commands must retain GPU streams themselves.
         CHECK(owner->recordAndPublish(context,generation));
         g::SnapshotHandle snapshot;CHECK(owner->getSnapshot(&snapshot));
         CHECK(owner->prepareReadback(snapshot,(uint32_t(1)<<31)|(uint32_t(1)<<7),&results[pass]));
         CHECK(owner->recordReadback(context,results[pass]));
     }
-    owner=nullptr;gather=nullptr;extension=nullptr;generation=nullptr;
+    owner=nullptr;gather=nullptr;weighted=nullptr;extension=nullptr;generation=nullptr;
     commands->close();device->executeCommandList(commands);REQUIRE(device->waitForIdle());
-    for(uint32_t pass=0;pass<3;++pass) {
+    for(uint32_t pass=0;pass<passes;++pass) {
         CHECK(results[pass]->finishAfterCallerCompletion());
         g::BorrowedBytes scalar,colors;CHECK(results[pass]->getChannelData(31,scalar));CHECK(results[pass]->getChannelData(7,colors));
         REQUIRE(scalar.byteCount==1728&&colors.byteCount==1728);
@@ -79,7 +89,18 @@ int main(int argc,char** argv) {
                 expectedScalar=interior?(pass?bits(3):bits(x==1&&y==1&&z==1?1.f:0.f)):bits(9);
                 expectedColor=interior?(pass?0u:0xfe804020u):0x08070605u;
             }
-            REQUIRE(actualScalar==expectedScalar&&actualColor==expectedColor);
+            if(pass==3&&x>=1&&x<=4&&y>=1&&y<=4&&z>=1&&z<=4) {
+                const double distance=std::sqrt(double((x-1)*(x-1)+(y-1)*(y-1)+(z-1)*(z-1)));
+                float actual;std::memcpy(&actual,&actualScalar,4);
+                REQUIRE(std::abs(actual-std::min(3.,distance-1))<2e-6);
+                const unsigned bytes[]={32,64,128,255};
+                for(uint32_t lane=0;lane<4;++lane) {
+                    const double ideal=distance?std::min(255.,bytes[lane]/distance):255.;
+                    const uint32_t lo=uint32_t(std::max(0.,ideal-1e-4)),hi=uint32_t(std::min(255.,ideal+1e-4));
+                    const uint32_t actualByte=(actualColor>>(lane*8))&255;
+                    REQUIRE(actualByte>=lo&&actualByte<=hi);
+                }
+            } else REQUIRE(actualScalar==expectedScalar&&actualColor==expectedColor);
         }
     }
     results={};commands=nullptr;device->runGarbageCollection();

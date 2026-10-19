@@ -8,7 +8,7 @@ if(_gather_test_points AND _gather_test_serializer AND GVDB_NVRHI_BUILD_API_TEST
         "${CMAKE_CURRENT_LIST_DIR}/slang/GVDBPortableData.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/slang/GVDBPortableVbx.cpp")
     target_link_libraries(gvdb_nvrhi_gather_api_tests PRIVATE gvdb::nvrhi_api donut_app)
-    add_dependencies(gvdb_nvrhi_gather_api_tests gvdb_nvrhi_gather_shaders gvdb_nvrhi_owner_shaders gvdb_point_stream_shaders)
+    add_dependencies(gvdb_nvrhi_gather_api_tests gvdb_inverse_distance_gather_shaders gvdb_nvrhi_gather_shaders gvdb_nvrhi_owner_shaders gvdb_point_stream_shaders)
     ethereal_use_agility_sdk(gvdb_nvrhi_gather_api_tests)
     if(MSVC)
         target_compile_options(gvdb_nvrhi_gather_api_tests PRIVATE /utf-8)

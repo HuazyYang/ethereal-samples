@@ -58,15 +58,21 @@ class Gather final:public ObjectImpl<IGVDBGatherEvaluation> {
         });
     }
 };
-} // namespace
-nvrhi::FRESULT gvdbCreateNvrhiGather(uint32_t apiVersion,const GatherCreateDesc* desc,IGVDBGather** output) noexcept {
+nvrhi::FRESULT createGatherImpl(uint32_t apiVersion,const GatherCreateDesc* desc,IGVDBGather** output,bool inverseDistance) noexcept {
     if(!output)return FE_INVALID_ARGS;*output=nullptr;
     return guarded([&] {
         require(apiVersion==c_GVDBNvrhiApiVersion,FE_UNSUPPORTED);
         require(desc&&desc->structSize==sizeof(GatherCreateDesc)&&!desc->reserved&&desc->volume&&desc->artifact&&desc->artifactBytes&&desc->artifactBytes<=SIZE_MAX);
         VolumeHandle volume=desc->volume;NvrhiVolume* owner=nullptr;check(detail::resolveVolume(volume,&owner));
-        std::unique_ptr<NvrhiGather> gather;check(NvrhiGather::create({owner,desc->artifact,size_t(desc->artifactBytes)},gather));
+        std::unique_ptr<NvrhiGather> gather;check(NvrhiGather::create({owner,desc->artifact,size_t(desc->artifactBytes),inverseDistance},gather));
         auto result=MAKE_RC_OBJ_PTR(Gather,std::move(volume),std::move(gather));*output=result.Detach();return FS_OK;
     });
+}
+} // namespace
+nvrhi::FRESULT gvdbCreateNvrhiGather(uint32_t apiVersion,const GatherCreateDesc* desc,IGVDBGather** output) noexcept {
+    return createGatherImpl(apiVersion,desc,output,false);
+}
+nvrhi::FRESULT gvdbCreateNvrhiInverseDistanceGather(uint32_t apiVersion,const GatherCreateDesc* desc,IGVDBGather** output) noexcept {
+    return createGatherImpl(apiVersion,desc,output,true);
 }
 } // namespace gvdb::portable

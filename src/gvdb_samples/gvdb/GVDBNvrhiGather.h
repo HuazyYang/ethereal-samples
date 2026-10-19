@@ -9,6 +9,7 @@ struct GatherOperatorDesc {
     NvrhiVolume* volume = nullptr; // Borrowed; facade retains the owner.
     const void* artifact = nullptr;
     size_t artifactBytes = 0;
+    bool inverseDistance = false;
 };
 class NvrhiGather {
  public:

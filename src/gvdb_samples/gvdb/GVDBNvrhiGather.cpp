@@ -176,6 +176,7 @@ struct NvrhiGather::Impl {
     ShaderProgramHandle program;
     BindingLayoutHandle layout;
     ComputePipelineHandle pipeline;
+    bool inverseDistance=false;
 };
 NvrhiGather::NvrhiGather(std::unique_ptr<Impl> impl) noexcept:m_impl(std::move(impl)){}
 NvrhiGather::~NvrhiGather()=default;
@@ -184,7 +185,8 @@ FRESULT NvrhiGather::create(const GatherOperatorDesc& desc,std::unique_ptr<Nvrhi
         require(desc.volume&&desc.artifact&&desc.artifactBytes);
         auto impl=std::make_unique<Impl>();impl->owner=desc.volume;impl->device=detail::VolumeMutationBuilder::device(*desc.volume);
         check(createShaderProgram(impl->device,desc.artifact,desc.artifactBytes,&impl->program));
-        uint32_t entry;check(impl->program->findEntryPoint("gatherOwnedAtlas",ShaderType::Compute,&entry));
+        impl->inverseDistance=desc.inverseDistance;
+        uint32_t entry;check(impl->program->findEntryPoint(desc.inverseDistance?"gatherOwnedAtlasInverseDistance":"gatherOwnedAtlas",ShaderType::Compute,&entry));
         BindingLayoutDesc layout;check(impl->program->getBindingLayoutDesc(entry,0,layout));validateArtifact(impl->program,entry,layout);
         check(impl->device->createBindingLayout(layout,&impl->layout));ShaderHandle shader;check(impl->program->createShader(entry,&shader));
         check(impl->device->createComputePipeline(ComputePipelineDesc().setComputeShader(shader).addBindingLayout(impl->layout),&impl->pipeline));
@@ -200,6 +202,7 @@ FRESULT NvrhiGather::prepare(const GatherRequestDesc& request,const GatherPrepar
         require(std::isfinite(request.radius)&&request.radius>0&&finite(request.translation));
         require(std::isfinite(request.supportRadius)&&(request.supportRadius==-1.f||request.supportRadius>=0));
         auto& state=*m_impl;
+        require(!state.inverseDistance||(request.kind==GatherKind::LevelSet&&!request.accumulate),FE_UNSUPPORTED);
         require(points.retained&&points.retained->getDevice()==state.device.Get());
         require(associations.retained&&associations.retained->getDevice()==state.device.Get());
         require(associations.info.count==points.info.count);

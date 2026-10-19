@@ -24,5 +24,16 @@ int main() {
     output=sentinel;
     if(g::gvdbCreateNvrhiGather(g::c_GVDBNvrhiApiVersion,nullptr,&output)!=FE_INVALID_ARGS || output)return 7;
     if(g::createGather(desc,nullptr)!=FE_INVALID_ARGS)return 8;
+    desc={};output=sentinel;
+    if(g::gvdbCreateNvrhiInverseDistanceGather(g::c_GVDBNvrhiApiVersion+1,&desc,&output)!=FE_UNSUPPORTED||output)return 10;
+    desc.structSize--;output=sentinel;
+    if(g::createInverseDistanceGather(desc,&output)!=FE_INVALID_ARGS||output)return 11;
+    desc={};desc.reserved=1;output=sentinel;
+    if(g::createInverseDistanceGather(desc,&output)!=FE_INVALID_ARGS||output)return 12;
+    desc={};output=sentinel;
+    if(g::createInverseDistanceGather(desc,&output)!=FE_INVALID_ARGS||output)return 13;
+    if(g::createInverseDistanceGather(desc,nullptr)!=FE_INVALID_ARGS)return 14;
+    output=sentinel;
+    if(g::gvdbCreateNvrhiInverseDistanceGather(g::c_GVDBNvrhiApiVersion,nullptr,&output)!=FE_INVALID_ARGS||output)return 15;
     std::puts("GVDB public gather ABI: defaults/version/size/reserved/null output rules PASS");return 0;
 }
