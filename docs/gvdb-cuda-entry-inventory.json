@@ -119,9 +119,12 @@
       "remaining": "Public full rebuild and stable-ID accumulation validate asymmetric/symmetric support, signed center union, minimum root level and rollback budgets. Explicit device-authored topology fetch/commit and platform/performance gates remain."
     },
     "deposition": {
-      "status": "pending",
-      "replacementFiles": [],
-      "remaining": "Central/six-neighbor deposition, support and averaged color need owned Slang implementation; legacy amp is unused."
+      "status": "owned-validated",
+      "replacementFiles": [
+        "gvdb/GVDBNvrhiDepositApi.cpp",
+        "gvdb/slang/GVDBPointDeposit.slang"
+      ],
+      "remaining": "Public central/six-neighbor/XZ support and deterministic last/average color pass four Windows APIs, both native graphics adapters, CUDA memory checking and static/shared installed consumers. Stable ordinal accumulation replaces raced scatter writes. Linux and broad consumer/performance acceptance remain."
     },
     "velocity": {
       "status": "partial",
