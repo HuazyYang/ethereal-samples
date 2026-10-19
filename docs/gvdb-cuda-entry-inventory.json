@@ -70,11 +70,14 @@
       "remaining": "Public owned topology orchestration remains."
     },
     "insertion": {
-      "status": "portable-foundation",
+      "status": "owned-validated",
       "replacementFiles": [
-        "gvdb/slang/GVDBParticles.slang"
+        "gvdb/slang/GVDBParticles.slang",
+        "gvdb/GVDBNvrhiPointInsertionApi.h",
+        "gvdb/GVDBNvrhiSubcellApi.cpp",
+        "gvdb/slang/GVDBPointSubcells.slang"
       ],
-      "remaining": "Public ownership and velocity/color association coverage remain."
+      "remaining": "Public retained center/velocity-support leaf insertion and stable GPU attribute sorting pass four Windows APIs, both native graphics adapters, CUDA memory checking and installed static/shared consumers. Stable original ordinals replace raced offsets; metadata exposes equivalent per-leaf counts/ranges, with pre-translation NOHIT exclusion and original velocity/color/W association. Host association and GPU expansion are explicit. Broad consumer/Linux/performance/reference gates remain."
     },
     "subcell-binning": {
       "status": "owned-validated",
