@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "PointCloudReconstruction.h"
 #include "ComputeRuntime.h"
-#include <gvdb/GVDBSlangPointConversion.h>
+#include <gvdb/GVDBNvrhiPointQuantizeApi.h>
+#include <array>
 #include <gvdb/GVDBNvrhiGatherApi.h>
 #include <gvdb/GVDBNvrhiApronApi.h>
 #include <gvdb/GVDBNvrhiVoxelFilterApi.h>
@@ -15,32 +16,20 @@
 #include <tuple>
 namespace gvdb::samples::pointcloud {
 using namespace slang;
-using nvrhi::BindingSetItem;
 namespace p = portable;
 namespace {
 void check(nvrhi::FRESULT result, const char* message) {
     if (NVRHI_FAILED(result))
         throw std::runtime_error(std::string(message) + ": " + std::to_string(result));
 }
-std::vector<char> artifact(ethereal::slang::ComputeRuntime& runtime, const char* name) {
-    const auto path = donut::app::GetDirectoryWithExecutable() / "shaders/gvdb_point_cloud" /
+std::vector<char> artifact(ethereal::slang::ComputeRuntime& runtime, const char* name,
+                           const char* directory = "gvdb_point_cloud") {
+    const auto path = donut::app::GetDirectoryWithExecutable() / "shaders" / directory /
                       donut::app::GetShaderTypeName(runtime.device()->getGraphicsAPI()) / name;
     std::ifstream file(path, std::ios::binary);
     if (!file)
         throw std::runtime_error("Missing point-cloud artifact: " + path.string());
     return {(std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>()};
-}
-struct alignas(16) Parameters {
-    UInt4 counts;
-    Float4 minimum, range;
-};
-static_assert(sizeof(Parameters) == 48);
-void launch(ethereal::slang::ComputeRuntime& runtime, const char* entry, const Parameters& p,
-            const std::vector<BindingSetItem>& bindings, uint32_t count) {
-    const uint32_t groups = count / 256 + uint32_t(count % 256 != 0);
-    if (groups)
-        runtime.dispatch("PointCloudReconstruction", entry, &p, sizeof(p), bindings, std::min(groups, 65535u),
-                         groups / 65535u + uint32_t(groups % 65535u != 0));
 }
 }  // namespace
 struct PointCloudReconstruction::State {
@@ -48,6 +37,7 @@ struct PointCloudReconstruction::State {
     nvrhi::CommandListHandle commands;
     p::VolumeHandle owner;
     p::SnapshotHandle visible;
+    p::PointQuantizeTicketHandle quantized;
     template <class F>
     void submit(F&& record, bool wait = false) {
         struct Close {
@@ -181,24 +171,65 @@ void PointCloudReconstruction::reconstruct(const PointFrame& frame, const Recons
     if (!std::isfinite(settings.smoothingCenterWeight) || settings.smoothingCenterWeight == -6 ||
         !std::isfinite(settings.smoothingBias))
         throw std::invalid_argument("Point cloud smoothing parameters are invalid");
-    std::vector<uint8_t> bytes((frame.coordinates.size() * 2 + 3) & ~size_t(3), 0);
-    for (size_t i = 0; i < frame.coordinates.size(); ++i) {
-        bytes[i * 2] = uint8_t(frame.coordinates[i]);
-        bytes[i * 2 + 1] = uint8_t(frame.coordinates[i] >> 8);
-    }
-    auto packedPoints = m_runtime->buffer(bytes.size(), 0, bytes.data(), true);
-    PointConversionParameters conversion{
-        {frame.count(), 2, 0, 6},
-        frame.minimum,
-        {(frame.maximum.x - frame.minimum.x) / 65535.f, (frame.maximum.y - frame.minimum.y) / 65535.f,
-         (frame.maximum.z - frame.minimum.z) / 65535.f, 0},
-        {settings.renderScale, settings.renderScale, settings.renderScale, 1},
-        {}
-    };
-    auto positions = convertPackedPoints(*m_runtime, packedPoints, conversion);
+    // Build privately; only a completely reconstructed frame becomes visible.
+    auto state = createState();
+    auto conversionBinary = artifact(*m_runtime, "GVDBPointStreamConversion_convertPointStream.bin");
+    p::PointOpsCreateDesc pointCreate;
+    pointCreate.volume = state->owner;
+    pointCreate.conversionArtifact = conversionBinary.data();
+    pointCreate.conversionArtifactBytes = conversionBinary.size();
+    p::PointOpsHandle points;
+    check(p::createPointOps(pointCreate, &points), "Point-cloud point operator");
+    std::vector<std::array<uint16_t, 4>> source(frame.count());
+    for (size_t i = 0; i < source.size(); ++i)
+        source[i] = {frame.coordinates[i * 3], frame.coordinates[i * 3 + 1], frame.coordinates[i * 3 + 2], 1};
+    p::PointSetDesc input;
+    input.positions.stream = {source.data(), source.size() * 8,         0, 8,
+                              source.size(), p::PointComponent::UInt16, 4};
+    input.positions.transform.minimum = {frame.minimum.x, frame.minimum.y, frame.minimum.z, 0};
+    input.positions.transform.delta = {(frame.maximum.x - frame.minimum.x) / 65535.f,
+                                       (frame.maximum.y - frame.minimum.y) / 65535.f,
+                                       (frame.maximum.z - frame.minimum.z) / 65535.f, 1};
+    input.positions.transform.scale = {settings.renderScale, settings.renderScale, settings.renderScale, 1};
+    p::PointUploadTicketHandle upload;
+    check(points->preparePoints(input, {}, &upload), "Point-cloud source preparation");
+    state->submit(
+        [&](p::RecordingContext context) {
+            check(points->recordPoints(context, upload), "Point-cloud source conversion");
+        },
+        true);
+    p::PointSetHandle associations;
+    check(upload->finishAfterCallerCompletion(&associations), "Point-cloud source completion");
+    p::BorrowedBytes converted;
+    check(associations->getData(p::PointAttribute::Position, converted), "Point-cloud source positions");
     std::vector<Float4> host(frame.count());
-    m_runtime->read(positions, host.data(), host.size() * sizeof(Float4));
-    const auto bounds = pointQuantizationBounds(host);
+    if (converted.byteCount != host.size() * sizeof(Float4))
+        throw std::logic_error("Point-cloud converted byte count");
+    if (converted.byteCount)
+        std::memcpy(host.data(), converted.data, size_t(converted.byteCount));
+    auto encode = artifact(*m_runtime, "GVDBPointQuantize_encodePointU16.bin", "gvdb_quantize");
+    auto decode = artifact(*m_runtime, "GVDBPointQuantize_decodePointU16.bin", "gvdb_quantize");
+    p::PointQuantizeCreateDesc quantizeCreate;
+    quantizeCreate.device = state->device;
+    quantizeCreate.encodeArtifact = encode.data();
+    quantizeCreate.encodeArtifactBytes = encode.size();
+    quantizeCreate.decodeArtifact = decode.data();
+    quantizeCreate.decodeArtifactBytes = decode.size();
+    p::PointQuantizeHandle quantize;
+    check(p::createPointQuantize(quantizeCreate, &quantize), "Point-cloud quantizer");
+    p::PointQuantizeRequestDesc quantizeRequest;
+    quantizeRequest.points = associations;
+    quantizeRequest.bounds = p::PointQuantizationBounds::LegacyPadded;
+    check(quantize->prepare(quantizeRequest, {}, &state->quantized), "Point-cloud quantization preparation");
+    QuantizationBounds bounds;
+    state->quantized->getBounds(bounds.minimum, bounds.range);
+    state->submit(
+        [&](p::RecordingContext context) {
+            check(quantize->record(context, state->quantized), "Point-cloud quantization record");
+        },
+        true);
+    p::PointSetHandle evaluation;
+    check(state->quantized->finishAfterCallerCompletion(&evaluation), "Point-cloud quantization completion");
     bool signedAxis[3] = {false, false, false};
     for (const auto& p : host) {
         signedAxis[0] |= p.x < 0;
@@ -224,8 +255,6 @@ void PointCloudReconstruction::reconstruct(const PointFrame& frame, const Recons
                 for (int32_t x = lo[0]; x <= hi[0]; x += 16)
                     leaves.emplace(x, y, z);
     }
-    // Construct a fresh public owner; failures leave the previous snapshot visible.
-    auto state = createState();
     for (const auto& origin : leaves) {
         p::NodeId id;
         check(state->owner->activateAtLevel(0, {std::get<0>(origin), std::get<1>(origin), std::get<2>(origin)},
@@ -240,44 +269,6 @@ void PointCloudReconstruction::reconstruct(const PointFrame& frame, const Recons
     state->publish(ticket);
     ticket = nullptr;
 
-    // Quantize each ordinal once. The gather extension keeps membership based on
-    // original positions even if this GPU calculation crosses a cell boundary.
-    auto compressed = quantizePointsU16(*m_runtime, positions, frame.count(), bounds.minimum, bounds.range);
-    auto decoded = m_runtime->buffer(size_t(frame.count()) * 16, 16);
-    Parameters parameters{
-        {frame.count(), 0, 0, 0},
-        bounds.minimum, bounds.range
-    };
-    launch(*m_runtime, "decodeSubcellPoints", parameters,
-           {BindingSetItem::RawBuffer_SRV(0, compressed), BindingSetItem::StructuredBuffer_UAV(0, decoded)},
-           frame.count());
-    std::vector<Float4> evaluated(frame.count());
-    m_runtime->read(decoded, evaluated.data(), evaluated.size() * sizeof(Float4));
-    // Explicit application readback feeds copied public point inputs. Preparation
-    // itself neither reads back nor submits, and CPU never recomputes quantization.
-    auto conversionBinary = artifact(*m_runtime, "GVDBPointStreamConversion_convertPointStream.bin");
-    p::PointOpsCreateDesc pointCreate;
-    pointCreate.volume = state->owner;
-    pointCreate.conversionArtifact = conversionBinary.data();
-    pointCreate.conversionArtifactBytes = conversionBinary.size();
-    p::PointOpsHandle points;
-    check(p::createPointOps(pointCreate, &points), "Point-cloud point operator");
-    auto upload = [&](const std::vector<Float4>& values) {
-        p::PointSetDesc desc;
-        desc.positions.stream = {values.data(), values.size() * 16,         0, 16,
-                                 values.size(), p::PointComponent::Float32, 4};
-        p::PointUploadTicketHandle upload;
-        check(points->preparePoints(desc, {}, &upload), "Point-cloud point preparation");
-        state->submit(
-            [&](p::RecordingContext context) {
-                check(points->recordPoints(context, upload), "Point-cloud point upload");
-            },
-            true);
-        p::PointSetHandle result;
-        check(upload->finishAfterCallerCompletion(&result), "Point-cloud point completion");
-        return result;
-    };
-    auto associations = upload(host), evaluation = upload(evaluated);
     auto gatherBinary = artifact(*m_runtime, "GVDBAtlasGather_gatherOwnedAtlas.bin");
     p::GatherCreateDesc gatherCreate;
     gatherCreate.volume = state->owner;
@@ -328,10 +319,19 @@ void PointCloudReconstruction::reconstruct(const PointFrame& frame, const Recons
     }
     check(state->owner->getSnapshot(&state->visible), "Point-cloud snapshot");
     m_state = std::move(state);
-    m_positions = std::move(positions);
     m_hostPositions = std::move(host);
     m_quantization = bounds;
     ++m_generation;
+}
+std::vector<uint16_t> PointCloudReconstruction::quantizationCodes() const {
+    if (!m_state->quantized)
+        return {};
+    p::BorrowedBytes codes;
+    check(m_state->quantized->getCodes(codes), "Point-cloud quantized codes");
+    std::vector<uint16_t> result(size_t(codes.byteCount / 2));
+    if (codes.byteCount)
+        std::memcpy(result.data(), codes.data, size_t(codes.byteCount));
+    return result;
 }
 std::vector<PointLine> PointCloudReconstruction::pointLines() const {
     constexpr size_t cap = 250000;

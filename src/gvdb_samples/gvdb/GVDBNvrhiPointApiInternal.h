@@ -2,6 +2,7 @@
 #pragma once
 // Private same-binary authentication seam. Neither installed nor externally exported.
 #include "GVDBNvrhiPointApi.h"
+#include <vector>
 namespace gvdb::portable::detail {
 struct ResolvedPointSet {
     // Owns all CPU borrows and canonical GPU buffers below. Read-only data remains
@@ -15,4 +16,9 @@ struct ResolvedPointSet {
 // readback/wait/allocation or external-buffer adoption. Absent colors remain empty.
 // Failure preserves output; a successful view retains the immutable PointSet.
 nvrhi::FRESULT resolvePointSet(IGVDBPointSet*,nvrhi::IDevice*,ResolvedPointSet& output) noexcept;
+// Trusted producer seam: positions are the completed GPU result in the original
+// Float3/Float4 layout. Copies auxiliary CPU attributes and retains their buffers.
+// Revalidates finite XYZ and computes exact bounds; never submits or waits.
+nvrhi::FRESULT clonePointSetPositions(IGVDBPointSet*,nvrhi::IDevice*,nvrhi::IBuffer*,
+    std::vector<uint8_t> positions,IGVDBPointSet** output) noexcept;
 } // namespace gvdb::portable::detail

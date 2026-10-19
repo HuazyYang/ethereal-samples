@@ -43,9 +43,10 @@ Frames now publish through `IGVDBVolume` and the public gather/apron/filter APIs
 the GPU-quantized positions. A fresh owner replaces the visible snapshot only
 after successful preparation/publication; retained previous snapshots stay valid.
 The compute preview and mixed RT renderer consume raw snapshot channels directly,
-and topology overlays use public host pools. GPU quantization remains an explicit
-app stage followed by readback and copied PointSet upload; this is not a public
-quantization operator or acceptance of weighted ushort color gathering.
+and topology overlays use public host pools. Source conversion and normalized-ushort encoding/decoding now use public PointSet
+and quantization operators. Quantization completion returns the actual GPU-decoded
+PointSet directly, eliminating the application decode/readback/reupload bridge.
+Weighted ushort color gathering is a separate operator contract.
 
 Ownership acceptance: complete matrices pass 334/334 and graphics-only 252/252,
 with no skips; both graphics adapters pass native reconstruction/app controls,
@@ -54,3 +55,10 @@ pass 2/2. All four compute captures exactly match the preserved portable images;
 RT changes at most one byte in two color channels. Tests-disabled production
 matches DX11 exactly, and three bounded native compute windows pass. Logs and
 image comparisons are under `build/m5-owned-point-cloud` in the aggregate.
+
+The public quantization integration passes the four-API analytic, full-asset and
+rendering fixtures, both native graphics adapters, and CUDA memory checking.
+Compared with preserved portable captures, Vulkan compute is identical; the
+other compute paths change six pixels by one byte. D3D12/CUDA RT change at most
+eleven pixels with maximum byte difference 12; Vulkan RT changes one byte by one.
+Conversion and actual-code references pass; cross-backend bit identity is not promised.

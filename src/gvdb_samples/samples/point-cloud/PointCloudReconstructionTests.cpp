@@ -109,10 +109,7 @@ void verify(ethereal::slang::ComputeRuntime& runtime, PointCloudReconstruction& 
     // ushort boundary; then test gathering/smoothing against those verified
     // codes without folding quantization error into the stencil tolerance.
     const auto bounds = reconstruction.quantization();
-    auto packedCodes =
-        quantizePointsU16(runtime, reconstruction.positions(), frame.count(), bounds.minimum, bounds.range);
-    std::vector<uint16_t> codes((size_t(frame.count()) * 6 + 3) / 4 * 2, 0);
-    runtime.read(packedCodes, codes.data(), codes.size() * 2);
+    const auto codes = reconstruction.quantizationCodes();
     const float minimum[] = {bounds.minimum.x, bounds.minimum.y, bounds.minimum.z};
     const float range[] = {bounds.range.x, bounds.range.y, bounds.range.z};
     int maximumCodeError = 0;

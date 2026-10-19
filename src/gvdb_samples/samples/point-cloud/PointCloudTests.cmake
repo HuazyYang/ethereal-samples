@@ -29,7 +29,8 @@ ethereal_compile_shaders(TARGET gvdb_point_cloud_owned_shaders SLANG CUDA ALL_PL
     CONFIG "${CMAKE_CURRENT_BINARY_DIR}/point-cloud-owned.cfg"
     OUTPUT_DIRECTORY "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/shaders/gvdb_point_cloud"
     INCLUDE_DIRECTORIES "${point_cloud_dir}/../../gvdb/slang")
-add_dependencies(gvdb_point_cloud_reconstruction gvdb_point_cloud_owned_shaders)
+include("${CMAKE_CURRENT_LIST_DIR}/../../gvdb/GVDBNvrhiPointQuantizeApi.cmake")
+add_dependencies(gvdb_point_cloud_reconstruction gvdb_point_cloud_owned_shaders gvdb_point_quantize_shaders)
 add_dependencies(gvdb_point_cloud_reconstruction gvdb_point_cloud_shaders gvdb_slang_shaders)
 if(BUILD_TESTING)
 add_executable(gvdb_point_cloud_input_tests "${point_cloud_dir}/PointCloudInputTests.cpp")
