@@ -11,7 +11,7 @@ struct RenderParameters {
     uint4 mode;  // mode.x: Off,Voxel,Trilinear,Section,Volume
 };
 ConstantBuffer<RenderParameters> g_Parameters : register(b0);
-StructuredBuffer<float> g_Atlas : register(t0);
+ByteAddressBuffer g_Atlas : register(t0);
 ByteAddressBuffer g_Nodes : register(t1);
 ByteAddressBuffer g_Children : register(t2);
 StructuredBuffer<LevelInfo> g_Levels : register(t3);
@@ -19,6 +19,7 @@ StructuredBuffer<float4> g_Transfer : register(t4);
 ByteAddressBuffer g_Color : register(t5);
 RWStructuredBuffer<float4> g_Output : register(u0);
 RWStructuredBuffer<float> g_Depth : register(u1);
+#define GVDB_RAY_QUERY_RAW 1
 #include "../../gvdb/slang/GVDBRayQueryTrace.slang"
 float4 colorAt(float3 atlas) {
     uint3 p = uint3(clamp(int3(atlas), int3(0), int3(g_Parameters.volume.atlasResolutionAndApron.xyz) - 1));

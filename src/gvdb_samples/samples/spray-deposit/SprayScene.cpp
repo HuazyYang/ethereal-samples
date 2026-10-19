@@ -4,6 +4,7 @@
 #include <imgui.h>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 namespace gvdb::samples::spray {
 using slang::Float4;
 namespace {
@@ -132,11 +133,44 @@ bool SprayScene::mouseScroll(float amount, sample::VolumeViewOptions& view) {
     updateView(view);
     return true;
 }
+bool SprayScene::topologyOverlay(std::vector<gvdb::sample::VolumeOverlayLine>& output) const {
+    const auto& host = m_volume->topology();
+    const gvdb::slang::Float4 colors[] = {
+        {.1f, 1,   .2f, 1},
+        {1,   .7f, .1f, 1},
+        {.1f, .6f, 1,   1},
+        {1,   .2f, .8f, 1}
+    };
+    output.clear();
+    for (uint32_t level = 0; level < host.getConfiguration().levelCount; ++level) {
+        const auto pool = host.getPool(0, level);
+        if (pool.count && (!pool.data || pool.stride != sizeof(gvdb::portable::Node)))
+            throw std::logic_error("Spray node pool");
+        if (pool.count > (1000000 - output.size()) / 12)
+            throw std::invalid_argument("Spray topology overlay too large");
+        for (uint64_t i = 0; i < pool.count; ++i) {
+            gvdb::portable::Node node;
+            std::memcpy(&node, static_cast<const uint8_t*>(pool.data) + i * pool.stride, sizeof(node));
+            const float w = float(host.getRange(int32_t(level)));
+            const auto vertex = [&](uint32_t c) {
+                return gvdb::slang::Float4{float(node.position.x) + (c & 1 ? w : 0),
+                                           float(node.position.y) + (c & 2 ? w : 0),
+                                           float(node.position.z) + (c & 4 ? w : 0), 0};
+            };
+            for (uint32_t c = 0; c < 8; ++c)
+                for (uint32_t axis = 0; axis < 3; ++axis)
+                    if (!(c & (1u << axis)))
+                        output.push_back({vertex(c), vertex(c | (1u << axis)), colors[level % 4]});
+        }
+    }
+    return true;
+}
+
 std::string SprayScene::describe() const {
     char text[180];
     std::snprintf(text, sizeof(text), "Spray step%u hits%u bricks%u shading%u wand%u", m_volume->time(),
-                  m_volume->hitCount(), m_volume->packed().levels[0].nodes.z, uint32_t(m_options.shading),
-                  uint32_t(m_options.wand));
+                  m_volume->hitCount(), uint32_t(m_volume->topology().getPool(0, 0).count),
+                  uint32_t(m_options.shading), uint32_t(m_options.wand));
     return text;
 }
 }  // namespace gvdb::samples::spray

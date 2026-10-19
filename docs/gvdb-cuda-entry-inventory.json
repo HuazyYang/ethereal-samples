@@ -212,9 +212,11 @@
     "ray-query": {
       "status": "portable-foundation",
       "replacementFiles": [
-        "gvdb/slang/GVDBRayQuery.slang"
+        "gvdb/slang/GVDBRayQuery.slang",
+        "gvdb/slang/GVDBRawRayQuery.slang",
+        "samples/sample-utils/OwnedVolumeRayQuery.cpp"
       ],
-      "remaining": "Ray-query fixtures exist; owned scene integration and exact legacy ray-buffer contract remain."
+      "remaining": "Spray now consumes retained raw snapshots with structured/raw differential, lifetime, offset and malformed-view acceptance on four APIs and both graphics adapters. Exact exported legacy ray-buffer contract and broader public query API remain; status is not promoted."
     },
     "section-compositing": {
       "status": "partial",

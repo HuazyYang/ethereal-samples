@@ -1,6 +1,7 @@
 // Application controls and five-mode real-asset rendering through the shared viewer.
 // SPDX-License-Identifier: Apache-2.0
 #include "SprayAppTests.h"
+#include <sample-utils/OwnedVolumeRayQuery.h>
 #include <imgui.h>
 #include <cmath>
 #include <cstdio>
@@ -24,6 +25,8 @@ void runSprayAppTests(ethereal::slang::ComputeRuntime& runtime, const std::files
     view.width = 64;
     view.height = 48;
     scene.animate(0, view);
+    require(scene.ownedSnapshot() && scene.ownedSnapshot()->getDevice() == runtime.device(),
+            "Spray exposes same-device public snapshot");
     require(scene.simulation().time() == 0 && view.explicitCamera, "Paused initialization does not deposit");
     close(view.cameraEye.x, 200 + 1000 * std::cos(dm::radians(40.f)) * std::sin(dm::radians(45.f)),
           "Original camera yaw/distance");
@@ -67,8 +70,8 @@ void runSprayAppTests(ethereal::slang::ComputeRuntime& runtime, const std::files
         }
     auto originBuffer = runtime.buffer(origins.size() * 16, 16, origins.data()),
          directionBuffer = runtime.buffer(directions.size() * 16, 16, directions.data());
-    auto query = slang::queryVolumeRays(runtime, scene.volume(), originBuffer, directionBuffer,
-                                        uint32_t(origins.size()));
+    auto query = sample::queryOwnedVolumeRays(runtime, scene.ownedSnapshot(), originBuffer, directionBuffer,
+                                              uint32_t(origins.size()));
     std::vector<slang::Float4> queryHits(origins.size());
     runtime.read(query.hits, queryHits.data(), queryHits.size() * 16);
     size_t queryHitCount = 0, queryLimits = 0;

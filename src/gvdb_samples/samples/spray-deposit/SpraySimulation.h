@@ -1,7 +1,7 @@
-﻿// Deterministic original wand motion and fixed-topology material deposition.
+// Deterministic original wand motion and fixed-topology material deposition.
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
-#include <gvdb/GVDBSlangAtlas.h>
+#include <gvdb/GVDBNvrhiApi.h>
 #include <gvdb/GVDBSlangRayQuery.h>
 #include <sample-utils/SlangSceneRT.h>
 #include <memory>
@@ -26,9 +26,8 @@ class SprayWand {
 };
 class SprayVolume {
     ethereal::slang::ComputeRuntime* m_runtime;
-    slang::PackedVolume m_packed;
-    std::unique_ptr<slang::SlangVolume> m_density;
-    std::unique_ptr<slang::SlangAtlas> m_color;
+    struct State;
+    std::unique_ptr<State> m_state;
     SprayWand m_wand;
     SprayRays m_rays;
     uint32_t m_hitCount = 0;
@@ -36,13 +35,20 @@ class SprayVolume {
  public:
     SprayVolume(ethereal::slang::ComputeRuntime&, slang::PackedVolume, const std::vector<float>&,
                 uint32_t initialColor = 0xffb2b2b2u);
+    SprayVolume(ethereal::slang::ComputeRuntime&, portable::VolumeHandle);
+    ~SprayVolume();
     void step(WandStyle);
+    void smooth(uint32_t iterations);
+    void refreshAprons(uint32_t mask);
     // Accumulates into existing topology only. Caller supplies float4 index positions
-    // and packed RGBA8 colors; miss sentinels are ignored by subcell binning.
-    uint32_t depositPoints(nvrhi::IBuffer* positions, nvrhi::IBuffer* colors, uint32_t count);
-    slang::SlangVolume& volume() const { return *m_density; }
-    slang::SlangAtlas& color() const { return *m_color; }
-    const slang::PackedVolume& packed() const { return m_packed; }
+    // and packed RGBA8 colors; nonfinite samples are skipped before canonical conversion.
+    void depositPoints(nvrhi::IBuffer* positions, nvrhi::IBuffer* colors, uint32_t count);
+    portable::SnapshotHandle snapshot() const;
+    const portable::IGVDBHostVolume& topology() const;
+    std::vector<float> readAtlas() const;
+    std::vector<uint8_t> readColor() const;
+    slang::PackedVolume readTopology() const;
+    double interiorSum() const;
     const SprayRays& rays() const { return m_rays; }
     uint32_t time() const { return m_wand.time(); }
     uint32_t hitCount() const { return m_hitCount; }

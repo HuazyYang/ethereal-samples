@@ -1,8 +1,12 @@
 // Pure shared ray evaluation for arbitrary bundles and spray visualization. SPDX-License-Identifier: Apache-2.0
 bool finite3(float3 v) { return all((asuint(v) & uint3(0x7fffffffu)) < uint3(0x7f800000u)); }
 float texel(int3 p) {
-    return g_Atlas[flatten3(uint3(clamp(p, int3(0), int3(g_Parameters.volume.atlasResolutionAndApron.xyz) - 1)),
-                            g_Parameters.volume.atlasResolutionAndApron.xyz)];
+    uint index=flatten3(uint3(clamp(p,int3(0),int3(g_Parameters.volume.atlasResolutionAndApron.xyz)-1)),g_Parameters.volume.atlasResolutionAndApron.xyz);
+#ifdef GVDB_RAY_QUERY_RAW
+    return asfloat(g_Atlas.Load(index*4));
+#else
+    return g_Atlas[index];
+#endif
 }
 float atlasSample(float3 p) {
     float3 q = p - .5;

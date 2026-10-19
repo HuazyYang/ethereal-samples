@@ -1,4 +1,4 @@
-﻿// Portable spray sample state and Inspector/input behavior.
+// Portable spray sample state and Inspector/input behavior.
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 #include "SprayRender.h"
@@ -23,8 +23,8 @@ class SprayScene final : public sample::VolumeScene {
 
  public:
     SprayScene(ethereal::slang::ComputeRuntime&, SprayOptions);
-    slang::SlangVolume& volume() override { return m_volume->volume(); }
-    const slang::PackedVolume& packed() const override { return m_volume->packed(); }
+    portable::SnapshotHandle ownedSnapshot() const override { return m_volume->snapshot(); }
+    bool topologyOverlay(std::vector<sample::VolumeOverlayLine>&) const override;
     std::vector<slang::Float4> transfer() const override { return m_transfer; }
     void animate(float, sample::VolumeViewOptions&) override;
     slang::RaycastOutput renderCustom(const slang::RaycastParameters&,

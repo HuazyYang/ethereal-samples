@@ -3,9 +3,12 @@
 #include "SpraySimulation.h"
 #include "SprayRender.h"
 #include "ExampleDevice.h"
+#include <sample-utils/OwnedVolumeRayQuery.h>
+#include <nvrhi/core/foundation.h>
 #include <gvdb/slang/GVDBTopologyBuilder.h>
 #include <sample-utils/SceneAssets.h>
 #include <cmath>
+#include <algorithm>
 #include <cstring>
 #include <iostream>
 #include <limits>
@@ -33,6 +36,25 @@ PackedVolume oneLeaf(Int4 origin = {-8, -8, -8, 0}) {
     return p;
 }
 size_t at(int x, int y, int z) { return size_t((z * 10 + y) * 10 + x); }
+
+RayQueryOutput dualQuery(ethereal::slang::ComputeRuntime& runtime, const SlangVolume& legacy,
+                         gvdb::portable::SnapshotHandle snapshot, nvrhi::IBuffer* origins,
+                         nvrhi::IBuffer* directions, uint32_t count, RayQueryOptions options = {}) {
+    auto expected = queryVolumeRays(runtime, legacy, origins, directions, count, options);
+    auto actual =
+        gvdb::sample::queryOwnedVolumeRays(runtime, std::move(snapshot), origins, directions, count, options);
+    for (auto buffers : {
+             std::pair{actual.hits,    expected.hits   },
+             std::pair{actual.normals, expected.normals}
+    }) {
+        std::vector<Float4> a(count), b(count);
+        runtime.read(buffers.first, a.data(), size_t(count) * 16);
+        runtime.read(buffers.second, b.data(), size_t(count) * 16);
+        require(!std::memcmp(a.data(), b.data(), size_t(count) * 16),
+                "Raw snapshot ray query matches structured reference exactly");
+    }
+    return actual;
+}
 void queryTests(ethereal::slang::ComputeRuntime& runtime) {
     const auto packed = oneLeaf();
     std::vector<float> scalar(1000, 0);
@@ -42,6 +64,8 @@ void queryTests(ethereal::slang::ComputeRuntime& runtime) {
                 scalar[at(x + 1, y + 1, z + 1)] = (x + .5f) / 8;
     SlangVolume volume(runtime, packed, scalar.data(), scalar.size());
     volume.updateApron();
+    SprayVolume owned(runtime, packed, scalar);
+    owned.refreshAprons(1);
     const float nan = std::numeric_limits<float>::quiet_NaN();
     std::vector<Float4> origins{
         {-10, -4, -4, 0},
@@ -61,7 +85,7 @@ void queryTests(ethereal::slang::ComputeRuntime& runtime) {
     };
     auto ob = runtime.buffer(origins.size() * 16, 16, origins.data()),
          db = runtime.buffer(directions.size() * 16, 16, directions.data());
-    auto query = queryVolumeRays(runtime, volume, ob, db, uint32_t(origins.size()));
+    auto query = dualQuery(runtime, volume, owned.snapshot(), ob, db, uint32_t(origins.size()));
     std::vector<Float4> hits(origins.size()), normals(hits.size());
     runtime.read(query.hits, hits.data(), hits.size() * 16);
     runtime.read(query.normals, normals.data(), normals.size() * 16);
@@ -73,13 +97,13 @@ void queryTests(ethereal::slang::ComputeRuntime& runtime) {
         require(hits[i].w == 0 && hits[i].z == 1e10f, "Miss/zero/nonfinite ray sentinel");
     RayQueryOptions limit;
     limit.maxLeafSteps = 1;
-    query = queryVolumeRays(runtime, volume, ob, db, 1, limit);
+    query = dualQuery(runtime, volume, owned.snapshot(), ob, db, 1, limit);
     runtime.read(query.hits, hits.data(), 16);
     require(hits[0].w == -1, "Iteration budget is not reported as a miss");
     limit.maxLeafSteps = 256;
     limit.maxLeafVisits = 1;
     limit.threshold = 2;
-    query = queryVolumeRays(runtime, volume, ob, db, 1, limit);
+    query = dualQuery(runtime, volume, owned.snapshot(), ob, db, 1, limit);
     runtime.read(query.hits, hits.data(), 16);
     require(hits[0].w == 0, "Exactly completed final leaf is a miss");
     // Sampling bias is independent of cell selection. A large direction makes
@@ -92,12 +116,12 @@ void queryTests(ethereal::slang::ComputeRuntime& runtime) {
     fast.bias = 0;
     fast.step = 2.5e-8f;
     fast.maxLeafVisits = 1;
-    query = queryVolumeRays(runtime, volume, fastOrigins, fastDirections, 1, fast);
+    query = dualQuery(runtime, volume, owned.snapshot(), fastOrigins, fastDirections, 1, fast);
     runtime.read(query.hits, hits.data(), 16);
     require(hits[0].w == 1, "Unnormalized large-direction ray must visit its geometric cell");
     expectNear(hits[0].x, -5.5f, 3e-5f, "Large direction preserves parameter-space wavefront");
     fast.epsilon = .01f;
-    query = queryVolumeRays(runtime, volume, fastOrigins, fastDirections, 1, fast);
+    query = dualQuery(runtime, volume, owned.snapshot(), fastOrigins, fastDirections, 1, fast);
     runtime.read(query.hits, hits.data(), 16);
     require(hits[0].w == 0, "Bias beyond completed interval gives miss without extra samples");
     const Float4 reverseOrigin{0, -4, -4, 0}, reverseDirection{-1, 0, 0, 0};
@@ -105,7 +129,7 @@ void queryTests(ethereal::slang::ComputeRuntime& runtime) {
          reverseDirections = runtime.buffer(16, 16, &reverseDirection);
     fast.epsilon = 0;
     fast.step = .25f;
-    query = queryVolumeRays(runtime, volume, reverseOrigins, reverseDirections, 1, fast);
+    query = dualQuery(runtime, volume, owned.snapshot(), reverseOrigins, reverseDirections, 1, fast);
     runtime.read(query.hits, hits.data(), 16);
     require(hits[0].w == 1, "Zero-epsilon negative boundary selects entered cell");
     expectNear(hits[0].x, 0, 1e-6f, "Zero-epsilon boundary sample");
@@ -114,6 +138,7 @@ void queryTests(ethereal::slang::ComputeRuntime& runtime) {
     // budget of one nonempty cell, regardless of any initial zero-length cell.
     std::vector<float> solid(1000, 1.f);
     SlangVolume solidVolume(runtime, packed, solid.data(), solid.size());
+    SprayVolume ownedSolid(runtime, packed, solid);
     std::vector<Float4> obliqueOrigins, obliqueDirections;
     for (unsigned i = 0; i < 257; ++i) {
         const float a = float(i) * .731f, b = float(i) * .317f;
@@ -127,8 +152,8 @@ void queryTests(ethereal::slang::ComputeRuntime& runtime) {
          od = runtime.buffer(obliqueDirections.size() * 16, 16, obliqueDirections.data());
     RayQueryOptions obliqueOptions;
     obliqueOptions.maxLeafVisits = 1;
-    auto oblique =
-        queryVolumeRays(runtime, solidVolume, oo, od, uint32_t(obliqueOrigins.size()), obliqueOptions);
+    auto oblique = dualQuery(runtime, solidVolume, ownedSolid.snapshot(), oo, od,
+                             uint32_t(obliqueOrigins.size()), obliqueOptions);
     std::vector<Float4> obliqueHits(obliqueOrigins.size());
     runtime.read(oblique.hits, obliqueHits.data(), obliqueHits.size() * 16);
     for (const auto& hit : obliqueHits)
@@ -151,10 +176,11 @@ void queryTests(ethereal::slang::ComputeRuntime& runtime) {
     const auto atlas = hierarchy.volume.atlasResolutionAndApron;
     std::vector<float> uniformScalar(size_t(atlas.x) * atlas.y * atlas.z, 1.f);
     SlangVolume uniform(runtime, hierarchy, uniformScalar.data(), uniformScalar.size());
+    SprayVolume ownedUniform(runtime, hierarchy, uniformScalar);
     const Float4 boundaryOrigin{-10.23f, -4, -4, 0}, boundaryDirection{1, 0, 0, 0};
     auto boundaryOrigins = runtime.buffer(16, 16, &boundaryOrigin),
          boundaryDirections = runtime.buffer(16, 16, &boundaryDirection);
-    query = queryVolumeRays(runtime, uniform, boundaryOrigins, boundaryDirections, 1);
+    query = dualQuery(runtime, uniform, ownedUniform.snapshot(), boundaryOrigins, boundaryDirections, 1);
     runtime.read(query.hits, hits.data(), 16);
     require(hits[0].w == 1, "Hierarchy-entry wavefront fixture must hit");
     expectNear(hits[0].x, -7.7299f, 2e-5f, "Legacy hierarchy epsilon crosses absolute wavefront");
@@ -220,8 +246,8 @@ void depositTests(ethereal::slang::ComputeRuntime& runtime) {
                         scalar[at(x, y, z)] = 0;
                         expectedColor[at(x, y, z)] = 0;
                     }
-        const auto actual = spray.volume().readAtlas();
-        const auto raw = spray.color().read();
+        const auto actual = spray.readAtlas();
+        const auto raw = spray.readColor();
         for (size_t i = 0; i < scalar.size(); ++i) {
             expectNear(actual[i], scalar[i], 1e-5f, "Full deposition scalar reference");
             uint32_t color;
@@ -231,14 +257,14 @@ void depositTests(ethereal::slang::ComputeRuntime& runtime) {
                             int(frame + 1),
                         "Full deposition color reference");
         }
-        require(spray.packed().nodes == originalNodes, "Deposition must not allocate or change topology");
+        require(spray.readTopology().nodes == originalNodes, "Deposition must not allocate or change topology");
     }
     // A zero-hit bundle must leave density unchanged. Color can differ by one
     // conversion code after the original unpack/divide/repack operation.
     auto miss = runtime.buffer(16, 16, &points[2]);
     auto mc = runtime.buffer(4, 4, &colors[2]);
     spray.depositPoints(miss, mc, 1);
-    const auto empty = spray.volume().readAtlas();
+    const auto empty = spray.readAtlas();
     for (size_t i = 0; i < scalar.size(); ++i)
         expectNear(empty[i], scalar[i], 1e-5f, "Miss bundle preserves density");
     std::cout << "Repeated fixed-topology scalar/RGBA/apron/miss deposition fixtures PASS\n";
@@ -336,13 +362,13 @@ void smoothingCadenceTests(ethereal::slang::ComputeRuntime& runtime) {
         auto origins = runtime.buffer(rays.origins.size() * 16, 16, rays.origins.data());
         auto directions = runtime.buffer(rays.directions.size() * 16, 16, rays.directions.data());
         auto colors = runtime.buffer(rays.colors.size() * 4, 4, rays.colors.data());
-        auto hits =
-            queryVolumeRays(runtime, unfiltered.volume(), origins, directions, uint32_t(rays.origins.size()));
+        auto hits = gvdb::sample::queryOwnedVolumeRays(runtime, unfiltered.snapshot(), origins, directions,
+                                                       uint32_t(rays.origins.size()));
         unfiltered.depositPoints(hits.hits, colors, uint32_t(rays.origins.size()));
         actual.step(WandStyle::Rotate);
         totalHits += actual.hitCount();
-        const auto before = unfiltered.volume().readAtlas();
-        const auto result = actual.volume().readAtlas();
+        const auto before = unfiltered.readAtlas();
+        const auto result = actual.readAtlas();
         for (int z = 0; z < 10; ++z)
             for (int y = 0; y < 10; ++y)
                 for (int x = 0; x < 10; ++x) {
@@ -358,6 +384,132 @@ void smoothingCadenceTests(ethereal::slang::ComputeRuntime& runtime) {
     }
     require(totalHits > 0 && actual.time() == 20, "Smoothing cadence fixture deposits real hits for20steps");
     std::cout << "Twenty-frame smoothing cadence and independent six-neighbor stencil PASS\n";
+}
+
+class SnapshotProxy final : public nvrhi::ObjectImpl<gvdb::portable::IGVDBSnapshot> {
+    gvdb::portable::SnapshotHandle source;
+    unsigned defect;
+    nvrhi::BufferHandle paddedScalar;
+
+ public:
+    NVRHI_BEGIN_INTERFACE_TABLE_INLINE(SnapshotProxy)
+    NVRHI_IMPLEMENTS_INTERFACE(gvdb::portable::IGVDBSnapshot)
+    NVRHI_IMPLEMENTS_INTERFACE(nvrhi::IRHIObject)
+    NVRHI_END_INTERFACE_TABLE()
+    SnapshotProxy(gvdb::portable::SnapshotHandle snapshot, unsigned mode, nvrhi::BufferHandle padded = {})
+        : source(std::move(snapshot)), defect(mode), paddedScalar(std::move(padded)) {}
+    nvrhi::IDevice* getDevice() const noexcept override { return defect == 1 ? nullptr : source->getDevice(); }
+    gvdb::portable::SnapshotDesc getDesc() const noexcept override {
+        auto d = source->getDesc();
+        if (defect == 2)
+            d.volume.hierarchy.x = d.levelCount;
+        return d;
+    }
+    nvrhi::FRESULT getLevel(uint32_t i, gvdb::portable::LevelInfo& out) const noexcept override {
+        auto r = source->getLevel(i, out);
+        if (defect == 7)
+            out.nodes.x = UINT32_MAX;
+        return r;
+    }
+    nvrhi::FRESULT getTopologyBuffer(gvdb::portable::TopologyBuffer kind,
+                                     gvdb::portable::BorrowedBufferBinding& out) const noexcept override {
+        auto r = source->getTopologyBuffer(kind, out);
+        if (defect == 6 && kind == gvdb::portable::TopologyBuffer::Levels)
+            out.byteOffset = 16;
+        return r;
+    }
+    nvrhi::FRESULT getChannel(uint32_t i, gvdb::portable::ChannelSnapshotDesc& out) const noexcept override {
+        auto r = source->getChannel(i, out);
+        if (i == 0) {
+            if (defect == 3)
+                out.desc.format = gvdb::portable::AtlasFormat::R8_UINT;
+            if (defect == 4)
+                out.raw.byteOffset = 4;
+            if (defect == 5)
+                out.raw.byteSize = 4;
+            if (defect == 8)
+                ++out.storage.voxelCount;
+            if (paddedScalar)
+                out.raw = {paddedScalar, 16, out.raw.byteSize};
+        }
+        return r;
+    }
+};
+void snapshotTests(ethereal::slang::ComputeRuntime& runtime) {
+    namespace p = gvdb::portable;
+    using namespace nvrhi;
+    const auto topology = oneLeaf();
+    std::vector<float> scalar(1000);
+    for (unsigned z = 0; z < 10; ++z)
+        for (unsigned y = 0; y < 10; ++y)
+            for (unsigned x = 0; x < 10; ++x)
+                scalar[at(x, y, z)] = (float(x) - .5f) / 8;
+    p::SnapshotHandle held;
+    {
+        SprayVolume temporary(runtime, topology, scalar, 0xff123456);
+        held = temporary.snapshot();
+    }
+    const Float4 origin{-10, -4, -4, 0}, direction{1, 0, 0, 0};
+    auto ob = runtime.buffer(16, 16, &origin), db = runtime.buffer(16, 16, &direction);
+    auto query = gvdb::sample::queryOwnedVolumeRays(runtime, held, ob, db, 1);
+    Float4 expected;
+    runtime.read(query.hits, &expected, 16);
+    require(expected.w == 1, "Snapshot query survives application/owner destruction");
+    for (unsigned mode = 1; mode <= 8; ++mode) {
+        auto proxy = MAKE_RC_OBJ_PTR(SnapshotProxy, held, mode);
+        bool rejected = false;
+        try {
+            gvdb::sample::queryOwnedVolumeRays(runtime, proxy, ob, db, 1);
+        } catch (const std::invalid_argument&) {
+            rejected = true;
+        }
+        require(rejected, "Malformed snapshot metadata/format/device/range rejected before dispatch");
+    }
+    // A valid nonzero raw view base must select the original values, not its prefix.
+    p::ChannelSnapshotDesc original;
+    require(NVRHI_SUCCEEDED(held->getChannel(0, original)), "Retained scalar");
+    std::vector<uint8_t> bytes(size_t(original.raw.byteSize) + 16, 0);
+    std::memcpy(bytes.data() + 16, scalar.data(), scalar.size() * 4);
+    auto padded = runtime.buffer(bytes.size(), 0, bytes.data(), true);
+    auto proxy = MAKE_RC_OBJ_PTR(SnapshotProxy, held, 0u, padded);
+    query = gvdb::sample::queryOwnedVolumeRays(runtime, proxy, ob, db, 1);
+    Float4 shifted;
+    runtime.read(query.hits, &shifted, 16);
+    require(!std::memcmp(&expected, &shifted, 16), "Snapshot raw view honors its nonzero byte offset");
+    SprayVolume live(runtime, topology, scalar, 0xff123456);
+    auto before = live.snapshot();
+    bool rejected = false;
+    try {
+        live.depositPoints(nullptr, nullptr, 1);
+    } catch (const std::invalid_argument&) {
+        rejected = true;
+    }
+    require(rejected && live.snapshot() == before, "Invalid points leave published snapshot unchanged");
+    rejected = false;
+    try {
+        live.smooth(4097);
+    } catch (const std::runtime_error&) {
+        rejected = true;
+    }
+    require(rejected && live.snapshot() == before, "Invalid smoothing leaves published snapshot unchanged");
+    p::ChannelSnapshotDesc oldScalar, oldColor;
+    require(
+        NVRHI_SUCCEEDED(before->getChannel(0, oldScalar)) && NVRHI_SUCCEEDED(before->getChannel(1, oldColor)),
+        "Retained channels");
+    const Float4 point{-4, -4, -4, 1};
+    const uint32_t color = 0xffabcdef;
+    auto positions = runtime.buffer(16, 16, &point), colors = runtime.buffer(4, 4, &color);
+    live.depositPoints(positions, colors, 1);
+    require(live.snapshot() != before, "Successful deposition publishes a new snapshot");
+    std::vector<float> old(1000);
+    std::vector<uint32_t> oldColors(1000);
+    runtime.read(oldScalar.raw.buffer, old.data(), old.size() * 4);
+    runtime.read(oldColor.raw.buffer, oldColors.data(), oldColors.size() * 4);
+    require(old == scalar &&
+                std::all_of(oldColors.begin(), oldColors.end(), [](uint32_t v) { return v == 0xff123456; }),
+            "Old scalar and color resources retain every byte");
+    std::cout
+        << "Owned snapshot lifetimes, nonzero view offset, malformed ranges and failed preparation PASS\n";
 }
 void wandTests() {
     for (auto style : {WandStyle::Rotate, WandStyle::Sweep, WandStyle::Wave}) {
@@ -395,6 +547,7 @@ int main(int argc, const char** argv) {
         ethereal::slang::ComputeRuntime runtime(device.get(), device.shaderPath());
         wandTests();
         queryTests(runtime);
+        snapshotTests(runtime);
         depositTests(runtime);
         renderTests(runtime);
         smoothingCadenceTests(runtime);
@@ -402,19 +555,19 @@ int main(int argc, const char** argv) {
             if (std::strcmp(argv[i], "--asset") == 0) {
                 auto mesh = gvdb::sample::loadSceneObj(argv[++i]);
                 auto volume = voxelizeSprayPart(runtime, mesh);
-                require(volume->packed().levels[0].nodeExtent.x == 32 &&
-                            volume->packed().volume.atlasBrickCountAndWidth.w == 34,
+                require(volume->readTopology().levels[0].nodeExtent.x == 32 &&
+                            volume->readTopology().volume.atlasBrickCountAndWidth.w == 34,
                         "Legacy spray fromBranching(...,5) requires leaf32/apron34");
-                const auto nodes = volume->packed().nodes;
-                const auto before = volume->volume().interiorSum();
+                const auto nodes = volume->readTopology().nodes;
+                const auto before = volume->interiorSum();
                 for (int frame = 0; frame < 3; ++frame)
                     volume->step(WandStyle::Rotate);
                 require(volume->hitCount() > 0, "Real spray bundle must hit the metal part");
-                require(volume->packed().nodes == nodes, "Real spray fixed topology");
-                require(volume->volume().interiorSum() > before, "Real spray must deposit density");
-                std::cout << "Metal asset bricks " << volume->packed().levels[0].nodes.z << " hits "
-                          << volume->hitCount() << " density " << before << " -> "
-                          << volume->volume().interiorSum() << " PASS\n";
+                require(volume->readTopology().nodes == nodes, "Real spray fixed topology");
+                require(volume->interiorSum() > before, "Real spray must deposit density");
+                std::cout << "Metal asset bricks " << volume->readTopology().levels[0].nodes.z << " hits "
+                          << volume->hitCount() << " density " << before << " -> " << volume->interiorSum()
+                          << " PASS\n";
             }
         return 0;
     } catch (const std::exception& e) {
