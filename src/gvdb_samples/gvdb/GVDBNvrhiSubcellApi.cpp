@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "GVDBNvrhiSubcellApi.h"
+#include "GVDBNvrhiPointInsertionApi.h"
 #include "GVDBNvrhiPointBinsInternal.h"
 #include "GVDBNvrhiApiInternal.h"
 #include "GVDBNvrhiAdoptionInternal.h"
@@ -10,6 +11,8 @@
 #include <cmath>
 #include <cstring>
 #include <memory>
+#include <map>
+#include <tuple>
 #include <stdexcept>
 namespace gvdb::portable {
 namespace {
@@ -200,20 +203,127 @@ class SubcellTicket final : public ObjectImpl<IGVDBSubcellTicket> {
         });
     }
 };
-class Subcells final : public ObjectImpl<IGVDBSubcells> {
+detail::PointBins insertionBins(const slang::PackedVolume& topology, const detail::ResolvedPointSet& points,
+                                const PointInsertionRequestDesc& request, const GatherPreparationBudget& budget,
+                                uint32_t pool, uint32_t width) {
+    require(points.info.count <= UINT32_MAX, FE_UNSUPPORTED);
+    require(points.info.count <= budget.maxCandidateVisits, FE_OUT_OF_MEMORY);
+    BorrowedBytes velocities;
+    BorrowedPointStream velocityStream;
+    if (request.mode == PointInsertionMode::VelocitySupport) {
+        check(points.retained->getData(PointAttribute::Velocity, velocities));
+        check(points.retained->getStream(PointAttribute::Velocity, velocityStream));
+    }
+    detail::PointBins bins;
+    bins.side = bins.perLeaf = 1;
+    bins.cells.resize(pool, {0, 0});
+    using Key = std::tuple<int32_t, int32_t, int32_t>;
+    std::map<Key, uint32_t> active;
+    Int3 anchor{};
+    bool anchored = false;
+    for (const auto& leaf : topology.atlasMap)
+        if (leaf.leaf >= 0) {
+            require(uint32_t(leaf.leaf) < pool);
+            if (!anchored) {
+                anchor = {leaf.x, leaf.y, leaf.z};
+                anchored = true;
+            }
+            require((int64_t(leaf.x) - anchor.x) % width == 0 && (int64_t(leaf.y) - anchor.y) % width == 0 &&
+                        (int64_t(leaf.z) - anchor.z) % width == 0,
+                    FE_UNSUPPORTED);
+            require(active.emplace(Key{leaf.x, leaf.y, leaf.z}, uint32_t(leaf.leaf)).second);
+        }
+    auto leafFor = [&](uint32_t i) -> uint32_t {
+        Float4 p{};
+        std::memcpy(
+            &p,
+            static_cast<const uint8_t*>(points.positions.data) + size_t(i) * points.positionStream.byteStride,
+            12);
+        if (p.z == 1e10f)
+            return UINT32_MAX;
+        p.x += request.translation.x;
+        p.y += request.translation.y;
+        p.z += request.translation.z;
+        if (request.mode == PointInsertionMode::VelocitySupport) {
+            Float4 v{};
+            std::memcpy(
+                &v, static_cast<const uint8_t*>(velocities.data) + size_t(i) * velocityStream.byteStride, 12);
+            require(finite(v));
+            p.x += v.x * request.supportOffset;
+            p.y += v.y * request.supportOffset;
+            p.z += v.z * request.supportOffset;
+        }
+        require(finite(p));
+        if (!anchored)
+            return UINT32_MAX;
+        const double x = std::floor((double(p.x) - anchor.x) / width) * width + anchor.x;
+        const double y = std::floor((double(p.y) - anchor.y) / width) * width + anchor.y;
+        const double z = std::floor((double(p.z) - anchor.z) / width) * width + anchor.z;
+        if (x < INT32_MIN || x > INT32_MAX || y < INT32_MIN || y > INT32_MAX || z < INT32_MIN || z > INT32_MAX)
+            return UINT32_MAX;
+        const auto found = active.find(Key{int32_t(x), int32_t(y), int32_t(z)});
+        return found == active.end() ? UINT32_MAX : found->second;
+    };
+    uint64_t pairs = 0;
+    for (uint32_t i = 0; i < points.info.count; ++i) {
+        const uint32_t leaf = leafFor(i);
+        if (leaf != UINT32_MAX) {
+            require(pairs < budget.maxPointPairs, FE_OUT_OF_MEMORY);
+            ++pairs;
+            ++bins.cells[leaf].y;
+        }
+    }
+    uint32_t offset = 0;
+    for (auto& cell : bins.cells) {
+        cell.x = offset;
+        offset += cell.y;
+        cell.y = 0;
+    }
+    bins.indices.resize(size_t(pairs));
+    for (uint32_t i = 0; i < points.info.count; ++i) {
+        const uint32_t leaf = leafFor(i);
+        if (leaf != UINT32_MAX) {
+            auto& cell = bins.cells[leaf];
+            bins.indices[cell.x + cell.y++] = i;
+        }
+    }
+    return bins;
+}
+class Subcells final : public ObjectImpl<IGVDBSubcells, IGVDBPointInsertion> {
     std::shared_ptr<Kernels> kernels;
     std::shared_ptr<Identity> identity = std::make_shared<Identity>();
 
  public:
     NVRHI_BEGIN_INTERFACE_TABLE_INLINE(Subcells)
     NVRHI_IMPLEMENTS_INTERFACE(IGVDBSubcells)
-    NVRHI_IMPLEMENTS_INTERFACE(IRHIObject)
+    NVRHI_IMPLEMENTS_INTERFACE(IGVDBPointInsertion)
+    NVRHI_IMPLEMENTS_INTERFACE_AS(IRHIObject, IGVDBSubcells)
     NVRHI_END_INTERFACE_TABLE()
     explicit Subcells(std::shared_ptr<Kernels> value)
         : kernels(std::move(value)) {}
     IDevice* getDevice() const noexcept override { return kernels->device.Get(); }
     FRESULT prepare(const SubcellRequestDesc& d, const SubcellPreparationBudget& budget,
                     IGVDBSubcellTicket** out) noexcept override {
+        return prepareImpl(d, budget, out, nullptr);
+    }
+    FRESULT prepare(const PointInsertionRequestDesc& d, const SubcellPreparationBudget& budget,
+                    IGVDBSubcellTicket** out) noexcept override {
+        if (!out)
+            return FE_INVALID_ARGS;
+        *out = nullptr;
+        if (d.structSize != sizeof(d) || d.reserved || !finite(d.translation) ||
+            !std::isfinite(d.supportOffset) ||
+            (d.mode != PointInsertionMode::Center && d.mode != PointInsertionMode::VelocitySupport) ||
+            (d.mode == PointInsertionMode::Center && d.supportOffset != 0))
+            return FE_INVALID_ARGS;
+        SubcellRequestDesc request;
+        request.snapshot = d.snapshot;
+        request.points = d.points;
+        request.translation = d.translation;
+        return prepareImpl(request, budget, out, &d);
+    }
+    FRESULT prepareImpl(const SubcellRequestDesc& d, const SubcellPreparationBudget& budget,
+                        IGVDBSubcellTicket** out, const PointInsertionRequestDesc* insertion) noexcept {
         if (!out)
             return FE_INVALID_ARGS;
         *out = nullptr;
@@ -229,8 +339,9 @@ class Subcells final : public ObjectImpl<IGVDBSubcells> {
             check(detail::resolvePointSet(d.points, getDevice(), t->points));
             const auto desc = d.snapshot->getDesc();
             const auto width = uint32_t(t->snapshot->bindings().levels[0].nodeExtent.x);
-            require(width && width % d.subcellWidth == 0, FE_UNSUPPORTED);
-            const uint64_t edge = width / d.subcellWidth;
+            const uint32_t cellWidth = insertion ? width : d.subcellWidth;
+            require(width && cellWidth && width % cellWidth == 0, FE_UNSUPPORTED);
+            const uint64_t edge = width / cellWidth;
             require(edge <= 1024, FE_UNSUPPORTED);
             const uint64_t perLeaf = edge * edge * edge;
             const uint64_t cellCount = perLeaf * t->snapshot->bindings().levels[0].nodes.z;
@@ -266,9 +377,9 @@ class Subcells final : public ObjectImpl<IGVDBSubcells> {
                 if (leaf.leaf >= 0) {
                     require(uint32_t(leaf.leaf) < t->info.leafPoolCount);
                     for (uint32_t cell = 0; cell < perLeaf; ++cell) {
-                        const int64_t x = int64_t(leaf.x) + int64_t(cell % edge) * d.subcellWidth;
-                        const int64_t y = int64_t(leaf.y) + int64_t((cell / edge) % edge) * d.subcellWidth;
-                        const int64_t z = int64_t(leaf.z) + int64_t(cell / (edge * edge)) * d.subcellWidth;
+                        const int64_t x = int64_t(leaf.x) + int64_t(cell % edge) * cellWidth;
+                        const int64_t y = int64_t(leaf.y) + int64_t((cell / edge) % edge) * cellWidth;
+                        const int64_t z = int64_t(leaf.z) + int64_t(cell / (edge * edge)) * cellWidth;
                         require(x <= INT32_MAX && y <= INT32_MAX && z <= INT32_MAX, FE_UNSUPPORTED);
                         t->locations[size_t(leaf.leaf) * size_t(perLeaf) + cell] = {
                             {int32_t(x), int32_t(y), int32_t(z)},
@@ -276,7 +387,7 @@ class Subcells final : public ObjectImpl<IGVDBSubcells> {
                         };
                     }
                 }
-            if (desc.activeLeafCount) {
+            if (desc.activeLeafCount || insertion) {
                 GatherRequestDesc request;
                 request.subcellWidth = d.subcellWidth;
                 request.radius = d.radius;
@@ -286,7 +397,11 @@ class Subcells final : public ObjectImpl<IGVDBSubcells> {
                 limits.maxCandidateVisits = budget.maxCandidateVisits;
                 limits.maxPointPairs = std::min({budget.maxPointPairs, uint64_t(UINT32_MAX / 16),
                                                  (budget.maxHostBytes - cellCount * 24) / (4 + stride)});
-                check(detail::buildPointBins(topology, request, limits, t->points, t->bins));
+                if (insertion)
+                    t->bins =
+                        insertionBins(topology, t->points, *insertion, limits, t->info.leafPoolCount, width);
+                else
+                    check(detail::buildPointBins(topology, request, limits, t->points, t->bins));
                 for (const auto& cell : t->bins.cells)
                     t->info.pointPairs += cell.y;
                 t->bins.indices.resize(size_t(t->info.pointPairs));
@@ -395,5 +510,16 @@ nvrhi::FRESULT gvdbCreateNvrhiSubcells(uint32_t version, const SubcellCreateDesc
         auto result = MAKE_RC_OBJ_PTR(Subcells, std::move(kernels));
         *out = result.Detach();
     });
+}
+nvrhi::FRESULT gvdbCreateNvrhiPointInsertion(uint32_t version, const SubcellCreateDesc* desc,
+                                             IGVDBPointInsertion** out) noexcept {
+    if (!out)
+        return nvrhi::FE_INVALID_ARGS;
+    *out = nullptr;
+    SubcellsHandle op;
+    const auto result = gvdbCreateNvrhiSubcells(version, desc, &op);
+    if (NVRHI_FAILED(result))
+        return result;
+    return op->QueryInterface(uuid_of<IGVDBPointInsertion>(), reinterpret_cast<void**>(out));
 }
 }  // namespace gvdb::portable

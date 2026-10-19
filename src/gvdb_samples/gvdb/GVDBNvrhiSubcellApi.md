@@ -52,3 +52,29 @@ positions, then `createVelocityQuantize` when velocity is present. Code order is
 exactly the returned pair order; neither operator recomputes cell association.
 Retain their tickets for code-buffer lifetime. This supports both legacy float
 and normalized-ushort3 attribute-storage roles without native SDK types.
+
+## Point-to-leaf insertion extension
+
+`GVDBNvrhiPointInsertionApi.h` and `createPointInsertion` use the same creation
+descriptor/artifact and ticket. Include `GVDBNvrhiPointInsertionApi.cmake` to enable
+its tests when composing the library. The factory also supports QueryInterface
+between IGVDBPointInsertion and IGVDBSubcells with one canonical IObject identity.
+Existing subcell descriptors, behavior and vtables are unchanged.
+
+Center mode associates p+translation with exactly one active leaf. VelocitySupport
+mode associates (p+translation)+velocity*supportOffset, requiring the canonical
+velocity attribute; negative offsets are supported. Sorted positions contain only
+p+translation, and original velocity/color/W bits remain associated. The legacy
+pre-translation z==1e10 sentinel is excluded. Direction XYZ and transformed values
+must be finite; absent velocity returns FE_NOT_FOUND, nonfinite math FE_INVALID_ARGS.
+An empty initial upload has no optional velocity, so use Center for that empty set.
+
+One cell per leaf-pool slot exposes offsets/counts, locations and original ordinals.
+For each range, ordinal[j] maps to that leaf and local offset j-range.offset; this
+replaces pnode/poff/gcnt/goff buffer plumbing. Stable input order replaces atomic
+insertion order, and inactive slots remain empty. The candidate budget counts all
+input points once, including missing/sentinel points and empty topology. Other
+logical budgets and recording/completion lifetimes are identical to subcells.
+Host lookup is O(N log L) over immutable retained metadata; GPU expansion uses the
+existing Slang artifact. Temporary lookup/topology storage is excluded from the
+retained-byte budget. Broader performance/platform acceptance remains separate.
