@@ -56,11 +56,13 @@
       "remaining": "CPU owner/full replacement and authenticated append are validated; explicit device-authored topology fetch/commit remains separate."
     },
     "split-positions": {
-      "status": "portable-foundation",
+      "status": "owned-validated",
       "replacementFiles": [
-        "gvdb/slang/GVDBPointStreamConversion.slang"
+        "gvdb/slang/GVDBPointStreamConversion.slang",
+        "gvdb/GVDBNvrhiPointSplitApi.cpp",
+        "gvdb/slang/GVDBPointSplit.slang"
       ],
-      "remaining": "General strided converter can express separate destinations; explicit split/bounds orchestration remains."
+      "remaining": "Public retained position/velocity XYZ splitting, planar GPU ranges, actual-GPU CPU planes and exact extrema pass four Windows APIs, both native graphics adapters, CUDA memory checking and installed static/shared consumers. Finite translation and explicit caller completion preserve ownership; legacy padding/clamping remains in separate quantization factories. Linux, broad consumers/performance and reference gates remain."
     },
     "mark-leaves": {
       "status": "portable-foundation",

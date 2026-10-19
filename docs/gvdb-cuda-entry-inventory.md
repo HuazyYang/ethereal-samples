@@ -6,9 +6,9 @@ The grouping records implementation roles, not positional CUDA ABI compatibility
 
 | State | Entries | Meaning |
 | --- | ---: | --- |
-| owned-validated | 46 | Public volume-backed operators and device queries passed recorded Windows tests; platform and consumer gates remain. |
+| owned-validated | 47 | Public volume-backed operators and device queries passed recorded Windows tests; platform and consumer gates remain. |
 | sample-validated | 14 | Migrated sample paths exercise these replacement roles; public ownership and broader acceptance remain. |
-| portable-foundation | 20 | A portable helper/program exists; the listed public contract or integration work remains. |
+| portable-foundation | 19 | A portable helper/program exists; the listed public contract or integration work remains. |
 | partial | 20 | Related functionality exists, but the old behavior is not fully covered. |
 | pending | 0 | No completed replacement/disposition is claimed. |
 
@@ -25,3 +25,5 @@ The sample CUDA path now supplies a message callback and enables SDK validation 
 Public scalar-grid and Y-face diagnostic queries now consume authenticated retained snapshots/points with selectable R32 channels, explicit caller completion and actual GPU results. Signed floor lookup, zero misses, aligned comparison loads and explicit nonfinite tap handling replace the unsafe legacy diagnostic cases. Four APIs, native NVIDIA/AMD validation, CUDA memory checking and installed static/shared consumers pass. Broader consumer/platform/performance acceptance remains.
 
 Public point insertion now associates center or velocity-direction support positions with retained active leaves and sorts original canonical attributes on the GPU. Stable ordinals and leaf ranges replace atomic ordering; pre-translation NOHIT exclusion is tested with a cancelling translation. Native, memory and installed-package Windows acceptance passes; broader consumer and performance/platform gates remain.
+
+Public coordinate splitting exposes retained raw X/Y/Z ranges and completed CPU planes with exact actual-GPU extrema for position or velocity. Four APIs, native adapters, CUDA memory and installed static/shared consumers pass. Legacy bounds padding remains in the quantization factories; broader platform/performance gates remain.

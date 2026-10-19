@@ -7,8 +7,9 @@ int main() {
     g::PointSplitRequestDesc request;
     g::PointSplitPreparationBudget budget;
     g::PointSplitCreateDesc desc;
-    if(request.structSize!=32 || request.attribute!=g::PointAttribute::Position || request.points ||
-        request.translation.x || request.translation.y || request.translation.z || request.translation.w)return 1;
+    if (request.structSize != 32 || request.attribute != g::PointAttribute::Position || request.points ||
+        request.translation.x || request.translation.y || request.translation.z || request.translation.w)
+        return 1;
     if (budget.maxHostBytes != UINT64_MAX || budget.maxAllocatedBytes != UINT64_MAX ||
         budget.maxBuffers != UINT32_MAX || budget.reserved)
         return 2;

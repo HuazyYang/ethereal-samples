@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "GVDBNvrhiPointSplitApi.h"
-#include "GVDBNvrhiApiInternal.h"
 #include "GVDBNvrhiPointApiInternal.h"
 #include <cmath>
 #include <nvrhi/core/foundation.h>
@@ -49,12 +48,16 @@ void validateArtifact(IShaderProgram* program, uint32_t entry, const BindingLayo
     require(desc.entryParamsSize == 0 && desc.threadGroupSize[0] == 256 && desc.threadGroupSize[1] == 1 &&
                 desc.threadGroupSize[2] == 1,
             FE_UNSUPPORTED);
-    const ResourceType types[]={ResourceType::ConstantBuffer,ResourceType::RawBuffer_SRV,ResourceType::RawBuffer_UAV};
-    const uint32_t slots[]={0,0,0};
-    const uint32_t strides[]={sizeof(Parameters),1,1};
-    require(layout.bindings.size()==3,FE_UNSUPPORTED);
-    for(uint32_t i=0;i<3;++i)require(std::count_if(layout.bindings.begin(),layout.bindings.end(),
-        [&](const auto& item){return item.type==types[i] && item.slot==slots[i];})==1,FE_UNSUPPORTED);
+    const ResourceType types[] = {ResourceType::ConstantBuffer, ResourceType::RawBuffer_SRV,
+                                  ResourceType::RawBuffer_UAV};
+    const uint32_t slots[] = {0, 0, 0};
+    const uint32_t strides[] = {sizeof(Parameters), 1, 1};
+    require(layout.bindings.size() == 3, FE_UNSUPPORTED);
+    for (uint32_t i = 0; i < 3; ++i)
+        require(std::count_if(
+                    layout.bindings.begin(), layout.bindings.end(),
+                    [&](const auto& item) { return item.type == types[i] && item.slot == slots[i]; }) == 1,
+                FE_UNSUPPORTED);
     uint32_t globals = 0, resources = 0, members = 0, mask = 0, constant = UINT32_MAX;
     for (uint32_t i = 0; i < program->getParameterCount(entry); ++i) {
         ShaderParameterDesc item;
@@ -102,7 +105,7 @@ class PointSplitTicket final : public ObjectImpl<IGVDBPointSplitTicket> {
     BindingSetHandle bindings;
     BufferHandle constants, output, staging;
     std::vector<float> values;
-    Float4 minimum{},maximum{};
+    Float4 minimum{}, maximum{};
     BorrowedPointStream stream;
     Parameters parameters{};
     uint32_t count = 0;
@@ -115,28 +118,51 @@ class PointSplitTicket final : public ObjectImpl<IGVDBPointSplitTicket> {
     NVRHI_END_INTERFACE_TABLE()
     IDevice* getDevice() const noexcept override { return device.Get(); }
     uint64_t getCount() const noexcept override { return count; }
-    FRESULT getAxisBuffer(uint32_t axis,BorrowedBufferBinding& out) const noexcept override {
-        if(axis>=3 || !recorded)return FE_INVALID_ARGS;
-        out={output.Get(),uint64_t(axis)*count*4,uint64_t(count)*4};return FS_OK;
+    FRESULT getAxisBuffer(uint32_t axis, BorrowedBufferBinding& out) const noexcept override {
+        if (axis >= 3 || !recorded)
+            return FE_INVALID_ARGS;
+        out = {output.Get(), uint64_t(axis) * count * 4, uint64_t(count) * 4};
+        return FS_OK;
     }
-    FRESULT getAxisData(uint32_t axis,BorrowedBytes& out) const noexcept override {
-        if(axis>=3 || !completed)return FE_INVALID_ARGS;
-        out={count?values.data()+size_t(axis)*count:nullptr,uint64_t(count)*4};return FS_OK;
+    FRESULT getAxisData(uint32_t axis, BorrowedBytes& out) const noexcept override {
+        if (axis >= 3 || !completed)
+            return FE_INVALID_ARGS;
+        out = {count ? values.data() + size_t(axis) * count : nullptr, uint64_t(count) * 4};
+        return FS_OK;
     }
-    FRESULT getBounds(Float4& lo,Float4& hi) const noexcept override {
-        if(!completed)return FE_INVALID_ARGS;
-        lo=minimum;hi=maximum;return FS_OK;
+    FRESULT getBounds(Float4& lo, Float4& hi) const noexcept override {
+        if (!completed)
+            return FE_INVALID_ARGS;
+        lo = minimum;
+        hi = maximum;
+        return FS_OK;
     }
     FRESULT finishAfterCallerCompletion() noexcept override {
-        return guarded([&]{require(recorded && !completed);
-            std::vector<float> result(size_t(count)*3);
-            if(count){const void* data=device->mapBuffer(staging,CpuAccessMode::Read);
-                require(data,FE_GENERIC_ERROR);std::memcpy(result.data(),data,size_t(count)*12);device->unmapBuffer(staging);}
-            float lo[3]{},hi[3]{};
-            for(unsigned axis=0;axis<3;++axis)for(uint32_t i=0;i<count;++i){const float v=result[size_t(axis)*count+i];
-                require(std::isfinite(v),FE_GENERIC_ERROR);
-                if(!i)lo[axis]=hi[axis]=v;else{lo[axis]=std::min(lo[axis],v);hi[axis]=std::max(hi[axis],v);}}
-            minimum={lo[0],lo[1],lo[2],0};maximum={hi[0],hi[1],hi[2],0};values.swap(result);completed=true;
+        return guarded([&] {
+            require(recorded && !completed);
+            std::vector<float> result(size_t(count) * 3);
+            if (count) {
+                const void* data = device->mapBuffer(staging, CpuAccessMode::Read);
+                require(data, FE_GENERIC_ERROR);
+                std::memcpy(result.data(), data, size_t(count) * 12);
+                device->unmapBuffer(staging);
+            }
+            float lo[3]{}, hi[3]{};
+            for (unsigned axis = 0; axis < 3; ++axis)
+                for (uint32_t i = 0; i < count; ++i) {
+                    const float v = result[size_t(axis) * count + i];
+                    require(std::isfinite(v), FE_GENERIC_ERROR);
+                    if (!i)
+                        lo[axis] = hi[axis] = v;
+                    else {
+                        lo[axis] = std::min(lo[axis], v);
+                        hi[axis] = std::max(hi[axis], v);
+                    }
+                }
+            minimum = {lo[0], lo[1], lo[2], 0};
+            maximum = {hi[0], hi[1], hi[2], 0};
+            values.swap(result);
+            completed = true;
         });
     }
 };
@@ -158,34 +184,61 @@ class PointSplit final : public ObjectImpl<IGVDBPointSplit> {
             return FE_INVALID_ARGS;
         *out = nullptr;
         return guarded([&] {
-            require(d.structSize==sizeof(d) && !budget.reserved &&
-                (d.attribute==PointAttribute::Position || d.attribute==PointAttribute::Velocity) &&
-                std::isfinite(d.translation.x) && std::isfinite(d.translation.y) && std::isfinite(d.translation.z) && d.translation.w==0);
-            auto t=MAKE_RC_OBJ_PTR(PointSplitTicket);t->device=device;t->identity=identity;
-            check(detail::resolvePointSet(d.points,device,t->points));
-            BorrowedBytes input;check(t->points.retained->getData(d.attribute,input));
-            check(t->points.retained->getStream(d.attribute,t->stream));
-            const uint64_t count=t->points.info.count;
-            require(count<=UINT32_MAX/12,FE_UNSUPPORTED);t->count=uint32_t(count);
-            require(count*12<=budget.maxHostBytes,FE_OUT_OF_MEMORY);
-            if(count)require(budget.maxBuffers>=3 && 256+count*24<=budget.maxAllocatedBytes,FE_OUT_OF_MEMORY);
-            for(uint64_t i=0;i<count;++i){Float4 p{};
-                std::memcpy(&p,static_cast<const uint8_t*>(input.data)+size_t(i)*t->stream.byteStride,12);
-                require(std::isfinite(p.x+d.translation.x) && std::isfinite(p.y+d.translation.y) && std::isfinite(p.z+d.translation.z));}
-            if(count){
-                auto allocate=[&](uint64_t bytes,bool constant,bool readback){BufferDesc desc;
-                    desc.byteSize=bytes;desc.isConstantBuffer=constant;desc.canHaveRawViews=!constant && !readback;
-                    desc.canHaveUAVs=desc.canHaveRawViews;desc.cpuAccess=readback?CpuAccessMode::Read:CpuAccessMode::None;
-                    desc.initialState=constant?ResourceStates::ConstantBuffer:ResourceStates::CopyDest;
-                    desc.keepInitialState=true;desc.debugName="GVDB coordinate planes";
-                    BufferHandle buffer;check(device->createBuffer(desc,&buffer));require(bool(buffer),FE_OUT_OF_MEMORY);return buffer;};
-                t->constants=allocate(256,true,false);t->output=allocate(count*12,false,false);t->staging=allocate(count*12,false,true);
-                BindingSetDesc bindings;bindings.trackLiveness=true;
-                bindings.addItem(BindingSetItem::ConstantBuffer(0,t->constants))
-                    .addItem(BindingSetItem::RawBuffer_SRV(0,t->stream.buffer,BufferRange(t->stream.byteOffset,t->stream.byteSize)))
-                    .addItem(BindingSetItem::RawBuffer_UAV(0,t->output));
-                check(device->createBindingSet(bindings,layout,&t->bindings));t->pipeline=pipeline;
-                t->parameters={{t->count,uint32_t(t->stream.byteStride),0,0},d.translation};
+            require(d.structSize == sizeof(d) && !budget.reserved &&
+                    (d.attribute == PointAttribute::Position || d.attribute == PointAttribute::Velocity) &&
+                    std::isfinite(d.translation.x) && std::isfinite(d.translation.y) &&
+                    std::isfinite(d.translation.z) && d.translation.w == 0);
+            auto t = MAKE_RC_OBJ_PTR(PointSplitTicket);
+            t->device = device;
+            t->identity = identity;
+            check(detail::resolvePointSet(d.points, device, t->points));
+            BorrowedBytes input;
+            check(t->points.retained->getData(d.attribute, input));
+            check(t->points.retained->getStream(d.attribute, t->stream));
+            const uint64_t count = t->points.info.count;
+            require(count <= UINT32_MAX / 12, FE_UNSUPPORTED);
+            t->count = uint32_t(count);
+            require(count * 12 <= budget.maxHostBytes, FE_OUT_OF_MEMORY);
+            if (count)
+                require(budget.maxBuffers >= 3 && 256 + count * 24 <= budget.maxAllocatedBytes,
+                        FE_OUT_OF_MEMORY);
+            for (uint64_t i = 0; i < count; ++i) {
+                Float4 p{};
+                std::memcpy(&p, static_cast<const uint8_t*>(input.data) + size_t(i) * t->stream.byteStride, 12);
+                require(std::isfinite(p.x + d.translation.x) && std::isfinite(p.y + d.translation.y) &&
+                        std::isfinite(p.z + d.translation.z));
+            }
+            if (count) {
+                auto allocate = [&](uint64_t bytes, bool constant, bool readback) {
+                    BufferDesc desc;
+                    desc.byteSize = bytes;
+                    desc.isConstantBuffer = constant;
+                    desc.canHaveRawViews = !constant && !readback;
+                    desc.canHaveUAVs = desc.canHaveRawViews;
+                    desc.cpuAccess = readback ? CpuAccessMode::Read : CpuAccessMode::None;
+                    desc.initialState = constant ? ResourceStates::ConstantBuffer : ResourceStates::CopyDest;
+                    desc.keepInitialState = true;
+                    desc.debugName = "GVDB coordinate planes";
+                    BufferHandle buffer;
+                    check(device->createBuffer(desc, &buffer));
+                    require(bool(buffer), FE_OUT_OF_MEMORY);
+                    return buffer;
+                };
+                t->constants = allocate(256, true, false);
+                t->output = allocate(count * 12, false, false);
+                t->staging = allocate(count * 12, false, true);
+                BindingSetDesc bindings;
+                bindings.trackLiveness = true;
+                bindings.addItem(BindingSetItem::ConstantBuffer(0, t->constants))
+                    .addItem(BindingSetItem::RawBuffer_SRV(
+                        0, t->stream.buffer, BufferRange(t->stream.byteOffset, t->stream.byteSize)))
+                    .addItem(BindingSetItem::RawBuffer_UAV(0, t->output));
+                check(device->createBindingSet(bindings, layout, &t->bindings));
+                t->pipeline = pipeline;
+                t->parameters = {
+                    {t->count, uint32_t(t->stream.byteStride), 0, 0},
+                    d.translation
+                };
             }
             *out = t.Detach();
         });
@@ -217,7 +270,7 @@ class PointSplit final : public ObjectImpl<IGVDBPointSplit> {
 };
 }  // namespace
 FRESULT gvdbCreateNvrhiPointSplit(uint32_t version, const PointSplitCreateDesc* desc,
-                                 IGVDBPointSplit** out) noexcept {
+                                  IGVDBPointSplit** out) noexcept {
     if (!out)
         return FE_INVALID_ARGS;
     *out = nullptr;
