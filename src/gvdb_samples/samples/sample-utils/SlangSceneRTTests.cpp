@@ -275,13 +275,47 @@ void volumeModes(ComputeRuntime &runtime, s::SlangSceneRT &renderer, bool raw = 
     renderer.updateVolume(0, scene.volumes[0]);
     pixel = read(runtime, renderer.render(camera()));
     expectColor(pixel.color, color, "level-set ambient material");
-    expectNear(pixel.depth, 1.25f, "level-set first threshold sample");
+    // Level sets use the unrounded entry. Root and leaf descent each add .001.
+    expectNear(pixel.depth, 1.002f, "level-set first threshold sample");
     scene.volumes[0].mode = s::SceneVolumeMode::EmptySkip;
     renderer.updateVolume(0, scene.volumes[0]);
     pixel = read(runtime, renderer.render(camera()));
     expectColor(pixel.color, color, "empty-skip ambient material");
-    expectNear(pixel.depth, 1.001f, "empty-skip leaf entry epsilon");
+    expectNear(pixel.depth, 1.002f, "empty-skip hierarchy entry epsilon");
+    for (const auto mode : {s::SceneVolumeMode::LevelSet, s::SceneVolumeMode::EmptySkip}) {
+        scene.volumes[0].mode = mode;
+        renderer.updateVolume(0, scene.volumes[0]);
+        auto p = camera({-1.13f, 1, 1, 0});
+        expectNear(read(runtime, renderer.render(p)).depth, 1.132f,
+                   "entry sampling must not snap to the surface wavefront");
+        p.march.y = 1.5f;
+        expectNear(read(runtime, renderer.render(p)).depth, 1.502f,
+                   "clipped entry preserves hierarchy descent bias");
+    }
     std::puts("PASS surface, level-set and empty-skip shader groups with retained legacy distances");
+}
+void levelSetZeroGradient(ComputeRuntime &runtime, s::SlangSceneRT &renderer) {
+    s::SceneDescription scene;
+    auto material = ambient({0, 0, 0, 1});
+    material.diffColor = {1, 1, 1};
+    material.shadowBias = 100;
+    scene.materials = {material};
+    scene.volumes = {volume(runtime, 0)};
+    scene.volumes[0].mode = s::SceneVolumeMode::LevelSet;
+    scene.volumes[0].threshold.x = .1f;
+    scene.instances = {instance(s::SceneInstance::Kind::Volume, 0, 0, 0, 0, 0)};
+    scene.instances[0].transform[0] = 2;
+    renderer.setScene(scene);
+    renderer.setEnvironment({});
+    auto p = camera({-1, 1.5f, 1, 0});
+    p.direction00 = {1, -.2f, 0, 0};
+    renderer.setPointLight(p.rayOrigin);
+    // The constant field has no normal. Face the world-space ray after the
+    // inverse-transpose, so a light at the eye gives diffuse exactly one.
+    // Legacy normalize(0), followed by NaN * zero offset, returned black.
+    expectColor(read(runtime, renderer.render(p)).color, {1, 1, 1, 1},
+                "zero-gradient level set remains finite under nonuniform scale");
+    std::puts("PASS finite world-space fallback for a zero-gradient level set");
 }
 void volumeArrayEndpoints(ComputeRuntime &runtime, s::SlangSceneRT &renderer) {
     s::SceneDescription scene;
@@ -671,6 +705,7 @@ int run(IDevice *device, const std::filesystem::path &library) {
     deepCameraClipping(runtime, renderer);
     volumeModes(runtime, renderer);
     volumeModes(runtime, renderer, true);
+    levelSetZeroGradient(runtime, renderer);
     volumeArrayEndpoints(runtime, renderer);
     transformAndReplacement(runtime, renderer, library);
     environmentAndAccumulation(runtime, renderer);

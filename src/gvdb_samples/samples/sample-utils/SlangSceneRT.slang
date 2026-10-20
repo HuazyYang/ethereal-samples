@@ -161,15 +161,34 @@ float gridCellExit(SceneVolume volume,float3 origin,float3 direction,float t) {
     }
     return end;
 }
-float leafWavefront(SceneVolume volume,VDBNode leaf,float3 origin,float3 direction,float scale,bool emptyMode) {
+float leafWavefront(SceneVolume volume,VDBNode leaf,float3 origin,float3 direction,float scale,bool entrySampling) {
     float enter=-FAR_DISTANCE;
     float3 lo=float3(leaf.position),hi=lo+float3(g_Levels[volumeSlot(volume)][0].nodeExtent.xyz);
     for(uint axis=0;axis<3;++axis)if(direction[axis]!=0) {
         float a=(lo[axis]-origin[axis])/direction[axis],b=(hi[axis]-origin[axis])/direction[axis];
         enter=max(enter,min(a,b));
     }
-    float start=enter*scale+volume.steps.w;
-    return (emptyMode?start:ceil(start/volume.steps.x)*volume.steps.x)/scale;
+    float globalEntry,globalExit;
+    volumeInterval(volume,origin,direction,FAR_DISTANCE,globalEntry,globalExit);
+    float epsilon=volume.steps.w;
+    float start=max(enter*scale+epsilon,globalEntry*scale+epsilon*float(volume.info.hierarchy.x+1u));
+    // The retained HDDA biases every descent, including a crossed ancestor.
+    uint2 parent=leaf.parent;uint slot=volumeSlot(volume);
+    for(uint depth=0;depth<10;++depth) {
+        if(nullReference(parent)||!referenceFitsIndex(parent))break;
+        uint level=referenceLevel(parent),index=referenceIndex(parent);
+        if(level>=volume.info.hierarchy.z)break;
+        LevelInfo info=g_Levels[slot][level];if(index>=info.nodes.z)break;
+        VDBNode node=loadNode(g_Nodes[slot],info.nodes.x+index*info.nodes.y);
+        float entry=0;
+        for(uint axis=0;axis<3;++axis)if(direction[axis]!=0) {
+            float a=(float(node.position[axis])-origin[axis])/direction[axis];
+            float b=(float(node.position[axis]+info.nodeExtent[axis])-origin[axis])/direction[axis];
+            entry=max(entry,min(a,b));
+        }
+        start=max(start,entry*scale+epsilon*float(level+1u));parent=node.parent;
+    }
+    return (entrySampling?start:ceil(start/volume.steps.x)*volume.steps.x)/scale;
 }
 bool reportSceneHit(float distance,uint kind,SceneAttributes attributes) {
     __target_switch {
@@ -184,22 +203,25 @@ void intersectSurface(bool levelSet,bool emptyMode,uint hitKind) {
     SceneVolume volume=currentVolume();float3 origin=ObjectRayOrigin(),direction=ObjectRayDirection();
     float scale=length(direction),enter,leave;if(!(scale>0)||!volumeInterval(volume,origin,direction,RayTCurrent(),enter,leave))return;
     float step=volume.steps.x/scale;
-    float t=emptyMode?enter+volume.steps.w/scale:ceil((enter*scale+volume.steps.w)/volume.steps.x)*step;
+    bool entrySampling=emptyMode||levelSet;
+    float t=entrySampling?enter+volume.steps.w/scale:ceil((enter*scale+volume.steps.w)/volume.steps.x)*step;
     for(uint iteration=0;iteration<g_SceneParameters.camera.image.w&&t<leave;++iteration) {
         float3 position=origin+direction*t;VDBNode leaf;
         if(!volumeLeaf(volume,position,leaf)) {
             float next=gridCellExit(volume,origin,direction,t);
             if(next<t||next>=leave)return;
-            float advanced=emptyMode?next+volume.steps.w/scale:
+            float advanced=entrySampling?next+volume.steps.w/scale:
                 max(t+step,ceil((next*scale+volume.steps.w)/volume.steps.x)*step);
             t=advanced>t?advanced:asfloat(asuint(t)+1u);continue;
         }
-        float aligned=leafWavefront(volume,leaf,origin,direction,scale,emptyMode);
+        float aligned=leafWavefront(volume,leaf,origin,direction,scale,entrySampling);
         if(aligned>t){t=aligned;continue;}
         bool supported;float scalar=scalarValue(volume,position,supported);
         if(emptyMode||(supported&&(levelSet?scalar<volume.threshold.x:scalar>=volume.threshold.x))) {
             SceneAttributes attributes;
-            attributes.normal=emptyMode?float3(0):volumeNormal(volume,position,-direction/scale,levelSet);
+            // Preserve an absent gradient until world space, where the shading
+            // fallback faces the incoming ray even under nonuniform transforms.
+            attributes.normal=emptyMode?float3(0):volumeNormal(volume,position,float3(0),levelSet);
             attributes.backT=leave;attributes.color=packColor(float4(emptyMode?float3(1):volumeColor(volume,position),1));
             if(reportSceneHit(t,hitKind,attributes))return;
         }

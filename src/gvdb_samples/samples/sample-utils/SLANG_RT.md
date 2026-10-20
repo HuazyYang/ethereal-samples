@@ -30,7 +30,7 @@ The four volume modes retain the relevant OptiX reference behavior:
 | Deep | Integrates allocated leaf samples, then composites the packed result over a continuation ray that excludes deep volumes. |
 | EmptySkip | Debug shading of the first allocated brick entry. This is not an isosurface renderer. |
 
-Every leaf restarts the direct-step sampling wavefront after its entry epsilon. For example, two adjacent width-two leaves traversed with step 0.25 and a positive small epsilon produce seven samples per leaf, not fifteen samples across their combined width.
+Surface and deep modes restart the direct-step sampling wavefront after the hierarchy entry bias. For example, two adjacent width-two leaves traversed with step 0.25 and a positive small epsilon produce seven samples per leaf, not fifteen samples across their combined width. Level-set and empty-skip modes retain the unrounded entry instead. The entry bias includes the global entry and each ancestor descent, including crossed ancestor boundaries.
 
 Deep transfer coordinates are `saturate((scalar - isovalue) / (maximum - minimum))`. `transferLastIndex` defaults to `UINT32_MAX`, which resolves to the final entry of the supplied table. **Legacy adapters must explicitly set `transferLastIndex = 16300` when importing the original 16384-entry table.** This preserves the reference lookup without silently changing arbitrary-sized transfer tables. Explicit endpoints must be smaller than the table length.
 
@@ -73,10 +73,11 @@ Camera vectors follow `RaycastParameters`: `direction00` is the lower image-corn
 
 `render(camera)` advances samples automatically. Explicit sample zero resets the sequence; any other explicit sample must equal the next expected sample index. Camera, scene, geometry, material, environment, point-light, seed and resolution changes reset accumulation.
 
-Two corrections are intentional:
+These corrections are intentional:
 
 1. Sample zero initializes accumulation and sample one contributes to the average. The reference restarted both samples zero and one.
 2. Random state is independent per pixel, initialized deterministically from pixel, sample, dataset frame and seed, then carried through the ordinary ray payload. It retains the original LCG and within-path jitter consumption (primary jitter does not advance the path seed), but removes the reference's shared modulo seed slots and host `srand` dependence. Exact random sequences therefore differ from the legacy program.
+3. A zero scalar gradient remains zero until the world-space shading fallback faces the ray. The retained kernel normalized zero into NaN, then computed `NaN * 0` for its zero level-set offset and returned black from its nonfinite-position guard. The shared shader omits the zero offset and produces finite shading, including under nonuniform transforms. A diagnostic reference build changing only that offset expression confirms the visible difference on the explosion asset; the original reference remains unchanged.
 
 ## Validation and remaining gates
 
@@ -85,3 +86,5 @@ The analytic suite passes on D3D12, Vulkan RT and OptiX. It checks distinct inst
 Run `ctest -R '(gvdb_scene_rt|slang_resource_arrays)' --output-on-failure`. Native graphics checks use `gvdb_scene_rt_tests -dx12 --validation` and `-vk --validation`; CUDA memory checking uses `compute-sanitizer --tool memcheck --error-exitcode 91 gvdb_scene_rt_tests -cuda`.
 
 Original-asset comparisons and production application migrations must still pass before declaring the complete mixed-scene project finished or removing retained legacy implementations. Passing analytic cases does not establish image parity for every material or asset.
+
+`CompareLegacySceneRT.py --legacy <interactive-optix> --portable <interactive-optix> --output <directory>` captures all four original Lucy/explosion modes serially at 1024x768 and eight samples on DX12, Vulkan and CUDA. It reports raw and Gaussian-sigma-four RGB errors, a fixed volume ROI, cross-API differences and process wall time. `--reuse` measures existing captures; `--finite-levelset-reference <png>` adds the explicitly separate NaN-repair diagnostic without replacing the unchanged-reference result. It requires Pillow and numpy and deliberately reports measurements without asserting full visual acceptance.
