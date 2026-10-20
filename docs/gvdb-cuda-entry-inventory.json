@@ -51,9 +51,10 @@
       "status": "portable-foundation",
       "replacementFiles": [
         "gvdb/slang/GVDBTopology.slang",
-        "gvdb/GVDBHostVolume.cpp"
+        "gvdb/GVDBHostVolume.cpp",
+        "gvdb/GVDBNvrhiTopologyEditApi.cpp"
       ],
-      "remaining": "CPU owner/full replacement and authenticated append are validated. Public fixed-pool private GPU editing now fetches/validates actual bytes and prepares transactional publication with stale-base rejection. The marker workflow passes native, memory and installed static/shared checks. Incremental delink/relink orchestration and disconnected-pool compaction/growth remain separate."
+      "remaining": "Public fixed-pool GPU marker/delink/relink orchestration, validated fetch and transactional publication pass four Windows APIs, native NVIDIA/AMD validation, CUDA memory checking and installed static/shared consumers. Internal activity is recomputed and inactive allocated nodes are reconnected. GPU key-driven new-node allocation and disconnected-pool compaction/growth remain separate integration work."
     },
     "split-positions": {
       "status": "owned-validated",
@@ -72,7 +73,7 @@
         "gvdb/GVDBNvrhiVolume.cpp",
         "gvdb/tests/LeafMarkerApiFixture.h"
       ],
-      "remaining": "Public host setActive/editNode plus explicit generation publication validates boolean and exact-byte flags, dirty/finished/stale-ticket transitions, inactive/reactivated leaves, empty topology and retained GPU nodes/channels. Four Windows APIs, both native graphics adapters, CUDA memory checking and installed static/shared consumers pass. GPU-authored marker ingestion, incremental key/link/delink orchestration, broad performance and Linux remain separate gates."
+      "remaining": "Public host and private GPU marker workflows pass four Windows APIs, native graphics adapters, CUDA memory checks and installed static/shared consumers. Exact host flags, boolean GPU markers, internal activity, stale-ticket rejection, inactive/reactivated/empty trees and retained snapshots are covered. GPU key-driven growth, broad performance and Linux remain separate gates."
     },
     "insertion": {
       "status": "owned-validated",

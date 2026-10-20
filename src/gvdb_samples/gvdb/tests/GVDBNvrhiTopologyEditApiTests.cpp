@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-#include "TopologyEditApiFixture.h"
+#include "TopologyActivityApiFixture.h"
 #include <donut/app/ApplicationBase.h>
 #include <donut/app/DeviceManager.h>
 #include <donut/core/log.h>
@@ -113,6 +113,15 @@ int main(int argc, const char** argv) {
             topology_edit_fixture::run(
                 device.device, load(root / "gvdb_owner" / backend / "GVDBAtlasRepack_relocateAtlas.bin"),
                 load(root / "gvdb_slang" / backend / "GVDBTopology_applyLeafMarkers.bin"));
+            const char* entries[] = {"applyLeafMarkers", "delinkLeafBricks", "delinkInternalBricks",
+                                     "initializeChildLists", "linkBricks"};
+            std::array<std::vector<char>, 5> artifacts;
+            for (size_t i = 0; i < artifacts.size(); ++i)
+                artifacts[i] =
+                    load(root / "gvdb_slang" / backend / (std::string("GVDBTopology_") + entries[i] + ".bin"));
+            topology_edit_fixture::runActivity(
+                device.device, load(root / "gvdb_owner" / backend / "GVDBAtlasRepack_relocateAtlas.bin"),
+                artifacts);
         }
         require(problems == 0, "topology native validation warnings/errors");
         std::puts(

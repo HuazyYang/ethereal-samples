@@ -158,6 +158,21 @@ void sparseVolume(ComputeRuntime& runtime) {
     runtime.dispatch("GVDBTopology","linkBricks",&params,sizeof(params),bindings,1);
     runtime.read(children,actualChildren.data(),actualChildren.size()*4);
     require(actualChildren==fixture.children,"topology relink");
+    // The standalone integer topology kernels also preserve adjacent cells past
+    // float's exact integer range (the public renderer keeps its narrower domain).
+    for (int32_t offset : {33554432, -33554432}) {
+        auto shifted = fixture.nodes;
+        for (const auto& level : fixture.levels)
+            for (uint32_t i = 0; i < level.nodes.z; ++i)
+                shifted[(level.nodes.x + i * level.nodes.y) / 4 + 1] += uint32_t(offset);
+        runtime.upload(nodes, shifted.data(), shifted.size() * 4);
+        params.operation = {1, 0, 0, 0};
+        runtime.dispatch("GVDBTopology", "initializeChildLists", &params, sizeof(params), bindings, 1);
+        params.operation = {0, 1, 0, 0};
+        runtime.dispatch("GVDBTopology", "linkBricks", &params, sizeof(params), bindings, 1);
+        runtime.read(children, actualChildren.data(), actualChildren.size() * 4);
+        require(actualChildren == fixture.children, "integer topology links beyond float precision");
+    }
     puts("PASS leaf activation, parent unlink and hierarchy relink");
 }
 void sph(ComputeRuntime& runtime) {

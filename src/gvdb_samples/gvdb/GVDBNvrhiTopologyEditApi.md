@@ -38,3 +38,31 @@ buffers. Retained source resources are excluded. The authenticated baseline CPU
 clone and importer use host pool limits; this readback budget is not a total host
 RSS limit. Publication has separate byte/buffer limits and uses existing volume
 placement/preservation rules. There is no public vtable change to existing APIs.
+
+The additive `IGVDBTopologyActivity` factory composes the five offline
+`GVDBTopology` artifacts listed in `TopologyActivityCreateDesc`. Between an edit
+ticket's begin and fetch, `record` consumes one structured uint marker per
+allocated leaf. Zero deactivates; any nonzero marker activates. It delinks inactive
+leaves and derives internal activity bottom-up, clears child lists, then links
+every allocated node top-down, including inactive nodes. This preserves the
+owner's connected-pool invariant and permits later reactivation. It does not
+allocate new nodes, change coordinates, or compact disconnected pools. The source
+geometry and counts must remain intact before this operation.
+
+Markers must belong to the factory's device; the caller owns that contract because
+NVRHI buffers do not expose device identity. Marker offsets are four-byte aligned
+and are applied as shader indices, avoiding Vulkan storage-view alignment limits.
+The marker range must contain exactly the source's allocated leaf count. Every
+dispatch is bounded to 65,535 groups of 256 threads; unsupported larger ranges
+fail before recording commands. Geometry uses integer coordinates; public owner
+publication retains its existing coordinate-domain checks.
+
+The activity request has a separate allocation budget. Empty topology uses no
+buffers. A leaf root needs 264 bytes in two buffers (256-byte constants plus an
+unused eight-byte child binding). For a nonempty connected hierarchy with root
+level R>0, one buffer holds `256 * (2 + 3*R)` bytes of constants. Each dispatch has
+a distinct immutable range. Resource bindings, pipelines and driver allocation
+overhead are outside this logical byte budget. Invalid arguments, budgets and
+stale revisions are rejected before command recording; explicit UAV barriers
+order all levels. Activity can be recorded repeatedly before fetch. Publication
+still advances the epoch, so callers must reacquire IDs under the new revision.

@@ -1,7 +1,7 @@
 ﻿// Sparse topology editing without GPU pointers or 64-bit atomics.
 // SPDX-License-Identifier: Apache-2.0
 #include "GVDBTypes.slang"
-struct TopologyParameters { VolumeInfo volume; uint4 operation; }; // operation.x: level
+struct TopologyParameters { VolumeInfo volume; uint4 operation; }; // x: level; y: link inactive too; z: marker base
 ConstantBuffer<TopologyParameters> g_Parameters : register(b0);
 StructuredBuffer<LevelInfo> g_Levels : register(t0);
 StructuredBuffer<uint> g_Markers : register(t1);
@@ -31,7 +31,7 @@ bool childListAddress(uint2 reference, out uint address) {
     address = info.children.x + index * info.children.y;
     return true;
 }
-bool findAncestor(float3 position, uint targetLevel, out uint index) {
+bool findAncestor(int3 position, uint targetLevel, out uint index) {
     uint level = g_Parameters.volume.hierarchy.x;
     index = g_Parameters.volume.hierarchy.y;
     if (targetLevel > level || level >= g_Parameters.volume.hierarchy.z) return false;
@@ -39,12 +39,13 @@ bool findAncestor(float3 position, uint targetLevel, out uint index) {
         LevelInfo info = g_Levels[level];
         if (index >= info.nodes.z) return false;
         VDBNode node = mutableNode(level, index);
-        float3 relative = position - float3(node.position);
-        if (any(relative < 0) || any(relative >= float3(info.nodeExtent.xyz))) return false;
+        // Integer geometry preserves unit differences beyond float's 24-bit range.
+        uint3 relative = uint3(position) - uint3(node.position);
+        if (any(position < node.position) || any(relative >= uint3(info.nodeExtent.xyz))) return false;
         if (level == targetLevel) return true;
         uint list;
         if (!childListAddress(node.childList, list)) return false;
-        uint3 cell = uint3(relative / info.childExtent.xyz);
+        uint3 cell = relative / uint3(info.childExtent.xyz);
         uint2 child = g_Children.Load2(list + flatten3(cell, uint3(info.children.w)) * 8);
         if (nullReference(child) || !referenceFitsIndex(child)) return false;
         index = referenceIndex(child);
@@ -65,9 +66,10 @@ void unlinkParent(uint level, uint index, VDBNode node) {
     uint list;
     if (!childListAddress(parent.childList, list)) return;
     LevelInfo info = g_Levels[parentLevel];
-    int3 cell = int3(float3(node.position - parent.position) / info.childExtent.xyz);
-    if (any(cell < 0) || any(cell >= int3(info.children.w))) return;
-    uint slot = list + flatten3(uint3(cell), uint3(info.children.w)) * 8;
+    uint3 relative = uint3(node.position) - uint3(parent.position);
+    if (any(node.position < parent.position) || any(relative >= uint3(info.nodeExtent.xyz))) return;
+    uint3 cell = relative / uint3(info.childExtent.xyz);
+    uint slot = list + flatten3(cell, uint3(info.children.w)) * 8;
     // Unique node coordinates guarantee a single writer per parent slot.
     uint2 current = g_Children.Load2(slot);
     if (all(current == nodeReference(level, index))) g_Children.Store2(slot, uint2(GVDB_INVALID));
@@ -84,7 +86,7 @@ void initializeChildLists(uint3 id : SV_DispatchThreadID) {
 [numthreads(256, 1, 1)]
 void applyLeafMarkers(uint3 id : SV_DispatchThreadID) {
     if (id.x >= g_Levels[0].nodes.z) return;
-    setActive(0, id.x, mutableNode(0, id.x), g_Markers[id.x] != 0);
+    setActive(0, id.x, mutableNode(0, id.x), g_Markers[g_Parameters.operation.z + id.x] != 0);
 }
 [shader("compute")]
 [numthreads(256, 1, 1)]
@@ -118,15 +120,16 @@ void linkBricks(uint3 id : SV_DispatchThreadID) {
     uint level = g_Parameters.operation.x;
     if (level >= g_Parameters.volume.hierarchy.x || id.x >= g_Levels[level].nodes.z) return;
     VDBNode node = mutableNode(level, id.x);
-    if (((node.metadata >> 8) & 255u) == 0) return;
+    if (g_Parameters.operation.y == 0 && ((node.metadata >> 8) & 255u) == 0) return;
     uint parentIndex;
-    if (!findAncestor(float3(node.position), level + 1, parentIndex)) return;
+    if (!findAncestor(node.position, level + 1, parentIndex)) return;
     VDBNode parent = mutableNode(level + 1, parentIndex);
     uint list;
     if (!childListAddress(parent.childList, list)) return;
     LevelInfo info = g_Levels[level + 1];
-    int3 cell = int3(float3(node.position - parent.position) / info.childExtent.xyz);
-    if (any(cell < 0) || any(cell >= int3(info.children.w))) return;
-    g_Children.Store2(list + flatten3(uint3(cell), uint3(info.children.w)) * 8, nodeReference(level, id.x));
+    uint3 relative = uint3(node.position) - uint3(parent.position);
+    if (any(node.position < parent.position) || any(relative >= uint3(info.nodeExtent.xyz))) return;
+    uint3 cell = relative / uint3(info.childExtent.xyz);
+    g_Children.Store2(list + flatten3(cell, uint3(info.children.w)) * 8, nodeReference(level, id.x));
     g_Nodes.Store2(g_Levels[level].nodes.x + id.x * g_Levels[level].nodes.y + 40, nodeReference(level + 1, parentIndex));
 }

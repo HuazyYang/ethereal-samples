@@ -50,6 +50,50 @@ struct IGVDBTopologyEdit : nvrhi::IRHIObject {
 };
 using TopologyEditHandle = nvrhi::AutoPtr<IGVDBTopologyEdit>;
 using TopologyEditTicketHandle = nvrhi::AutoPtr<IGVDBTopologyEditTicket>;
+// Offline GVDBTopology artifacts, in this order: applyLeafMarkers,
+// delinkLeafBricks, delinkInternalBricks, initializeChildLists, linkBricks.
+struct TopologyActivityArtifact {
+    const void* data = nullptr;
+    uint64_t byteSize = 0;
+};
+struct TopologyActivityCreateDesc {
+    uint32_t structSize = sizeof(TopologyActivityCreateDesc), reserved = 0;
+    nvrhi::IDevice* device = nullptr;
+    std::array<TopologyActivityArtifact, 5> artifacts;
+};
+struct TopologyActivityDesc {
+    uint32_t structSize = sizeof(TopologyActivityDesc), reserved = 0;
+    // Same-device structured uint buffer, one marker per allocated leaf.
+    // Zero deactivates; every nonzero value activates. Borrowed during record.
+    BorrowedBufferBinding markers;
+    // One constant buffer: 256 bytes per nonempty dispatch. For root level R>0
+    // with nonempty connected pools, 2 + 3*R dispatches; R=0 needs one.
+    // Add one 8-byte dummy buffer if the single-leaf root has no child pool.
+    uint64_t maxAllocatedBytes = UINT64_MAX;
+    uint32_t maxBuffers = UINT32_MAX, reserved2 = 0;
+};
+static_assert(sizeof(TopologyActivityCreateDesc) == 96 && sizeof(TopologyActivityDesc) == 48);
+static_assert(std::is_standard_layout_v<TopologyActivityDesc> &&
+              std::is_trivially_copyable_v<TopologyActivityDesc>);
+NVRHI_IID(IGVDBTopologyActivity, "7c18702a-313f-43d8-9ada-d411077da767")
+struct IGVDBTopologyActivity : nvrhi::IRHIObject {
+    NVRHI_DECLARE_UUID_TRAITS(IGVDBTopologyActivity)
+    // Between recordBegin and recordFetch, on the same device. Derives internal
+    // activity bottom-up by delinking, then restores ALL allocated links top-down.
+    // Inactive nodes remain owned and connected, ready for later reactivation.
+    // Counts/coordinates/IDs must still match the source; this does not allocate
+    // nodes or compact pools. Caller retains normal submission/completion control.
+    virtual nvrhi::FRESULT record(RecordingContext, IGVDBTopologyEditTicket*,
+                                  const TopologyActivityDesc&) noexcept = 0;
+};
+using TopologyActivityHandle = nvrhi::AutoPtr<IGVDBTopologyActivity>;
+GVDB_NVRHI_C_API nvrhi::FRESULT gvdbCreateNvrhiTopologyActivity(uint32_t apiVersion,
+                                                                const TopologyActivityCreateDesc*,
+                                                                IGVDBTopologyActivity** output) noexcept;
+inline nvrhi::FRESULT createTopologyActivity(const TopologyActivityCreateDesc& desc,
+                                             IGVDBTopologyActivity** output) noexcept {
+    return gvdbCreateNvrhiTopologyActivity(c_GVDBNvrhiApiVersion, &desc, output);
+}
 GVDB_NVRHI_C_API nvrhi::FRESULT gvdbCreateNvrhiTopologyEdit(uint32_t apiVersion, const TopologyEditCreateDesc*,
                                                             IGVDBTopologyEdit** output) noexcept;
 inline nvrhi::FRESULT createTopologyEdit(const TopologyEditCreateDesc& desc,

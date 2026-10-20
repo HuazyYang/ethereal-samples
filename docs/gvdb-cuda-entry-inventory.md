@@ -32,8 +32,8 @@ Public leaf marking now has an accepted host workflow through `setActive`/`editN
 `finishTopology` and explicit generation publication. Exact flag bytes, stale-ticket
 rejection, signed inactive/reactivated leaves, all-inactive topology and retained GPU
 node/channel bytes pass four APIs, both native graphics adapters, CUDA memory checks
-and installed static/shared consumers. This disposition covers host-owned markers;
-GPU marker ingestion and incremental key/link/delink integration remain separate.
+and installed static/shared consumers. GPU marker ingestion and fixed-pool delink/relink now also pass the public
+activity factory; GPU key-driven growth remains separate.
 
 The public ray-query factory now accepts copied 64-byte legacy-layout records and
 retained R32 snapshots. It exposes exact record transport, separate hit/normal GPU
@@ -59,8 +59,11 @@ actual device bytes after explicit completion, then prepares ordinary publicatio
 Stale host/channel/publication revisions, invalid graphs and exhausted budgets
 fail without changing the owner. GPU marker tests cover exact flags, inactive/
 reactivated/empty graphs, retained nodes/channels and installed static/shared
-consumers. Linking stays portable-foundation: incremental link/delink orchestration,
-disconnected-pool compaction and GPU-driven growth remain distinct work.
+consumers. The additive activity factory now orchestrates all five topology
+kernels, recomputes internal flags and reconnects inactive nodes. Native Windows,
+CUDA memory and installed static/shared checks pass. Linking stays
+portable-foundation until GPU key-driven new-node allocation and disconnected-pool
+compaction/growth are integrated.
 
 Shared retained rendering modes now expose voxel/trilinear/depth-alias/deep/
 level-set/empty-skip controls, with spray and render-to-file adoption. Four-API

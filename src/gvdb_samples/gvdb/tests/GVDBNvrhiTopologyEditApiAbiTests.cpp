@@ -28,6 +28,21 @@ int main() {
             out)
             return 4;
     }
-    std::puts("PASS topology edit ABI defaults, version, size, reserved fields and null outputs");
+    g::TopologyActivityCreateDesc activity;
+    g::TopologyActivityDesc activityRequest;
+    if (activity.structSize != 96 || activity.reserved || activity.device || activityRequest.structSize != 48 ||
+        activityRequest.reserved || activityRequest.reserved2 ||
+        activityRequest.maxAllocatedBytes != UINT64_MAX || activityRequest.maxBuffers != UINT32_MAX)
+        return 5;
+    auto* activityOut = reinterpret_cast<g::IGVDBTopologyActivity*>(uintptr_t(1));
+    if (g::gvdbCreateNvrhiTopologyActivity(g::c_GVDBNvrhiApiVersion + 1, &activity, &activityOut) !=
+            FE_UNSUPPORTED ||
+        activityOut)
+        return 6;
+    activityOut = reinterpret_cast<g::IGVDBTopologyActivity*>(uintptr_t(1));
+    if (g::createTopologyActivity(activity, &activityOut) != FE_INVALID_ARGS || activityOut ||
+        g::createTopologyActivity(activity, nullptr) != FE_INVALID_ARGS)
+        return 7;
+    std::puts("PASS topology edit/activity ABI defaults, version, size, reserved fields and null outputs");
     return 0;
 }
