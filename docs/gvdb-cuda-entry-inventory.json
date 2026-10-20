@@ -215,12 +215,13 @@
       "remaining": "Custom renderer adopts public snapshots and strict raw-resource ABI validation. Exact comparison against the previous portable renderer and native Windows/CUDA memory checks pass; broader legacy visual/performance/platform gates remain."
     },
     "raycast-modes": {
-      "status": "partial",
+      "status": "sample-validated",
       "replacementFiles": [
-        "gvdb/slang/GVDBRaycast.slang",
-        "gvdb/slang/GVDBRaycastCommon.slang"
+        "samples/sample-utils/OwnedVolumeModes.cpp",
+        "samples/sample-utils/OwnedVolumeModes.slang",
+        "samples/sample-utils/OwnedVolumeModesTests.cpp"
       ],
-      "remaining": "Owned volume/surface rendering binds retained raw snapshots. Each additional legacy shading mode still needs explicit controls/equations/visual acceptance and owned scene adoption."
+      "remaining": "Retained voxel/trilinear/depth-alias/deep/level-set/empty-skip modes expose controls, explicit limits and RGBA8 conversion, with spray and render-to-file adoption. Four APIs, native NVIDIA/AMD validation, CUDA memory checks and matched 1024x768 explosion comparisons pass documented fixture tolerances. Broader scene, per-pixel depth-buffer integration, reconstruction performance and Linux remain."
     },
     "tricubic": {
       "status": "sample-validated",

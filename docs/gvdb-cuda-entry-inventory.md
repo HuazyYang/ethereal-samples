@@ -7,12 +7,12 @@ The grouping records implementation roles, not positional CUDA ABI compatibility
 | State | Entries | Meaning |
 | --- | ---: | --- |
 | owned-validated | 49 | Public volume-backed operators and device queries passed recorded Windows tests; platform and consumer gates remain. |
-| sample-validated | 14 | Migrated sample paths exercise these replacement roles; public ownership and broader acceptance remain. |
+| sample-validated | 20 | Migrated sample paths exercise these replacement roles; public ownership and broader acceptance remain. |
 | portable-foundation | 17 | A portable helper/program exists; the listed public contract or integration work remains. |
-| partial | 20 | Related functionality exists, but the old behavior is not fully covered. |
+| partial | 14 | Related functionality exists, but the old behavior is not fully covered. |
 | pending | 0 | No completed replacement/disposition is claimed. |
 
-OptiX `__exception__main` now has an explicit diagnostic/backend disposition: opt-in SDK context validation, tagged host callbacks and failed completion replace per-pixel black recovery. The existing public shader-stage design is preserved. Zero pending roles does not mean complete parity: the 20 partial roles, public integration and project acceptance gates below remain open.
+OptiX `__exception__main` now has an explicit diagnostic/backend disposition: opt-in SDK context validation, tagged host callbacks and failed completion replace per-pixel black recovery. The existing public shader-stage design is preserved. Zero pending roles does not mean complete parity: the 14 partial roles, public integration and project acceptance gates below remain open.
 
 Other material gaps are explicit in the JSON: public normalized-ushort position quantization and inverse-distance level-set color now have explicit factories. Weighted color preserves the unnormalized sum and defines saturation/zero-distance behavior; public packed ushort velocity encoding now has a separate factory with exact retained attributes; public expanded subcell storage now preserves stable original ordinals and exact canonical attributes, with signed cell locations and composed position/velocity quantization. Broader consumer and platform acceptance remains. Public reduction now excludes inactive/unused slots and aprons, including poisoned imported data. Public point topology uses checked signed host candidates and does not inherit the separate GPU key helper's nonnegative 16-bit limit. Section/compositing and individual raycast/RT shading modes need separate legacy-equation/control/visual acceptance. The existing PIC/FLIP transfer utility is not a complete FLIP solver; the retained fluid samples use SPH.
 
@@ -47,3 +47,10 @@ Native Windows and CUDA memory checks pass. Correct threshold indexing changes
 composition passes all four APIs and differs from retained CUDA approximate
 arithmetic by at most one byte. The group stays partial pending broad legacy
 scene comparisons and multi-volume composition adoption.
+
+Shared retained rendering modes now expose voxel/trilinear/depth-alias/deep/
+level-set/empty-skip controls, with spray and render-to-file adoption. Four-API
+analytic tests, native NVIDIA/AMD validation and CUDA memory checks pass. Matched
+1024x768 explosion images pass documented limits across four APIs; end-to-end
+timing and logical storage are reported separately. Broad scenes, depth-buffer
+integration, reconstruction performance and required external platforms remain.
