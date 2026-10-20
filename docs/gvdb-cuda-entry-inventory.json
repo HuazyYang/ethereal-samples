@@ -53,7 +53,7 @@
         "gvdb/slang/GVDBTopology.slang",
         "gvdb/GVDBHostVolume.cpp"
       ],
-      "remaining": "CPU owner/full replacement and authenticated append are validated; explicit device-authored topology fetch/commit remains separate."
+      "remaining": "CPU owner/full replacement and authenticated append are validated. Public fixed-pool private GPU editing now fetches/validates actual bytes and prepares transactional publication with stale-base rejection. The marker workflow passes native, memory and installed static/shared checks. Incremental delink/relink orchestration and disconnected-pool compaction/growth remain separate."
     },
     "split-positions": {
       "status": "owned-validated",
@@ -129,7 +129,7 @@
         "gvdb/GVDBNvrhiPointApi.cpp",
         "gvdb/GVDBNvrhiVolume.cpp"
       ],
-      "remaining": "Public full rebuild and stable-ID accumulation validate asymmetric/symmetric support, signed center union, minimum root level and rollback budgets. Explicit device-authored topology fetch/commit and platform/performance gates remain."
+      "remaining": "Public full rebuild and stable-ID accumulation validate asymmetric/symmetric support, signed center union, minimum root level and rollback budgets. Fixed-pool device-authored topology fetch/publication is validated; device-driven growth/count allocation, platform and performance gates remain."
     },
     "deposition": {
       "status": "owned-validated",

@@ -53,6 +53,15 @@ All 32 single-volume images remain byte-identical. Section-layer RGB is exact;
 opaque alpha is correctly 255 versus retained CUDA's approximate 254.
 Broader scene controls, reconstruction performance and Linux remain open.
 
+Public fixed-pool topology editing now copies authenticated node/child pools into
+private GPU buffers, permits caller-recorded Slang edits, fetches and validates
+actual device bytes after explicit completion, then prepares ordinary publication.
+Stale host/channel/publication revisions, invalid graphs and exhausted budgets
+fail without changing the owner. GPU marker tests cover exact flags, inactive/
+reactivated/empty graphs, retained nodes/channels and installed static/shared
+consumers. Linking stays portable-foundation: incremental link/delink orchestration,
+disconnected-pool compaction and GPU-driven growth remain distinct work.
+
 Shared retained rendering modes now expose voxel/trilinear/depth-alias/deep/
 level-set/empty-skip controls, with spray and render-to-file adoption. Four-API
 analytic tests, native NVIDIA/AMD validation and CUDA memory checks pass. Matched

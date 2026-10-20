@@ -77,6 +77,14 @@ class VolumeAdoptionBuilder {
     // Topology-only: preservation must be enabled and uploads must be absent.
     // Candidate stays reusable until the owner changes; neither failure nor successful
     // preparation consumes it. Resulting generation tickets remain one-use.
+    // Shared stale-baseline check for device-edited private pool candidates.
+    static nvrhi::FRESULT validateAccumulationBase(const NvrhiVolume&, const AccumulationCandidate&) noexcept;
+    static HostVolumeLimits hostLimits(const NvrhiVolume&) noexcept;
+    // Validated fetched graph replacement; retains channels and remaps by origin.
+    // A fresh epoch invalidates cached IDs even when pool order happens to match.
+    static nvrhi::FRESULT prepareFetchedTopology(NvrhiVolume&, const AccumulationCandidate&,
+        const HostVolume&, const GenerationRequest&, bool preserveAttachment,
+        std::unique_ptr<PreparedGeneration>& output) noexcept;
     static nvrhi::FRESULT prepareAccumulation(NvrhiVolume&, const AccumulationCandidate&,
         const GenerationRequest&, std::unique_ptr<PreparedGeneration>& output) noexcept;
     // Copies frozen, placed CPU metadata from an authenticated retained generation. No

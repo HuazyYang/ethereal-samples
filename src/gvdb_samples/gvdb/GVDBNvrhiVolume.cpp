@@ -715,6 +715,27 @@ FRESULT detail::VolumeAdoptionBuilder::beginAccumulation(NvrhiVolume& volume,
         output = std::unique_ptr<AccumulationCandidate>(new AccumulationCandidate(std::move(candidate)));
     });
 }
+FRESULT detail::VolumeAdoptionBuilder::validateAccumulationBase(const NvrhiVolume& volume,
+    const AccumulationCandidate& candidate) noexcept {
+    return guarded([&] {
+        const auto& state = *volume.m_impl;
+        const auto& captured = *candidate.m_impl;
+        require(captured.owner == state.owner && captured.baseSerial == state.serial &&
+                captured.channelRevision == state.channelRevision && !state.host.dirty() &&
+                sameRevision(captured.hostRevision, state.host.revision()));
+    });
+}
+HostVolumeLimits detail::VolumeAdoptionBuilder::hostLimits(const NvrhiVolume& volume) noexcept {
+    return volume.m_impl->host.m_limits;
+}
+FRESULT detail::VolumeAdoptionBuilder::prepareFetchedTopology(NvrhiVolume& volume,
+    const AccumulationCandidate& baseline, const HostVolume& source, const GenerationRequest& request,
+    bool preserveAttachment, std::unique_ptr<PreparedGeneration>& output) noexcept {
+    return guarded([&] {
+        check(validateAccumulationBase(volume, baseline));
+        check(prepareTopology(volume, source, request, preserveAttachment, output));
+    });
+}
 FRESULT detail::VolumeAdoptionBuilder::prepareAccumulation(NvrhiVolume& volume,
     const AccumulationCandidate& candidate, const GenerationRequest& request,
     std::unique_ptr<PreparedGeneration>& output) noexcept {
@@ -723,9 +744,7 @@ FRESULT detail::VolumeAdoptionBuilder::prepareAccumulation(NvrhiVolume& volume,
         const auto& captured = *candidate.m_impl;
         const HostVolume& source = *captured.host;
         const HostVolume& before = state.host;
-        require(captured.owner == state.owner && captured.baseSerial == state.serial &&
-                captured.channelRevision == state.channelRevision && !before.dirty() &&
-                sameRevision(captured.hostRevision, before.revision()));
+        check(validateAccumulationBase(volume, candidate));
         require(!source.dirty() && source.revision().epoch == captured.hostRevision.epoch);
         require(request.placement.preserve && request.uploadCount == 0);
         require(source.m_config.levelCount == before.m_config.levelCount &&
