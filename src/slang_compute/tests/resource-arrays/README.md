@@ -2,6 +2,8 @@
 
 `ResourceArrays.cmake` registers a ray-generation-only native pipeline test for D3D12, Vulkan RT and OptiX. It uses the production artifact reader, reflection-derived binding layout and backend resource packing. Include it after the sample shader helpers and `donut_app` are defined.
 
+The two dispatches use uncached and cached shader tables respectively, each with exactly one public ray-generation entry and no miss shader. This also exercises the internal no-op miss record required by some Linux OptiX drivers.
+
 The six arrays have eight descriptors each: scalar floats at t16, raw node bytes at t24, raw child bytes at t32, LevelInfo records at t40, raw RGBA bytes at t48 and float4 transfer records at t56. Each invocation selects a different element through `NonUniformResourceIndex`; all resources contain distinguishable values and lengths. The second dispatch also uses three shared valid dummy entries. Every binding selects a 256-byte-aligned nonzero subrange. Caller references to all input buffers, the artifact/program and shader are dropped before dispatch, and the binding set is released after recording but before submission.
 
 The measured Slang 2026.10.2 OptiX layout is six consecutive 128-byte arrays at offsets 0, 128, 256, 384, 512 and 640, followed by the 16-byte output buffer descriptor at 768. Each element is `{uint64 pointer, uint64 count}`. Counts are elements for structured buffers and bytes for raw buffers. Global parameters occupy 784 bytes; there are no entry parameters. DXIL and SPIR-V use descriptor arrays with logical base registers above; Vulkan output u0 is physical binding 384 with the default NVRHI register shifts.

@@ -103,10 +103,12 @@ int run(IDevice* device,const char* path){
     rt::PipelineHandle pipeline;OK(device->createRayTracingPipeline(rt::PipelineDesc()
         .addShader(rt::PipelineShaderDesc().setExportName("arrayProbe").setShader(raygen)).addBindingLayout(layout)
         .setMaxPayloadSize(4).setMaxAttributeSize(8).setMaxRecursionDepth(1),&pipeline));
-    rt::ShaderTableHandle table;OK(pipeline->createShaderTable(rt::ShaderTableDesc().setMaxEntries(1),&table));
-    table->setRayGenerationShader("arrayProbe");
     program=nullptr;raygen=nullptr;bytes.clear();
     for(unsigned round=0;round<2;++round){
+        rt::ShaderTableHandle table;OK(pipeline->createShaderTable(
+            rt::ShaderTableDesc().setMaxEntries(1).setIsCached(round!=0),&table));
+        table->setRayGenerationShader("arrayProbe");
+        require(table->getNumEntries()==1,"raygen-only table has one public entry and no miss shader");
         CommandListHandle upload;OK(device->createCommandList(CommandListParameters(),&upload));upload->open();
         std::array<Slot,8> slots;Slot dummy;if(round)dummy=makeSlot(device,upload,31);
         for(unsigned i=0;i<8;++i)slots[i]=round&&i>=5?dummy:makeSlot(device,upload,i);
