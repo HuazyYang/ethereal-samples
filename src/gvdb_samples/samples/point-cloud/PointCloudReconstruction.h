@@ -21,10 +21,11 @@ class PointCloudReconstruction {
     ethereal::slang::ComputeRuntime* m_runtime;
     struct State;
     std::unique_ptr<State> m_state;
-    std::unique_ptr<State> createState() const;
+    std::unique_ptr<State> createState(bool scalarChannel = true) const;
     std::vector<slang::Float4> m_hostPositions;
     QuantizationBounds m_quantization{};
     uint64_t m_generation = 0;
+    uint32_t m_keyBatches = 0;
 
  public:
     explicit PointCloudReconstruction(ethereal::slang::ComputeRuntime& runtime);
@@ -42,6 +43,7 @@ class PointCloudReconstruction {
     const std::vector<slang::Float4>& hostPositions() const { return m_hostPositions; }
     const QuantizationBounds& quantization() const { return m_quantization; }
     uint64_t generation() const { return m_generation; }
+    uint32_t topologyKeyBatches() const { return m_keyBatches; }
     std::vector<PointLine> pointLines() const;
 };
 }  // namespace gvdb::samples::pointcloud

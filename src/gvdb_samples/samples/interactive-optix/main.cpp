@@ -45,6 +45,7 @@ int main(int argc, const char **argv)
                     "interactive-optix [-dx12|-vk|-cuda] [--adapter N] [--validation]\n"
                     "  [--shading volume|trilinear|emptyskip|levelset] [--translate X Y Z]\n"
                     "  [--mesh lucy.obj] [--volume explosion.vbx] [--max-samples N]\n"
+                    "  [--secondary-bias world-distance]\n"
                     "  [--headless] [--frames N] [--samples N] [--screenshot image.png]\n"
                     "  [--width N] [--height N] [--verify] [--self-test]\n"
                     "Inspector retains shading, volume translation and max samples.\n"
@@ -69,6 +70,12 @@ int main(int argc, const char **argv)
                 view.height = positive(value());
             else if (!std::strcmp(argv[i], "--max-samples"))
                 sceneOptions.maxSamples = positive(value());
+            else if (!std::strcmp(argv[i], "--secondary-bias")) {
+                const std::string text = value();
+                size_t end = 0;
+                sceneOptions.secondaryBias = std::stof(text, &end);
+                if (end != text.size()) throw std::invalid_argument("Invalid secondary ray bias");
+            }
             else if (!std::strcmp(argv[i], "--frames"))
             {
                 frames = positive(value());

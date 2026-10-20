@@ -94,6 +94,8 @@ InteractiveScene::InteractiveScene(ethereal::slang::ComputeRuntime &runtime, std
       m_renderer(runtime, artifact(runtime.device()))
 {
     setMaxSamples(options.maxSamples);
+    if (!std::isfinite(options.secondaryBias) || options.secondaryBias < 0)
+        throw std::invalid_argument("Secondary ray bias must be finite and nonnegative");
     // CPU input is encoded once; public import owns the only GPU publication.
     std::vector<uint8_t> encoded;
     std::string error;
@@ -116,6 +118,7 @@ InteractiveScene::InteractiveScene(ethereal::slang::ComputeRuntime &runtime, std
     volume.threshold = {.1f, 0, .3f, 0};
     volume.cutoff = {.001f, .001f, 0, 0};
     auto material = referenceMaterial();
+    material.shadowBias = material.reflBias = material.refrBias = options.secondaryBias;
     if (m_input->analytic)
     {
         volume.transfer = {{.6f, .2f, .1f, .2f}, {.6f, .2f, .1f, .2f}};

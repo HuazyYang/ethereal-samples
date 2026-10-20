@@ -22,6 +22,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <cmath>
 
 using namespace donut;
 using namespace SampleUtils;
@@ -37,6 +38,7 @@ class InteractiveOptixApp : public GVDBApp {
         m_screenshotSamples = samples;
     }
     void setInitialShading(gvdb::VolumeShading shading) { m_shading = shading; }
+    void setSecondaryBias(float bias) { m_secondaryBias = bias; }
 
     bool OnInit() override {
         if (!getRTDevice()) {
@@ -95,6 +97,7 @@ class InteractiveOptixApp : public GVDBApp {
         m_renderer->getViewParams().backgroundColor = {0.1f, 0.2f, 0.4f, 1.f};
 
         OptixMaterialParams surf;
+        surf.shadowBias = surf.reflBias = surf.refrBias = m_secondaryBias;
         surf.lightWidth = 0.5f;
         surf.shadowWidth = 0.5f;
         surf.diffColor = {.5f, .54f, .5f};
@@ -214,17 +217,24 @@ class InteractiveOptixApp : public GVDBApp {
     int m_maxSamples = 1024;
     std::string m_screenshotPath;
     int m_screenshotSamples = 64;
+    float m_secondaryBias = 0;
 };
 
 int main(int argc, const char **argv) {
     std::string screenshot;
     int screenshotSamples = 64;
+    float secondaryBias = 0;
     gvdb::VolumeShading shading = gvdb::VolumeShading::Volume;
     for (int i = 1; i < argc; ++i) {
         if (strcmp(argv[i], "--screenshot") == 0 && i + 1 < argc) {
             screenshot = argv[++i];
         } else if (strcmp(argv[i], "--samples") == 0 && i + 1 < argc) {
             screenshotSamples = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "--secondary-bias") == 0) {
+            if (++i >= argc) return 1;
+            char* end = nullptr;
+            secondaryBias = std::strtof(argv[i], &end);
+            if (end == argv[i] || *end || !std::isfinite(secondaryBias) || secondaryBias < 0) return 1;
         } else if (strcmp(argv[i], "--shading") == 0 && i + 1 < argc) {
             const char *name = argv[++i];
             if (strcmp(name, "trilinear") == 0) shading = gvdb::VolumeShading::Trilinear;
@@ -241,6 +251,7 @@ int main(int argc, const char **argv) {
     return runGVDBApp(argc, argv, options, [&](app::DeviceManager *dm) -> nvrhi::AutoPtr<GVDBApp> {
         auto app = MAKE_RC_OBJ_PTR(InteractiveOptixApp, dm);
         app->setInitialShading(shading);
+        app->setSecondaryBias(secondaryBias);
         if (!screenshot.empty()) app->setScreenshot(screenshot, screenshotSamples);
         return app;
     });

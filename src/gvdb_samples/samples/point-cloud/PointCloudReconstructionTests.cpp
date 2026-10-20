@@ -99,6 +99,7 @@ void verify(ethereal::slang::ComputeRuntime& runtime, PointCloudReconstruction& 
     const auto expectedPoints = decodePointFrame(frame, settings.renderScale);
     const auto& actual = reconstruction.hostPositions();
     require(actual.size() == expectedPoints.size(), "Converted point count");
+    require(reconstruction.topologyKeyBatches() > 0, "GPU keys construct the published topology");
     for (size_t i = 0; i < actual.size(); ++i) {
         expectNear(actual[i].x, expectedPoints[i].x, 2e-5f, "Converted x");
         expectNear(actual[i].y, expectedPoints[i].y, 2e-5f, "Converted y");
@@ -333,10 +334,12 @@ int main(int argc, const char** argv) {
             }
             require(frame.count() == 1867648 && negative > 0 && lo < 0 && hi > 0,
                     "Real point asset reconstructs a level-set surface");
+            require(reconstruction.topologyKeyBatches() > 1, "Real asset exercises bounded GPU key batches");
             require(reconstruction.pointLines().size() == 233456, "Real point overlay cap/stride");
             verifyAssetSamples(reconstruction, frame, settings, values);
             std::cout << "Point-cloud real asset PASS: points=" << frame.count() << " leaves=" << level.nodes.z
-                      << " negative=" << negative << " min=" << lo << " max=" << hi << " sum=" << sum << '\n';
+                      << " negative=" << negative << " min=" << lo << " max=" << hi << " sum=" << sum
+                      << " keyBatches=" << reconstruction.topologyKeyBatches() << '\n';
             return 0;
         }
         PointFrame positive{

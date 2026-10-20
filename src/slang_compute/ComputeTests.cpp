@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "ComputeRuntime.h"
+#include "ExampleDevice.h"
+#include <atomic>
 #include "../gvdb_samples/tests/PortableFixtures.h"
 #include "../gvdb_samples/tests/RawAtlasFixtures.h"
 #include "../gvdb_samples/tests/PointFixtures.h"
@@ -44,7 +46,7 @@ void algorithms(ComputeRuntime& runtime) {
         }
     }
     puts("PASS recursive scan, including partial groups and three hierarchy levels");
-    std::vector<gvdb::slang::KeyValue> input(515);
+    std::vector<gvdb::slang::KeyValue> input(65539);
     for(uint32_t i=0;i<input.size();++i) {
         input[i].key={uint32_t((i*97)%19),uint32_t((i*7)%5)};
         input[i].value=i;input[i].reserved=0;
@@ -356,7 +358,11 @@ void voxelization(ComputeRuntime& runtime) {
             if(format==g::VoxelFormat::R8_UINT)value=float(bytes[i]);
             else if(format==g::VoxelFormat::R32_FLOAT)std::memcpy(&value,bytes.data()+i*4,4);
             else {int32_t integer;std::memcpy(&integer,bytes.data()+i*4,4);value=float(integer);}
-            require(value==expected[i],"solid voxelization surface/interior/exterior classification");
+            if (value != expected[i]) {
+                std::fprintf(stderr, "Voxelization format=%u index=%zu actual=%g expected=%g\n",
+                    uint32_t(format), i, value, expected[i]);
+                throw std::runtime_error("solid voxelization surface/interior/exterior classification");
+            }
         }
     }
     puts("PASS binned solid voxelization, triangle boundaries and three output formats");
@@ -369,17 +375,17 @@ int run(IDevice* device) {
 }
 int main(int argc,const char** argv) {
     donut::log::ConsoleApplicationMode();
+    std::atomic<uint32_t> validationProblems{0};
+    donut::log::SetCallback([&](donut::log::Severity severity, const char* message) {
+        if (severity >= donut::log::Severity::Warning) ++validationProblems;
+        std::fprintf(stderr, "%s\n", message);
+    });
     try {
-#if ETHEREAL_TEST_CUDA
-        for(int i=1;i<argc;++i)if(std::strcmp(argv[i],"-cuda")==0) {
-            cuda::DeviceDesc desc;desc.enableOptiX=false;
-            auto device=cuda::createDevice(desc);require(bool(device),"CUDA device unavailable");return run(device);
+        {
+            ethereal::slang::ExampleDevice device(argc, argv);
+            run(device.get());
         }
-#endif
-        const auto api=donut::app::GetGraphicsAPIFromCommandLine(argc,argv);
-        auto manager=TakeOver(donut::app::DeviceManager::Create(api));require(bool(manager),"Backend unavailable");
-        donut::app::DeviceCreationParameters params;params.enableNvrhiValidationLayer=true;
-        require(manager->CreateHeadlessDevice(params),"Device creation failed");
-        const int result=run(manager->GetDevice());manager->Shutdown();return result;
+        require(validationProblems == 0, "Compute validation warnings/errors");
+        return 0;
     } catch(const std::exception& error) {std::fprintf(stderr,"FAIL: %s\n",error.what());return 1;}
 }

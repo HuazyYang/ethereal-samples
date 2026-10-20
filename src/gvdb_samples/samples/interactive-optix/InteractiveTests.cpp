@@ -60,6 +60,19 @@ void runSelfTests(ethereal::slang::ComputeRuntime &runtime)
     input->mesh.positions = {{6, 0, 0, 1}, {6, 1, 2, 1}, {6, 2, 0, 1}};
     input->mesh.indices = {0, 1, 2};
     InteractiveScene scene(runtime, input);
+    Options biased;
+    biased.secondaryBias = .01f;
+    InteractiveScene biasedScene(runtime, input, biased);
+    require(biasedScene.description().materials[0].reflBias == .01f &&
+        biasedScene.description().materials[0].refrBias == .01f,
+        "Explicit world-space secondary origin bias");
+    for (float value : {-1.f, INFINITY, NAN}) {
+        biased.secondaryBias = value;
+        bool rejected = false;
+        try { InteractiveScene invalid(runtime, input, biased); }
+        catch (const std::invalid_argument&) { rejected = true; }
+        require(rejected, "Invalid secondary bias rejected");
+    }
     const auto snapshot=scene.ownedSnapshot();
     require(snapshot && snapshot->getDevice()==runtime.device(), "Interactive public same-device snapshot");
     require(scene.description().volumes[0].ownedSnapshot==snapshot && scene.description().volumes[0].rawScalar,

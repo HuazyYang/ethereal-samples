@@ -48,13 +48,14 @@
       "remaining": "Public device-only copied-source query, caller recording/completion, exact endpoint division and explicit Vulkan RTE32 pass NVIDIA/AMD Windows graphics and CUDA memory/package checks. Consumer integration, Linux and broader performance/reference gates remain."
     },
     "linking": {
-      "status": "portable-foundation",
+      "status": "owned-validated",
       "replacementFiles": [
         "gvdb/slang/GVDBTopology.slang",
         "gvdb/GVDBHostVolume.cpp",
-        "gvdb/GVDBNvrhiTopologyEditApi.cpp"
+        "gvdb/GVDBNvrhiTopologyEditApi.cpp",
+        "samples/point-cloud/PointCloudReconstruction.cpp"
       ],
-      "remaining": "Public fixed-pool GPU marker/delink/relink orchestration, validated fetch and transactional publication pass four Windows APIs, native NVIDIA/AMD validation, CUDA memory checking and installed static/shared consumers. Internal activity is recomputed and inactive allocated nodes are reconnected. GPU key-driven new-node allocation and disconnected-pool compaction/growth remain separate integration work."
+      "remaining": "Public fixed-pool marker/delink/relink, validated fetch and transactional publication pass four Windows APIs, native adapters, CUDA memory checking and installed consumers. Production point-cloud reconstruction now integrates GPU keys, authoritative CPU allocation, GPU links, fetched graph validation and atlas publication. Inactive allocated nodes remain connected; fresh frame replacement compacts candidates. Arbitrary disconnected pools are rejected. Linux and real-peer gates remain."
     },
     "split-positions": {
       "status": "owned-validated",
@@ -116,12 +117,13 @@
       "remaining": "Public retained-snapshot stable subcell ranges, signed cell locations, original ordinals and expanded canonical attributes pass four Windows APIs, both native graphics adapters, CUDA memory checking and installed static/shared consumers. Position and velocity ushort3 factories compose without changing association. Fixed source leaf-pool ordering and stable point ordering replace arbitrary legacy permutations/atomic scheduling. Broader consumers, Linux and performance/reference gates remain."
     },
     "keys": {
-      "status": "portable-foundation",
+      "status": "sample-validated",
       "replacementFiles": [
         "gvdb/slang/GVDBPointKeys.slang",
-        "gvdb/slang/GVDBAlgorithms.slang"
+        "gvdb/slang/GVDBAlgorithms.slang",
+        "samples/point-cloud/PointCloudReconstruction.cpp"
       ],
-      "remaining": "GPU key helper still uses nonnegative 16-bit coordinates. Public point topology uses checked signed host candidates from owned converted positions; GPU-key integration and platform/performance gates remain."
+      "remaining": "Production point-cloud reconstruction normalizes checked signed support into bounded nonnegative key batches, then GPU-generates/sorts/compacts keys before host allocation and GPU relinking. The real asset exercises five batches, with independent CPU oracles and unchanged captures. The general public point API retains its signed host path. Native Windows and full-asset CUDA memory checks pass; Linux remains."
     },
     "topology-growth": {
       "status": "owned-validated",
@@ -178,11 +180,13 @@
       "remaining": "Public inverse-distance factory composes with authenticated GPU-decoded quantization. Unnormalized RGBA sum is preserved; saturation and zero-distance lanes are explicitly defined instead of undefined legacy casts. Four APIs, both native graphics adapters, CUDA memcheck and installed static/shared consumers pass. Linux, broad visual/performance and consumer gates remain."
     },
     "algorithms": {
-      "status": "portable-foundation",
+      "status": "sample-validated",
       "replacementFiles": [
-        "gvdb/slang/GVDBAlgorithms.slang"
+        "gvdb/slang/GVDBAlgorithms.slang",
+        "../slang_compute/ComputeRuntime.cpp",
+        "samples/point-cloud/PointCloudReconstruction.cpp"
       ],
-      "remaining": "Scan/stable radix replace algorithm roles, not positional CUDA ABIs; platform/performance gates remain."
+      "remaining": "Stable radix sorting and recursive scans now feed production key compaction, with one reusable scan workspace across all 64 passes. Independent 65,539-entry stable-sort tests cover three levels and tails; native NVIDIA/AMD validation and full-asset CUDA memory checks pass. Logical scratch and process timing/CPU-memory regressions are separately documented. Linux remains."
     },
     "voxelization": {
       "status": "owned-validated",
@@ -256,12 +260,14 @@
       "remaining": "Retained 2D/3D sections and exhaustive integer RGBA8 composition pass four APIs. Spray adopts 3D sections; render-to-file adopts ordered retained multi-volume layers with GPU packing/diagnostics. Independent two-volume equations, native adapters, CUDA memory and matched translated two-explosion captures pass. Exact integer over fixes the retained approximate opaque alpha 254 to 255. Broader scene controls, reconstruction performance and Linux remain."
     },
     "mixed-rt": {
-      "status": "partial",
+      "status": "sample-validated",
       "replacementFiles": [
         "samples/sample-utils/SlangSceneRT.slang",
-        "gvdb/slang/GVDBRayTracing.slang"
+        "gvdb/slang/GVDBRayTracing.slang",
+        "samples/interactive-optix/InteractiveScene.cpp",
+        "samples/sample-utils/CompareLegacySceneRT.py"
       ],
-      "remaining": "Shared DXR/Vulkan/OptiX scenes consume public owned snapshots. Hierarchy entry and unrounded level-set sampling are corrected with native/memory validation. Fresh reference captures distinguish the repaired zero-gradient NaN failure; an empty-skip image difference and broader visual/platform gates remain."
+      "remaining": "Independent material/geometry tests and matched 1024x768 eight-sample Lucy/explosion captures pass DXR/Vulkan/OptiX with explicit 0.01 secondary bias. Zero-bias self-intersection divergence is diagnosed; default controls stay unchanged. Level-set acceptance explicitly uses a separate zero-offset NaN diagnostic, with the unchanged failing reference also reported. Finite shading, independent RNG and pixel centers are documented corrections. This is fixture-specific validation, not universal pixel identity; Linux and real-peer gates remain."
     },
     "exception": {
       "status": "sample-validated",

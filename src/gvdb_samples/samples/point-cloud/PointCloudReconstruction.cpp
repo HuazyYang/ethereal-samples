@@ -2,6 +2,8 @@
 #include "PointCloudReconstruction.h"
 #include "ComputeRuntime.h"
 #include <gvdb/GVDBNvrhiPointQuantizeApi.h>
+#include <gvdb/GVDBSlangPointKeys.h>
+#include <gvdb/GVDBNvrhiTopologyEditApi.h>
 #include <array>
 #include <gvdb/GVDBNvrhiGatherApi.h>
 #include <gvdb/GVDBNvrhiApronApi.h>
@@ -91,7 +93,8 @@ struct PointCloudReconstruction::State {
         return result;
     }
 };
-std::unique_ptr<PointCloudReconstruction::State> PointCloudReconstruction::createState() const {
+std::unique_ptr<PointCloudReconstruction::State> PointCloudReconstruction::createState(
+    bool scalarChannel) const {
     m_runtime->flush();
     auto state = std::make_unique<State>();
     state->device = m_runtime->device();
@@ -104,9 +107,11 @@ std::unique_ptr<PointCloudReconstruction::State> PointCloudReconstruction::creat
     desc.remapArtifact = binary.data();
     desc.remapArtifactBytes = binary.size();
     check(p::createVolume(desc, &state->owner), "Point-cloud owner");
-    p::ChannelDesc channel;
-    channel.voidValue = {3, 0, 0, 0};
-    check(state->owner->setChannel(0, channel), "Point-cloud scalar channel");
+    if (scalarChannel) {
+        p::ChannelDesc channel;
+        channel.voidValue = {3, 0, 0, 0};
+        check(state->owner->setChannel(0, channel), "Point-cloud scalar channel");
+    }
     return state;
 }
 PointCloudReconstruction::PointCloudReconstruction(ethereal::slang::ComputeRuntime& runtime)
@@ -172,7 +177,7 @@ void PointCloudReconstruction::reconstruct(const PointFrame& frame, const Recons
         !std::isfinite(settings.smoothingBias))
         throw std::invalid_argument("Point cloud smoothing parameters are invalid");
     // Build privately; only a completely reconstructed frame becomes visible.
-    auto state = createState();
+    auto state = createState(false);
     auto conversionBinary = artifact(*m_runtime, "GVDBPointStreamConversion_convertPointStream.bin");
     p::PointOpsCreateDesc pointCreate;
     pointCreate.volume = state->owner;
@@ -238,6 +243,51 @@ void PointCloudReconstruction::reconstruct(const PointFrame& frame, const Recons
     }
     // Legacy fromBranching(r4,r3,r2,r1,r0) places r0=4 at the leaf: width16.
     std::set<std::tuple<int32_t, int32_t, int32_t>> leaves;
+    // Keep support enumeration in checked signed coordinates. Normalize each
+    // bounded batch by its integer minimum before GPU key generation, stable
+    // radix sorting and scan compaction. Merge only compacted batches on the CPU.
+    constexpr size_t keyBatchCapacity = 1u << 20;
+    std::vector<std::array<int32_t, 3>> candidates;
+    candidates.reserve(std::min(keyBatchCapacity, host.size()));
+    uint32_t keyBatches = 0;
+    auto flushKeys = [&] {
+        if (candidates.empty())
+            return;
+        auto minimum = candidates.front(), maximum = minimum;
+        for (const auto& candidate : candidates)
+            for (size_t axis = 0; axis < 3; ++axis) {
+                minimum[axis] = std::min(minimum[axis], candidate[axis]);
+                maximum[axis] = std::max(maximum[axis], candidate[axis]);
+            }
+        for (size_t axis = 0; axis < 3; ++axis)
+            if (int64_t(maximum[axis]) - minimum[axis] > 65535ll * 16)
+                throw std::invalid_argument("Point-cloud support exceeds the GPU key coordinate domain");
+        std::vector<Float4> normalized;
+        normalized.reserve(candidates.size());
+        for (const auto& candidate : candidates)
+            normalized.push_back({float(int64_t(candidate[0]) - minimum[0]),
+                                  float(int64_t(candidate[1]) - minimum[1]),
+                                  float(int64_t(candidate[2]) - minimum[2]), 1});
+        auto positions =
+            m_runtime->buffer(normalized.size() * sizeof(Float4), sizeof(Float4), normalized.data());
+        auto discovered = discoverBrickKeys(*m_runtime, positions, uint32_t(normalized.size()), {16});
+        if (discovered.hasInvalidPositions || discovered.levelCounts[0] != discovered.count ||
+            discovered.count > normalized.size())
+            throw std::runtime_error("Point-cloud GPU key discovery returned invalid support");
+        std::vector<KeyValue> compacted(discovered.count);
+        if (!compacted.empty())
+            m_runtime->read(discovered.keys, compacted.data(), compacted.size() * sizeof(KeyValue));
+        for (const auto& key : compacted) {
+            const int64_t x = int64_t(minimum[0]) + int64_t(key.key.y & 65535u) * 16;
+            const int64_t y = int64_t(minimum[1]) + int64_t(key.key.x >> 16) * 16;
+            const int64_t z = int64_t(minimum[2]) + int64_t(key.key.x & 65535u) * 16;
+            if ((key.key.y >> 16) || x > maximum[0] || y > maximum[1] || z > maximum[2])
+                throw std::runtime_error("Point-cloud compacted key is outside its declared bounds");
+            leaves.emplace(int32_t(x), int32_t(y), int32_t(z));
+        }
+        candidates.clear();
+        ++keyBatches;
+    };
     for (const auto& p : host) {
         const float values[] = {p.x, p.y, p.z};
         int32_t lo[3], hi[3];
@@ -252,9 +302,13 @@ void PointCloudReconstruction::reconstruct(const PointFrame& frame, const Recons
         }
         for (int32_t z = lo[2]; z <= hi[2]; z += 16)
             for (int32_t y = lo[1]; y <= hi[1]; y += 16)
-                for (int32_t x = lo[0]; x <= hi[0]; x += 16)
-                    leaves.emplace(x, y, z);
+                for (int32_t x = lo[0]; x <= hi[0]; x += 16) {
+                    candidates.push_back({x, y, z});
+                    if (candidates.size() == keyBatchCapacity)
+                        flushKeys();
+                }
     }
+    flushKeys();
     for (const auto& origin : leaves) {
         p::NodeId id;
         check(state->owner->activateAtLevel(0, {std::get<0>(origin), std::get<1>(origin), std::get<2>(origin)},
@@ -266,6 +320,62 @@ void PointCloudReconstruction::reconstruct(const PointFrame& frame, const Recons
     generation.placement.minimumBrickCount = {1, 1, 1};
     p::GenerationTicketHandle ticket;
     check(state->owner->prepareGeneration(generation, &ticket), "Point-cloud generation preparation");
+    state->publish(ticket);
+    ticket = nullptr;
+
+    // Host allocation establishes trusted counts, coordinates and the root. The
+    // private GPU transaction clears/rebuilds every child list and reciprocal
+    // parent link, then validates the fetched graph before atlas allocation.
+    {
+        p::TopologyEditCreateDesc editCreate;
+        editCreate.volume = state->owner;
+        p::TopologyEditHandle edit;
+        check(p::createTopologyEdit(editCreate, &edit), "Point-cloud topology editor");
+        p::TopologyEditDesc editOptions;
+        editOptions.placement = generation.placement;
+        p::TopologyEditTicketHandle editTicket;
+        check(edit->prepare(editOptions, &editTicket), "Point-cloud topology edit preparation");
+        p::TopologyActivityCreateDesc activityCreate;
+        activityCreate.device = state->device;
+        const char* entries[] = {"applyLeafMarkers", "delinkLeafBricks", "delinkInternalBricks",
+                                 "initializeChildLists", "linkBricks"};
+        std::array<std::vector<char>, 5> binaries;
+        for (size_t i = 0; i < binaries.size(); ++i) {
+            binaries[i] = artifact(*m_runtime, (std::string("GVDBTopology_") + entries[i] + ".bin").c_str(),
+                                   "gvdb_slang");
+            activityCreate.artifacts[i] = {binaries[i].data(), binaries[i].size()};
+        }
+        p::TopologyActivityHandle activity;
+        check(p::createTopologyActivity(activityCreate, &activity), "Point-cloud topology activity");
+        const std::vector<uint32_t> active(leaves.size(), 1);
+        nvrhi::BufferHandle markers;
+        p::TopologyActivityDesc activityOptions;
+        if (!active.empty()) {
+            nvrhi::BufferDesc desc;
+            desc.byteSize = active.size() * 4;
+            desc.structStride = 4;
+            desc.initialState = nvrhi::ResourceStates::ShaderResource;
+            desc.keepInitialState = true;
+            check(state->device->createBuffer(desc, &markers), "Point-cloud leaf markers");
+            activityOptions.markers = {markers.Get(), 0, desc.byteSize};
+        }
+        state->submit(
+            [&](p::RecordingContext context) {
+                check(edit->recordBegin(context, editTicket), "Point-cloud topology begin");
+                if (markers)
+                    context.commands->writeBuffer(markers, active.data(), active.size() * 4);
+                check(activity->record(context, editTicket, activityOptions), "Point-cloud GPU topology links");
+                check(edit->recordFetch(context, editTicket), "Point-cloud topology fetch");
+            },
+            true);
+        check(editTicket->finishAfterCallerCompletion(&ticket), "Point-cloud fetched graph validation");
+        state->publish(ticket);
+        ticket = nullptr;
+    }
+    p::ChannelDesc channel;
+    channel.voidValue = {3, 0, 0, 0};
+    check(state->owner->setChannel(0, channel), "Point-cloud scalar channel");
+    check(state->owner->prepareGeneration(generation, &ticket), "Point-cloud atlas allocation");
     state->publish(ticket);
     ticket = nullptr;
 
@@ -321,6 +431,7 @@ void PointCloudReconstruction::reconstruct(const PointFrame& frame, const Recons
     m_state = std::move(state);
     m_hostPositions = std::move(host);
     m_quantization = bounds;
+    m_keyBatches = keyBatches;
     ++m_generation;
 }
 std::vector<uint16_t> PointCloudReconstruction::quantizationCodes() const {

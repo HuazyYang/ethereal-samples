@@ -24,6 +24,39 @@ BindingSetItem bind(ResourceType type, uint32_t slot, IBuffer* buffer) {
     default: throw std::runtime_error("This compute runtime expects buffer bindings");
     }
 }
+// A radix pass needs the same scan shape each time. Reuse every hierarchy level
+// so recorded command lists retain one workspace, rather than 64 copies of it.
+struct ScanWorkspace {
+    struct Level { uint32_t count, blocks; BufferHandle output, sums; };
+    std::vector<Level> levels;
+    ScanWorkspace(ComputeRuntime& runtime, uint32_t count) {
+        while (count) {
+            const uint32_t blocks = gvdb::slang::scanBlockCount(count);
+            levels.push_back({count, blocks, runtime.buffer(size_t(count) * 4, 4),
+                runtime.buffer(size_t(blocks) * 4, 4)});
+            if (blocks == 1) break;
+            count = blocks;
+        }
+    }
+    BufferHandle record(ComputeRuntime& runtime, IBuffer* input) const {
+        for (const auto& level : levels) {
+            const gvdb::slang::AlgorithmParameters params{level.count, 0, 0, 0};
+            runtime.dispatch("GVDBAlgorithms", "scanBlocks", &params, sizeof(params), {
+                BindingSetItem::StructuredBuffer_SRV(1, input),
+                BindingSetItem::StructuredBuffer_UAV(0, level.output),
+                BindingSetItem::StructuredBuffer_UAV(1, level.sums)}, level.blocks);
+            input = level.sums;
+        }
+        for (size_t i = levels.size() - 1; i-- > 0;) {
+            const auto& level = levels[i];
+            const gvdb::slang::AlgorithmParameters params{level.count, 0, 0, 0};
+            runtime.dispatch("GVDBAlgorithms", "addScanBlockOffsets", &params, sizeof(params), {
+                BindingSetItem::StructuredBuffer_SRV(2, levels[i + 1].output),
+                BindingSetItem::StructuredBuffer_UAV(0, level.output)}, level.blocks);
+        }
+        return levels.front().output;
+    }
+};
 }
 ComputeRuntime::ComputeRuntime(IDevice* device,const std::filesystem::path& shaderPath)
     :m_device(device),m_shaderPath(shaderPath) {
@@ -191,18 +224,7 @@ void ComputeRuntime::read(IBuffer* source,void* data,size_t bytes) {
 }
 BufferHandle ComputeRuntime::exclusiveScan(IBuffer* input,uint32_t count) {
     if(!count)return {};
-    const uint32_t blocks=gvdb::slang::scanBlockCount(count);
-    auto output=buffer(size_t(count)*4,4),sums=buffer(size_t(blocks)*4,4);
-    gvdb::slang::AlgorithmParameters params{count,0,0,0};
-    dispatch("GVDBAlgorithms","scanBlocks",&params,sizeof(params),{
-        BindingSetItem::StructuredBuffer_SRV(1,input),BindingSetItem::StructuredBuffer_UAV(0,output),
-        BindingSetItem::StructuredBuffer_UAV(1,sums)},blocks);
-    if(blocks>1) {
-        auto offsets=exclusiveScan(sums,blocks);
-        dispatch("GVDBAlgorithms","addScanBlockOffsets",&params,sizeof(params),{
-            BindingSetItem::StructuredBuffer_SRV(2,offsets),BindingSetItem::StructuredBuffer_UAV(0,output)},blocks);
-    }
-    return output;
+    return ScanWorkspace(*this, count).record(*this, input);
 }
 BufferHandle ComputeRuntime::radixSort(IBuffer* input,uint32_t count) {
     if(!count)return {};
@@ -210,11 +232,12 @@ BufferHandle ComputeRuntime::radixSort(IBuffer* input,uint32_t count) {
     auto flags=buffer(size_t(count)*4,4);
     auto first=buffer(size_t(count)*sizeof(gvdb::slang::KeyValue),sizeof(gvdb::slang::KeyValue));
     auto second=buffer(first->getDesc().byteSize,sizeof(gvdb::slang::KeyValue));
+    const ScanWorkspace scan(*this, count);
     for(uint32_t bit=0;bit<64;++bit) {
         const gvdb::slang::AlgorithmParameters params{count,bit,0,0};
         dispatch("GVDBAlgorithms","radixFlags",&params,sizeof(params),{
             BindingSetItem::StructuredBuffer_SRV(0,source),BindingSetItem::StructuredBuffer_UAV(0,flags)},gvdb::slang::scanBlockCount(count));
-        auto offsets=exclusiveScan(flags,count);
+        auto offsets=scan.record(*this, flags);
         BufferHandle output=bit%2==0?first:second;
         dispatch("GVDBAlgorithms","radixScatter",&params,sizeof(params),{
             BindingSetItem::StructuredBuffer_SRV(0,source),BindingSetItem::StructuredBuffer_SRV(1,offsets),

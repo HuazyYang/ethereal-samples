@@ -2,7 +2,7 @@
 // Copyright 2017 NVIDIA Corporation. SPDX-License-Identifier: Apache-2.0
 #include "GVDBTypes.slang"
 #include "GVDBVoxelizeDivision.slang"
-// Public operator: exact geometric division; retained GVDBVoxelize is unchanged.
+// Shared public/standalone operator: exact geometric division on all backends.
 struct Triangle {float4 a,b,c;};
 struct VoxelizeParameters {float4 boundsMinimum,boundsMaximum;uint4 resolution;float4 values;uint4 counts;float4 transformRows[3];};
 ConstantBuffer<VoxelizeParameters> g_Parameters:register(b0);

@@ -17,6 +17,7 @@ struct Options
     sample::SceneVolumeMode shading = sample::SceneVolumeMode::Deep;
     slang::Float4 translation{44, 0, 16, 0};
     uint32_t maxSamples = 1024;
+    float secondaryBias = 0;
 };
 std::shared_ptr<Input> loadInput(const std::filesystem::path &volume, const std::filesystem::path &mesh);
 std::vector<slang::Float4> referenceTransfer();

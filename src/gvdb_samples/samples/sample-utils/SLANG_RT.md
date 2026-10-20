@@ -87,4 +87,19 @@ Run `ctest -R '(gvdb_scene_rt|slang_resource_arrays)' --output-on-failure`. Nati
 
 Original-asset comparisons and production application migrations must still pass before declaring the complete mixed-scene project finished or removing retained legacy implementations. Passing analytic cases does not establish image parity for every material or asset.
 
-`CompareLegacySceneRT.py --legacy <interactive-optix> --portable <interactive-optix> --output <directory>` captures all four original Lucy/explosion modes serially at 1024x768 and eight samples on DX12, Vulkan and CUDA. It reports raw and Gaussian-sigma-four RGB errors, a fixed volume ROI, cross-API differences and process wall time. `--reuse` measures existing captures; `--finite-levelset-reference <png>` adds the explicitly separate NaN-repair diagnostic without replacing the unchanged-reference result. It requires Pillow and numpy and deliberately reports measurements without asserting full visual acceptance.
+`CompareLegacySceneRT.py --legacy <interactive-optix> --portable <interactive-optix> --output <directory>` captures all four original Lucy/explosion modes serially at 1024x768 and eight samples on DX12, Vulkan and CUDA. It reports raw and Gaussian-sigma-four RGB errors, a fixed volume ROI, cross-API differences and process wall time. `--reuse` measures existing captures and preserves their recorded timings; `--finite-levelset-reference <png>` adds the explicitly separate NaN-repair diagnostic without replacing the unchanged-reference result. It requires Pillow and numpy.
+
+Both interactive applications accept `--secondary-bias <world-distance>` for
+reflection, refraction and shadows; it must be finite and nonnegative, and defaults
+to zero. Aligned-camera, zero-jitter diagnostics isolate the empty-skip discrepancy
+to unstable zero-bias secondary self-intersections. A matched 0.01 bias reduces
+the filtered volume ROI error from 2.90449 to 0.40613 in that diagnostic.
+
+The normal eight-sample comparison supports `--secondary-bias 0.01 --verify`,
+requiring the separate finite level-set reference. Limits are mean RGB 2.5,
+filtered mean 0.8, filtered volume ROI 2.5 and cross-API mean 0.02, in byte values.
+A fresh capture passes all twelve API/mode cases. The unchanged level-set result
+remains reported and is not counted as a pass. This defines acceptance for the
+specific matched scene and documented finite-normal correction, not bit-identical
+zero-bias behavior or universal legacy image parity. The aggregate repository's
+`tools/capture-gvdb-finite-reference.ps1` reproduces the separate diagnostic.

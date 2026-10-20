@@ -1,5 +1,6 @@
 # Production public-owner reconstruction; optional independent fixtures.
 include("${CMAKE_CURRENT_LIST_DIR}/../../gvdb/GVDBNvrhiGatherApi.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/../../gvdb/GVDBNvrhiTopologyEditApi.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/../../gvdb/GVDBNvrhiApronApi.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/../../gvdb/GVDBNvrhiVoxelFilterApi.cmake")
 set(point_cloud_dir "${CMAKE_CURRENT_LIST_DIR}")

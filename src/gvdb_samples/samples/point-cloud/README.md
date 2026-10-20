@@ -62,3 +62,25 @@ Compared with preserved portable captures, Vulkan compute is identical; the
 other compute paths change six pixels by one byte. D3D12/CUDA RT change at most
 eleven pixels with maximum byte difference 12; Vulkan RT changes one byte by one.
 Conversion and actual-code references pass; cross-backend bit identity is not promised.
+
+## GPU key and topology integration (2026-10-20)
+
+Reconstruction now batches checked signed support candidates through Slang key
+generation, stable radix sorting, unique marking, scans and compaction. Only
+compacted results are merged on the host. The host allocates the owned tree;
+the public GPU topology activity/edit APIs rebuild its links and validate fetched
+bytes before scalar-atlas allocation. The real asset exercises five batches for
+1,867,648 points and 14,583 leaves. Failed reconstruction preserves the prior frame.
+
+The radix sorter reuses its recursive scan workspace across 64 passes. This bounds
+scratch, but GPU discovery adds overhead relative to the previous host path:
+three-run reconstruction-process medians change from 2428 to 3164 ms on D3D12 and
+2172 to 2570 ms on Vulkan; D3D11/CUDA stay near 2480/2399 ms. These include asset
+I/O and validation and are not kernel timings. Full-scene eight-sample medians are
+2042 ms for retained CUDA/OptiX and 4926/4021/7546 ms for portable DX12/Vulkan/CUDA;
+window/headless setup differs. Performance is recorded separately from correctness.
+
+All seven portable point-cloud compute/RT images remain byte-identical. Independent
+CPU reconstruction oracles, all six native graphics checks and full-asset CUDA
+memory checking pass. The aggregate execution record contains detailed measurements
+and final matrix results; Linux and supported peer hardware remain required.
