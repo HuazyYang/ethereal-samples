@@ -244,13 +244,15 @@
       "remaining": "Public device-only ray query retains authenticated snapshots and copied legacy-layout records, preserves untouched metadata and miss normals, exposes GPU/CPU outputs and explicit exhaustion. Four Windows APIs, native adapters, CUDA memory and installed static/shared consumers pass. Spray adopts the public query; all 20 captures match the prior portable images exactly. Legacy pathological traversal, broad performance and Linux remain separate gates."
     },
     "section-compositing": {
-      "status": "partial",
+      "status": "sample-validated",
       "replacementFiles": [
         "samples/sample-utils/OwnedVolumeSections.cpp",
         "samples/sample-utils/OwnedVolumeSections.slang",
-        "samples/sample-utils/CompositeOver.slang"
+        "samples/sample-utils/CompositeOver.slang",
+        "samples/sample-utils/OwnedVolumeLayers.cpp",
+        "samples/sample-utils/OwnedVolumeLayers.slang"
       ],
-      "remaining": "Explicit retained 2D/3D sections and exhaustive integer RGBA8 composition pass four APIs, both native adapters and CUDA memory checks. Spray adopts 3D sections; corrected threshold indexing changes 32 fixture pixels and all four resulting captures agree. Exact integer composition differs from retained CUDA approximate arithmetic by at most one byte. Broad legacy scene controls, multi-volume composition adoption, performance and Linux remain."
+      "remaining": "Retained 2D/3D sections and exhaustive integer RGBA8 composition pass four APIs. Spray adopts 3D sections; render-to-file adopts ordered retained multi-volume layers with GPU packing/diagnostics. Independent two-volume equations, native adapters, CUDA memory and matched translated two-explosion captures pass. Exact integer over fixes the retained approximate opaque alpha 254 to 255. Broader scene controls, reconstruction performance and Linux remain."
     },
     "mixed-rt": {
       "status": "partial",
@@ -258,7 +260,7 @@
         "samples/sample-utils/SlangSceneRT.slang",
         "gvdb/slang/GVDBRayTracing.slang"
       ],
-      "remaining": "Shared DXR/Vulkan/OptiX mixed-scene implementation exists; material/shading/visual and owned-volume gates remain."
+      "remaining": "Shared DXR/Vulkan/OptiX scenes consume public owned snapshots. Hierarchy entry and unrounded level-set sampling are corrected with native/memory validation. Fresh reference captures distinguish the repaired zero-gradient NaN failure; an empty-skip image difference and broader visual/platform gates remain."
     },
     "exception": {
       "status": "sample-validated",

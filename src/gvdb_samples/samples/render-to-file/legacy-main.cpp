@@ -11,6 +11,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <cmath>
+#include <vector>
 
 using namespace donut;
 using namespace SampleUtils;
@@ -19,8 +21,20 @@ int main(int argc, const char **argv) {
     const int w = 1024, h = 768;
     // Optional: --shade <0..7> overrides the shading mode (VolumeShading values) for debugging.
     int shadeOverride = -1;
-    for (int i = 1; i + 1 < argc; ++i)
-        if (strcmp(argv[i], "--shade") == 0) shadeOverride = atoi(argv[i + 1]);
+    std::vector<dm::float3> duplicateOffsets;
+    for (int i = 1; i < argc; ++i) {
+        if (strcmp(argv[i], "--shade") == 0 && i + 1 < argc) shadeOverride = atoi(argv[++i]);
+        else if (strcmp(argv[i], "--duplicate-offset") == 0) {
+            if (i + 3 >= argc) { fprintf(stderr, "--duplicate-offset requires X Y Z\n"); return 1; }
+            dm::float3 offset;
+            for (int axis = 0; axis < 3; ++axis) {
+                char* end = nullptr;
+                offset[axis] = strtof(argv[++i], &end);
+                if (*end || !std::isfinite(offset[axis])) { fprintf(stderr, "Invalid duplicate offset\n"); return 1; }
+            }
+            duplicateOffsets.push_back(offset);
+        }
+    }
 
     printf("Starting GVDB.\n");
     HeadlessContext ctx;
@@ -65,6 +79,13 @@ int main(int argc, const char **argv) {
     attrs.transferFunction->setLinear(0.50f, 0.75f, {1.f, 0.f, 0.f, 0.3f}, {0.2f, 0.2f, 0.2f, 0.1f});
     attrs.transferFunction->setLinear(0.75f, 1.00f, {0.2f, 0.2f, 0.2f, 0.1f}, {0.f, 0.f, 0.f, 0.f});
     attrs.transferFunction->commit(ctx.gpQueue);
+    // Optional comparison scene; the retained raycast/composition kernels and
+    // original single-volume default are unchanged. Offsets are index-space.
+    for (const auto& offset : duplicateOffsets) {
+        auto extra = attachVolumeInstance(ctx.sceneGraph, volume,
+            dm::translation(offset) * vbxTransformToAffine(vbxTransform), "explosion layer");
+        extra->GetRenderAttributes() = attrs;
+    }
 
     // ---- camera and light (the reference setOrbit values; its FOV is horizontal) ----
     ctx.camera->verticalFov = verticalFovFromHorizontal(dm::radians(50.f), float(w) / float(h));

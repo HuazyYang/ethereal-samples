@@ -46,3 +46,38 @@ behavior. Cross-backend tests do not establish exact legacy screenshot parity.
 Reference sources remain present while the project's broader acceptance gates
 are open. Implementation and verification records are archived in the aggregate
 repository's `docs/plans/2026-10-19-gvdb-tricubic-surface.md`.
+
+`--shade 0..7` selects the retained voxel, 2D section, 3D section, empty-skip,
+trilinear, tricubic, level-set or deep equations. `--reference-scene` uses the
+original explosion camera, light, transform and transfer controls for comparison.
+These modes now run through `renderOwnedLayers`, including the one-layer case.
+
+Add `--layer <VBX> --layer-offset X Y Z` to compose another retained volume.
+Arguments define scene order; later layers appear over earlier ones. Up to 64
+layers are supported. The first input determines the camera; layer coordinates
+share its index space, and offsets translate instances within that space. Section
+planes remain in each layer's local index space. Repeating the primary VBX reuses
+its snapshot. The application rejects GPU traversal exhaustion before saving.
+
+```powershell
+render-to-file.exe -vk --reference-scene --shade 7 --layer explosion.vbx --layer-offset 32 0 0 --output layers.png
+```
+
+Only the first layer sees the scene background; later layers render over
+transparent black and use exact RGBA8 over. The retained per-mode alpha behavior
+is preserved: deep misses are transparent, while section/empty-skip misses are
+opaque. This is ordered image composition, with no geometric depth sorting.
+The shared helper also supports per-layer modes, controls, transfer tables,
+channels, cameras and caller-transformed index coordinates. It records GPU work
+and returns packed pixels plus a diagnostic buffer without waiting or reading back.
+
+`CompareLegacyRender.py --layer-offset 32 0 0 --layer-asset <explosion.vbx>` adds
+the same translated instance to its retained reference comparison. The legacy
+application's optional `--duplicate-offset` only changes the scene; its CUDA
+raycast and composition kernels stay unchanged. The two-instance fixture permits
+mean RGB error .5, 99th-percentile RGB error 2, mean alpha error 1.025 and at most
+2% of pixels above eight codes. This accounts for two independently sampled
+volumes and the already-exhaustively-verified one-byte difference between exact
+integer composition and retained approximate CUDA division. Single-instance
+tolerances stay unchanged. The two section reference images have exact RGB and
+alpha 254 versus the correct opaque 255; this difference is explicitly verified.
