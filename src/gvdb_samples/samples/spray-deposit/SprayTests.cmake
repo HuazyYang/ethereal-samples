@@ -1,10 +1,10 @@
 # Portable fixed-topology deposition and arbitrary-ray fixtures.
 set(spray_dir "${CMAKE_CURRENT_LIST_DIR}")
 include("${spray_dir}/../sample-utils/SceneAssets.cmake")
-foreach(module GatherApi ApronApi VoxelFilterApi VoxelizeApi ResampleApi Serializer)
+foreach(module GatherApi ApronApi VoxelFilterApi VoxelizeApi ResampleApi Serializer RayQueryApi)
     include("${spray_dir}/../../gvdb/GVDBNvrhi${module}.cmake")
 endforeach()
-set(spray_owned_config "")
+set(spray_owned_config "\"${spray_dir}/../../gvdb/slang/GVDBRayRecords.slang\" -T cs -E queryRayRecords\n")
 foreach(pair "GVDBAtlasRepack relocateAtlas" "GVDBPointStreamConversion convertPointStream" "GVDBAtlasGather gatherOwnedAtlas" "GVDBAtlasMutation mutateAtlas" "GVDBAtlasFilters filterAtlas" "GVDBAtlasResample resampleOwnedAtlas" "GVDBMeshVoxelize clearTriangleBins" "GVDBMeshVoxelize countTriangleBins" "GVDBMeshVoxelize scatterTriangleBins" "GVDBMeshVoxelize solidVoxelize")
     separate_arguments(parts UNIX_COMMAND "${pair}")
     list(GET parts 0 module)

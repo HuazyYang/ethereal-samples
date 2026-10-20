@@ -232,13 +232,15 @@
       "remaining": "Retained quadratic tensor of integer-position linear fetches, zero-border/clamp, finite-bracket refinement, gradient/color/shadow and exhaustion pass four APIs, both Windows graphics adapters, CUDA memory and production checks. Retained raw snapshots are used; exact legacy images, broader performance and Linux remain."
     },
     "ray-query": {
-      "status": "portable-foundation",
+      "status": "owned-validated",
       "replacementFiles": [
         "gvdb/slang/GVDBRayQuery.slang",
         "gvdb/slang/GVDBRawRayQuery.slang",
-        "samples/sample-utils/OwnedVolumeRayQuery.cpp"
+        "samples/sample-utils/OwnedVolumeRayQuery.cpp",
+        "gvdb/GVDBNvrhiRayQueryApi.cpp",
+        "gvdb/slang/GVDBRayRecords.slang"
       ],
-      "remaining": "Spray now consumes retained raw snapshots with structured/raw differential, lifetime, offset and malformed-view acceptance on four APIs and both graphics adapters. Exact exported legacy ray-buffer contract and broader public query API remain; status is not promoted."
+      "remaining": "Public device-only ray query retains authenticated snapshots and copied legacy-layout records, preserves untouched metadata and miss normals, exposes GPU/CPU outputs and explicit exhaustion. Four Windows APIs, native adapters, CUDA memory and installed static/shared consumers pass. Spray adopts the public query; all 20 captures match the prior portable images exactly. Legacy pathological traversal, broad performance and Linux remain separate gates."
     },
     "section-compositing": {
       "status": "partial",

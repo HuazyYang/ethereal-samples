@@ -46,3 +46,11 @@ implementation. Modes 0?3 are byte-identical on all four APIs. Mode 4 differs by
 at most one channel byte in 177 CUDA/D3D12, 180 D3D11 and 179 Vulkan pixels; the
 cause has not been isolated. This does not establish exact legacy-image parity.
 Evidence is under `build/m5-spray-owned`, including `image-comparison.json`.
+
+The wand ray step now uses `GVDBNvrhiRayQueryApi` with copied legacy-layout records,
+retained snapshots and explicit caller recording/completion. The public GPU hit
+buffer feeds deposition. All 19 Windows tests and all 15 graphics-only spray tests
+pass; twenty five-mode/four-backend captures exactly match the previous owned
+implementation (`build/m5-ray-query/image-comparison.json`). The public query also
+passes both native graphics adapters, CUDA memcheck and installed static/shared
+consumer tests. These results preserve the legacy comparison limits above.

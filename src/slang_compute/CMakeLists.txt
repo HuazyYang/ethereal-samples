@@ -206,6 +206,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/../gvdb_samples/gvdb/GVDBNvrhiObstacleApi.cma
 include("${CMAKE_CURRENT_LIST_DIR}/../gvdb_samples/gvdb/GVDBNvrhiSubcellApi.cmake")
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/../gvdb_samples/gvdb/GVDBNvrhiGridQueryApi.cmake")
+include("${CMAKE_CURRENT_SOURCE_DIR}/../gvdb_samples/gvdb/GVDBNvrhiRayQueryApi.cmake")
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/../gvdb_samples/gvdb/GVDBNvrhiPointInsertionApi.cmake")
 

@@ -7,8 +7,8 @@
 #include <gvdb/GVDBNvrhiVoxelizeApi.h>
 #include <gvdb/GVDBNvrhiResampleApi.h>
 #include <gvdb/GVDBNvrhiSerializer.h>
+#include <gvdb/GVDBNvrhiRayQueryApi.h>
 #include <gvdb/slang/GVDBPortableVbx.h>
-#include <sample-utils/OwnedVolumeRayQuery.h>
 #include <sample-utils/OwnedVolumeRawViews.h>
 #include <donut/app/ApplicationBase.h>
 #include <nvrhi/core/datablob.h>
@@ -193,6 +193,7 @@ struct SprayVolume::State : Submission {
     p::GatherHandle gather;
     p::ApronOpsHandle apron;
     p::VoxelFiltersHandle filters;
+    p::RayQueryHandle rayQuery;
     State(ethereal::slang::ComputeRuntime& runtime, p::VolumeHandle volume)
         : Submission(runtime.device()), owner(std::move(volume)) {
         if (!owner || owner->getDevice() != device.Get())
@@ -223,6 +224,12 @@ struct SprayVolume::State : Submission {
         fc.artifact = binary.data();
         fc.artifactBytes = binary.size();
         check(p::createVoxelFilters(fc, &filters), "Spray filter operator");
+        binary = artifact(runtime, "GVDBRayRecords_queryRayRecords.bin");
+        p::RayQueryCreateDesc rc;
+        rc.device = device;
+        rc.artifact = binary.data();
+        rc.artifactBytes = binary.size();
+        check(p::createRayQuery(rc, &rayQuery), "Spray ray operator");
     }
     void publish(p::IGVDBGenerationTicket* ticket) {
         submit([&](p::RecordingContext context) {
@@ -373,21 +380,42 @@ void SprayVolume::depositPoints(nvrhi::IBuffer* positions, nvrhi::IBuffer* color
 void SprayVolume::step(WandStyle style) {
     m_rays = m_wand.next(style);
     const auto count = uint32_t(m_rays.origins.size());
-    auto origins = m_runtime->buffer(size_t(count) * 16, 16, m_rays.origins.data()),
-         directions = m_runtime->buffer(size_t(count) * 16, 16, m_rays.directions.data()),
-         colors = m_runtime->buffer(size_t(count) * 4, 4, m_rays.colors.data());
-    auto query = sample::queryOwnedVolumeRays(*m_runtime, snapshot(), origins, directions, count);
+    std::vector<p::RayRecord> records(count);
+    for (uint32_t i = 0; i < count; ++i) {
+        std::memcpy(records[i].origin, &m_rays.origins[i], 12);
+        std::memcpy(records[i].direction, &m_rays.directions[i], 12);
+        records[i].color = m_rays.colors[i];
+    }
+    p::RayQueryRequestDesc request;
+    request.snapshot = m_state->visible;
+    request.rays = records.data();
+    request.count = count;
+    p::RayQueryTicketHandle query;
+    check(m_state->rayQuery->prepare(request, {}, &query), "Spray ray preparation");
+    m_runtime->flush();
+    m_state->submit(
+        [&](p::RecordingContext context) {
+            check(m_state->rayQuery->record(context, query), "Spray ray recording");
+        },
+        true);
+    check(query->finishAfterCallerCompletion(), "Spray ray completion");
     m_rays.hits.resize(count);
     m_rays.normals.resize(count);
-    m_runtime->read(query.hits, m_rays.hits.data(), size_t(count) * 16);
-    m_runtime->read(query.normals, m_rays.normals.data(), size_t(count) * 16);
+    p::BorrowedBytes values;
+    check(query->getValues(p::RayQueryOutput::Hits, values), "Spray hit values");
+    std::memcpy(m_rays.hits.data(), values.data, size_t(count) * 16);
+    check(query->getValues(p::RayQueryOutput::Normals, values), "Spray normal values");
+    std::memcpy(m_rays.normals.data(), values.data, size_t(count) * 16);
     m_hitCount = 0;
     for (const auto& hit : m_rays.hits) {
         if (hit.w < 0)
             throw std::runtime_error("Spray ray-query iteration limit exceeded");
         m_hitCount += hit.w > 0;
     }
-    depositPoints(query.hits, colors, count);
+    p::BorrowedBufferBinding hits;
+    check(query->getOutputBuffer(p::RayQueryOutput::Hits, hits), "Spray GPU hits");
+    auto colors = m_runtime->buffer(size_t(count) * 4, 4, m_rays.colors.data());
+    depositPoints(hits.buffer, colors, count);
     if (m_wand.time() % 20 == 0)
         smooth(1);
 }
