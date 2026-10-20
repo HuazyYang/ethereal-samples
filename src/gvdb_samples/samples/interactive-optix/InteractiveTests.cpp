@@ -98,8 +98,9 @@ void runSelfTests(ethereal::slang::ComputeRuntime &runtime)
            .6f * (1 - a) + pack(.1f * opacity) * a, 1},
           1.25f);
     check(sample::SceneVolumeMode::Surface, {.2f, .4f, .6f, 1}, .5f);
-    check(sample::SceneVolumeMode::LevelSet, {.2f, .4f, .6f, 1}, 1.25f);
-    check(sample::SceneVolumeMode::EmptySkip, {.2f, .4f, .6f, 1}, 1.001f);
+    // Both modes sample unrounded entry: root and leaf descent add .001 each.
+    check(sample::SceneVolumeMode::LevelSet, {.2f, .4f, .6f, 1}, 1.002f);
+    check(sample::SceneVolumeMode::EmptySkip, {.2f, .4f, .6f, 1}, 1.002f);
     scene.setShading(sample::SceneVolumeMode::Deep);
     scene.setTranslation({20, 0, 0, 0});
     scene.animate(0, view);
