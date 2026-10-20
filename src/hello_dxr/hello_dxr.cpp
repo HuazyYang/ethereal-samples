@@ -587,15 +587,21 @@ int main(int __argc, const char** __argv)
         // Validation output of a windowed application: append it to hello_dxr.log next to the executable
         // (and to the debugger output), instead of Donut's message boxes.
         static FILE* logFile = nullptr;
+#ifdef _WIN32
         fopen_s(&logFile, (app::GetDirectoryWithExecutable() / "hello_dxr.log").string().c_str(), "a");
+#else
+        logFile = fopen((app::GetDirectoryWithExecutable() / "hello_dxr.log").string().c_str(), "a");
+#endif
         log::SetCallback([](log::Severity severity, const char* text) {
             if (logFile)
             {
                 fprintf(logFile, "[%d] %s\n", int(severity), text);
                 fflush(logFile);
             }
+#ifdef _WIN32
             OutputDebugStringA(text);
             OutputDebugStringA("\n");
+#endif
         });
         // An uncaught exception (e.g. a vulkan-hpp error at shutdown) ends in std::terminate: record it.
         std::set_terminate([]() {
@@ -604,7 +610,9 @@ int main(int __argc, const char** __argv)
             catch (const std::exception& ex) { what = ex.what(); }
             catch (...) { what = "non-standard exception"; }
             if (logFile) { fprintf(logFile, "[terminate] %s\n", what); fflush(logFile); }
+#ifdef _WIN32
             OutputDebugStringA(what);
+#endif
             abort();
         });
     }
