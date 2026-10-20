@@ -192,41 +192,6 @@ Pixel renderPixel(float3 origin, float3 direction) {
     }
     if (mode == 4)
         return deepPixel(origin, direction);
-    if (mode == 3) {
-        float plane = (50 - origin.x) / direction.x;
-        float scalar = 0;
-        float4 section = float4(1, 1, 1, 0);
-        float3 start = origin;
-        if (plane > 0 && (asuint(plane) & 0x7fffffffu) < 0x7f800000u) {
-            start = origin + plane * direction;
-            VDBNode leaf = (VDBNode)0;
-            uint leafIndex = 0;
-            bool found = findLeaf(g_Nodes, g_Children, g_Levels, g_Parameters.volume, start, leaf, leafIndex);
-            if (found) {
-                float3 atlas = float3(leaf.atlasPosition) + start - float3(leaf.position);
-                scalar = atlasSample(atlas);
-                section = transfer(scalar);
-                section.xyz *= colorAt(atlas).xyz;
-            }
-        }
-        TraceResult hit = traceRay(start, direction);
-        if (hit.hit.w < 0) {
-            result.depth = -1;
-            return result;
-        }
-        if (hit.hit.w > 0) {
-            float3 light = normalize(g_Parameters.light.xyz - hit.hit.xyz);
-            float diffuse = scalar > .3 ? 1 : .8 * max(0.0, dot(hit.normal.xyz, light));
-            result.color = lerp(colorAt(hit.atlas) * diffuse, section, section.w);
-            result.depth = length(hit.hit.xyz - origin);
-        } else {
-            result.color = lerp(g_Parameters.background, section, section.w);
-            if (section.w > 0)
-                result.depth = plane;
-        }
-        result.color.w = 1;
-        return result;
-    }
     TraceResult hit = (TraceResult)0;
     if (mode == 1)
         hit = traceVoxel(origin, direction);

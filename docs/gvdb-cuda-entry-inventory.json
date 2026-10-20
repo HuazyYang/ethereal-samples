@@ -244,8 +244,12 @@
     },
     "section-compositing": {
       "status": "partial",
-      "replacementFiles": [],
-      "remaining": "Migrated viewers provide section/compositing behavior; these exported kernel contracts lack complete explicit parity acceptance."
+      "replacementFiles": [
+        "samples/sample-utils/OwnedVolumeSections.cpp",
+        "samples/sample-utils/OwnedVolumeSections.slang",
+        "samples/sample-utils/CompositeOver.slang"
+      ],
+      "remaining": "Explicit retained 2D/3D sections and exhaustive integer RGBA8 composition pass four APIs, both native adapters and CUDA memory checks. Spray adopts 3D sections; corrected threshold indexing changes 32 fixture pixels and all four resulting captures agree. Exact integer composition differs from retained CUDA approximate arithmetic by at most one byte. Broad legacy scene controls, multi-volume composition adoption, performance and Linux remain."
     },
     "mixed-rt": {
       "status": "partial",

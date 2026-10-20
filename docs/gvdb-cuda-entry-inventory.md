@@ -40,3 +40,10 @@ retained R32 snapshots. It exposes exact record transport, separate hit/normal G
 buffers, explicit caller completion and exhaustion status. Four-API, native,
 memory and installed-package checks pass. Spray's wand uses this public operator;
 all twenty captures match the previous portable path exactly.
+
+Shared 2D/3D sections now consume retained snapshots; spray adopts the 3D path.
+Native Windows and CUDA memory checks pass. Correct threshold indexing changes
+32 spray fixture pixels, with exact cross-API agreement. Exhaustive RGBA8 integer
+composition passes all four APIs and differs from retained CUDA approximate
+arithmetic by at most one byte. The group stays partial pending broad legacy
+scene comparisons and multi-volume composition adoption.

@@ -1,6 +1,7 @@
 # Portable fixed-topology deposition and arbitrary-ray fixtures.
 set(spray_dir "${CMAKE_CURRENT_LIST_DIR}")
 include("${spray_dir}/../sample-utils/SceneAssets.cmake")
+include("${spray_dir}/../sample-utils/OwnedVolumeSections.cmake")
 foreach(module GatherApi ApronApi VoxelFilterApi VoxelizeApi ResampleApi Serializer RayQueryApi)
     include("${spray_dir}/../../gvdb/GVDBNvrhi${module}.cmake")
 endforeach()
@@ -17,6 +18,7 @@ ethereal_compile_shaders(TARGET gvdb_spray_owned_shaders SLANG CUDA ALL_PLATFORM
     OUTPUT_DIRECTORY "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/shaders/gvdb_spray_owned")
 set(spray_shader_config "\"${spray_dir}/../../gvdb/slang/GVDBRayQuery.slang\" -T cs -E queryVolumeRays\n")
 string(APPEND spray_shader_config "\"${spray_dir}/SprayRender.slang\" -T cs -E renderSpray\n")
+string(APPEND spray_shader_config "\"${spray_dir}/../sample-utils/OwnedVolumeSections.slang\" -T cs -E renderSection\n")
 string(APPEND spray_shader_config "\"${spray_dir}/../../gvdb/slang/GVDBRawRayQuery.slang\" -T cs -E queryVolumeRays\n")
 file(CONFIGURE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/spray-deposit.cfg" CONTENT "${spray_shader_config}" @ONLY)
 ethereal_compile_shaders(TARGET gvdb_spray_shaders SLANG CUDA ALL_PLATFORMS
@@ -24,7 +26,7 @@ ethereal_compile_shaders(TARGET gvdb_spray_shaders SLANG CUDA ALL_PLATFORMS
     OUTPUT_DIRECTORY "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/shaders/gvdb_slang")
 add_library(gvdb_spray_simulation STATIC "${spray_dir}/SpraySimulation.cpp" "${spray_dir}/SprayRender.cpp" "${spray_dir}/../../gvdb/GVDBSlangRayQuery.cpp" "${spray_dir}/../sample-utils/OwnedVolumeRayQuery.cpp")
 target_include_directories(gvdb_spray_simulation PUBLIC "${spray_dir}")
-target_link_libraries(gvdb_spray_simulation PUBLIC gvdb_slang_runtime gvdb_scene_assets gvdb::nvrhi_api PRIVATE donut_app)
+target_link_libraries(gvdb_spray_simulation PUBLIC gvdb_slang_runtime gvdb_scene_assets gvdb::nvrhi_api gvdb_owned_sections PRIVATE donut_app)
 add_dependencies(gvdb_spray_simulation gvdb_spray_shaders gvdb_slang_shaders gvdb_spray_owned_shaders)
 add_executable(gvdb_spray_tests "${spray_dir}/SprayTests.cpp")
 target_link_libraries(gvdb_spray_tests PRIVATE gvdb_spray_simulation donut_app)

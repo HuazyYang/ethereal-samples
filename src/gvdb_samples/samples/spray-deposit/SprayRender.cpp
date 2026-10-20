@@ -2,6 +2,7 @@
 #include "SprayRender.h"
 #include "ComputeRuntime.h"
 #include <sample-utils/OwnedVolumeRawViews.h>
+#include <sample-utils/OwnedVolumeSections.h>
 #include <stdexcept>
 namespace gvdb::samples::spray {
 using namespace slang;
@@ -31,6 +32,13 @@ RaycastOutput renderSpray(ethereal::slang::ComputeRuntime& runtime, SprayVolume&
                           RaycastParameters camera, Shading mode, const std::vector<Float4>& transfer) {
     if (uint32_t(mode) > 4 || transfer.size() != 16384)
         throw std::invalid_argument("Spray shading or transfer table is invalid");
+    if (mode == Shading::Section) {
+        sample::SectionOptions section;
+        section.point = {50, 50, 50, 0};
+        section.normal = {-1, 0, 0, 0};
+        camera.direction00.w = 0;
+        return sample::renderOwnedSection(runtime, volume.snapshot(), 0, 1, camera, transfer, section);
+    }
     sample::OwnedVolumeRawViews views(runtime.device(), volume.snapshot(), 0, 1);
     nvrhi::BufferHandle emptyChildren;
     if (!views.children.buffer) {
