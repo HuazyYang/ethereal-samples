@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "asOf": "2026-10-19",
+  "asOf": "2026-10-20",
   "referenceRetirementAuthorized": false,
   "scope": "Explicit __global__ void entries in retained .cu/.cuh source under sourceRoot. CPU/device helpers and graphics shaders require separate inventory.",
   "sourceRoot": "src/gvdb_samples",
@@ -65,11 +65,14 @@
       "remaining": "Public retained position/velocity XYZ splitting, planar GPU ranges, actual-GPU CPU planes and exact extrema pass four Windows APIs, both native graphics adapters, CUDA memory checking and installed static/shared consumers. Finite translation and explicit caller completion preserve ownership; legacy padding/clamping remains in separate quantization factories. Linux, broad consumers/performance and reference gates remain."
     },
     "mark-leaves": {
-      "status": "portable-foundation",
+      "status": "owned-validated",
       "replacementFiles": [
-        "gvdb/slang/GVDBParticles.slang"
+        "gvdb/GVDBHostVolume.cpp",
+        "gvdb/GVDBNvrhiApi.h",
+        "gvdb/GVDBNvrhiVolume.cpp",
+        "gvdb/tests/LeafMarkerApiFixture.h"
       ],
-      "remaining": "Public owned topology orchestration remains."
+      "remaining": "Public host setActive/editNode plus explicit generation publication validates boolean and exact-byte flags, dirty/finished/stale-ticket transitions, inactive/reactivated leaves, empty topology and retained GPU nodes/channels. Four Windows APIs, both native graphics adapters, CUDA memory checking and installed static/shared consumers pass. GPU-authored marker ingestion, incremental key/link/delink orchestration, broad performance and Linux remain separate gates."
     },
     "insertion": {
       "status": "owned-validated",

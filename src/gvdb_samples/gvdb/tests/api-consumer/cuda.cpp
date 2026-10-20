@@ -1,5 +1,6 @@
 // SDK-free installed-package lifetime test. CUDA is created only through NVRHI.
 #include "GVDBNvrhiApi.h"
+#include "../LeafMarkerApiFixture.h"
 #include <nvrhi/cuda.h>
 #include <cstdio>
 #include <fstream>
@@ -56,6 +57,8 @@ int main(int argc, char** argv) {
         if (actual[(z*4+y)*4+x]!=expected) return 16;
     }
     readback=nullptr; commands=nullptr; device->runGarbageCollection();
+    try { leaf_marker_fixture::run(device,artifact); }
+    catch (const std::exception& error) { std::fprintf(stderr,"FAIL: %s\n",error.what()); return 17; }
     std::puts("Installed GVDB API: native creation, publication and retained readback across library boundary PASS");
     return 0;
 }

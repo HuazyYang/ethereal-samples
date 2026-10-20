@@ -6,9 +6,9 @@ The grouping records implementation roles, not positional CUDA ABI compatibility
 
 | State | Entries | Meaning |
 | --- | ---: | --- |
-| owned-validated | 47 | Public volume-backed operators and device queries passed recorded Windows tests; platform and consumer gates remain. |
+| owned-validated | 48 | Public volume-backed operators and device queries passed recorded Windows tests; platform and consumer gates remain. |
 | sample-validated | 14 | Migrated sample paths exercise these replacement roles; public ownership and broader acceptance remain. |
-| portable-foundation | 19 | A portable helper/program exists; the listed public contract or integration work remains. |
+| portable-foundation | 18 | A portable helper/program exists; the listed public contract or integration work remains. |
 | partial | 20 | Related functionality exists, but the old behavior is not fully covered. |
 | pending | 0 | No completed replacement/disposition is claimed. |
 
@@ -27,3 +27,10 @@ Public scalar-grid and Y-face diagnostic queries now consume authenticated retai
 Public point insertion now associates center or velocity-direction support positions with retained active leaves and sorts original canonical attributes on the GPU. Stable ordinals and leaf ranges replace atomic ordering; pre-translation NOHIT exclusion is tested with a cancelling translation. Native, memory and installed-package Windows acceptance passes; broader consumer and performance/platform gates remain.
 
 Public coordinate splitting exposes retained raw X/Y/Z ranges and completed CPU planes with exact actual-GPU extrema for position or velocity. Four APIs, native adapters, CUDA memory and installed static/shared consumers pass. Legacy bounds padding remains in the quantization factories; broader platform/performance gates remain.
+
+Public leaf marking now has an accepted host workflow through `setActive`/`editNode`,
+`finishTopology` and explicit generation publication. Exact flag bytes, stale-ticket
+rejection, signed inactive/reactivated leaves, all-inactive topology and retained GPU
+node/channel bytes pass four APIs, both native graphics adapters, CUDA memory checks
+and installed static/shared consumers. This disposition covers host-owned markers;
+GPU marker ingestion and incremental key/link/delink integration remain separate.

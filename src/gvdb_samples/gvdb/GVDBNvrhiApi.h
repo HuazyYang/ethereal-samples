@@ -109,6 +109,8 @@ struct IGVDBHostVolume : nvrhi::IRHIObject {
     virtual HostPoolView getPool(uint32_t group, uint32_t level) const noexcept = 0;
     virtual MutableHostPoolView editPool(uint32_t group, uint32_t level) noexcept = 0;
     virtual const Node* getNode(NodeId) const noexcept = 0;
+    // A successful mutable borrow dirties topology, even without a write. Reacquire
+    // after finishTopology; flags preserve exact bytes and any nonzero byte is active.
     virtual Node* editNode(NodeId) noexcept = 0;
     virtual const NodeId* getChildList(NodeId) const noexcept = 0;
     virtual NodeId* editChildList(NodeId) noexcept = 0;
@@ -116,6 +118,7 @@ struct IGVDBHostVolume : nvrhi::IRHIObject {
     virtual nvrhi::FRESULT allocateNode(uint32_t level, Int3 origin, bool active, NodeId& output) noexcept = 0;
     virtual nvrhi::FRESULT allocateChildList(uint32_t level, NodeId& output) noexcept = 0;
     virtual nvrhi::FRESULT setRoot(NodeId) noexcept = 0;
+    // Assigns exactly 0 or 1; an identical byte is a no-op. Does not publish.
     virtual nvrhi::FRESULT setActive(NodeId, bool active) noexcept = 0;
     virtual nvrhi::FRESULT activate(double x, double y, double z, NodeId& output) noexcept = 0;
     virtual nvrhi::FRESULT activateAtLevel(uint32_t level, Int3 position, NodeId& output) noexcept = 0;

@@ -26,6 +26,34 @@ Validation/allocation failure is atomic. Device loss or an exception from a void
 
 Readback also has three phases: `prepareReadback(snapshot,mask)`, `recordReadback(context,ticket)`, and `finishAfterCallerCompletion()` after the caller submits and waits. Only this owner's authenticated snapshots are accepted, including retained old ones. A readback retains its device, source generation and staging buffers and remains usable after the volume owner is released. `getChannelData` returns logical bytes owned by that readback object; no `std::vector` or heap allocation ownership crosses the DLL interface. Completion is one-use and cannot infer that the caller actually waited.
 
+## Leaf markers
+
+Apply host-owned leaf markers through the existing topology interface. `setActive(id,
+marker != 0)` writes exactly 0 or 1. For the retained `gvdbMarkLeafNode` kernel's
+integer-to-byte behavior, acquire `editNode(id)` and assign `node->flags =
+uint8_t(marker)`. Every nonzero flag byte is active; values such as 2 and 255 are
+preserved in published GPU nodes. Neither operation changes a published snapshot.
+
+A successful mutable borrow dirties topology even without a write. `setActive`
+dirties it only when the flag byte changes, including normalization from 255 to 1.
+Invalid node IDs fail without dirtying the host. While dirty, preparation and
+publication of previously prepared tickets fail. `finishTopology` validates the
+graph, recomputes active counts/bounds and advances the topology revision; old
+tickets remain stale. Reacquire mutable borrows after finishing. Prepare and record
+a new generation explicitly to publish the markers.
+
+Deactivation keeps the allocated node ID and graph links. A newly published atlas
+excludes inactive leaves. Reactivation preserves the node ID but initializes its
+interior from the channel void value when the preceding publication omitted that
+leaf; it does not recover data from older snapshots. Those older snapshots retain
+their original flags, interiors and aprons, including after owner destruction.
+This also applies when all allocated leaves become inactive and are reactivated.
+
+`tests/LeafMarkerApiFixture.h` checks these transitions, exact serialized GPU node
+bytes and every channel byte through the integrated and installed API fixtures.
+This host marker workflow does not promise GPU-authored marker ingestion or the
+legacy incremental key/link/delink orchestration.
+
 ## Build and installed package
 
 Include `GVDBNvrhiApi.cmake` after defining NVRHI. `GVDB_NVRHI_API_SHARED` selects a shared facade (default follows `BUILD_SHARED_LIBS`); the CPU and C++ GPU owners remain private static implementation libraries. `GVDB_NVRHI_BUILD_OWNER_TESTS=OFF` and `GVDB_NVRHI_BUILD_API_TESTS=OFF` omit Donut/shader/test requirements. The production library requires the NVRHI shader-program implementation and a supplied offline artifact.

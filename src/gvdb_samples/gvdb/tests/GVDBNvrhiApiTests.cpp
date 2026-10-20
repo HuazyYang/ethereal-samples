@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Public-interface fixture: never includes concrete HostVolume/NvrhiVolume headers.
 #include "GVDBNvrhiApi.h"
+#include "LeafMarkerApiFixture.h"
 #include <donut/app/ApplicationBase.h>
 #include <donut/app/DeviceManager.h>
 #include <donut/core/log.h>
@@ -39,12 +40,21 @@ struct Device {
     AutoPtr<IMessageCallback> callback;
     Device(int argc, const char** argv) {
         bool useCuda = false, validation = false;
+        int adapter = -1;
         for (int i = 1; i < argc; ++i) {
             useCuda |= !std::strcmp(argv[i],"-cuda"); validation |= !std::strcmp(argv[i],"--validation");
+            if (!std::strcmp(argv[i],"--adapter")) {
+                require(++i < argc,"--adapter requires an ordinal");
+                const std::string text = argv[i];
+                size_t consumed = 0;
+                adapter = std::stoi(text,&consumed);
+                require(adapter >= 0 && consumed == text.size(),"invalid adapter ordinal");
+            }
         }
         if (useCuda) {
 #if ETHEREAL_TEST_CUDA
             cuda::DeviceDesc desc;
+            if (adapter >= 0) desc.deviceOrdinal = adapter;
             desc.enableOptiX = false; callback = MAKE_RC_OBJ_PTR(Messages); desc.errorCB = callback;
             device = cuda::createDevice(desc);
 #else
@@ -54,6 +64,7 @@ struct Device {
             manager = TakeOver(donut::app::DeviceManager::Create(donut::app::GetGraphicsAPIFromCommandLine(argc,argv)));
             require(bool(manager),"create graphics manager");
             donut::app::DeviceCreationParameters desc;
+            desc.adapterIndex = adapter;
             desc.enableNvrhiValidationLayer = true; desc.enableDebugRuntime = validation;
             require(manager->CreateHeadlessDevice(desc),"create graphics device"); device = manager->GetDevice();
         }
@@ -235,6 +246,7 @@ int main(int argc, const char** argv) {
             std::ifstream file(path,std::ios::binary); require(bool(file),"open owner artifact");
             std::vector<char> artifact((std::istreambuf_iterator<char>(file)),std::istreambuf_iterator<char>());
             run(device.device,artifact);
+            leaf_marker_fixture::run(device.device,artifact);
         }
         require(problems == 0,"native/NVRHI validation warnings or errors"); return 0;
     } catch (const std::exception& error) { std::fprintf(stderr,"FAIL: %s\n",error.what()); return 1; }
