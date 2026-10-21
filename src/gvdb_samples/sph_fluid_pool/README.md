@@ -28,9 +28,9 @@ Headless runs use the requested number of simulation steps; `--screenshot`
 selects headless graphics rendering at 640x480. Registered render passes are
 removed and submitted work is drained before pass destruction, including errors.
 
-The current display uses automatically framed particle billboards. The retained
-scene graph, fixed camera, one-pixel depth-tested points and ground grid remain
-in `legacy-main.cpp`; exact legacy presentation or image parity is not claimed.
+The current display uses automatically framed particle billboards. The portable
+scene graph, fixed camera, one-pixel depth-tested points and ground grid are the
+supported presentation; exact historical image parity is not claimed.
 
 Validation: all seven full-build SPH tests passed on 2026-10-18 (4.63 seconds).
 Four tests exercise simulation and graphics readback/CUDA completion. Three

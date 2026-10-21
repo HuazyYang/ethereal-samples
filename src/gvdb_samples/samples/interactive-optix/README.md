@@ -2,8 +2,8 @@
 
 `interactive-optix` now uses `SlangSceneRT` and the shared volume viewer. D3D12,
 Vulkan RT, and CUDA/OptiX execute the same offline Slang library through NVRHI.
-The application has no CUDA, OptiX, or backend SDK calls. The original entry point
-remains in `legacy-main.cpp` for the legacy build.
+The application has no CUDA, OptiX, or backend SDK calls. The portable Slang/NVRHI
+entry point is the supported implementation.
 
 The scene retains Lucy at scale 100, the explosion transform
 `world = .25 * (index + {-125,-160,-125}) + {44,0,16}`, the original four-segment

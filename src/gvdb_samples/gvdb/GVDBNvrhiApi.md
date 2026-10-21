@@ -1,6 +1,6 @@
 # Queryable NVRHI GVDB API
 
-`GVDBNvrhiApi.h` exposes the implemented CPU topology and GPU volume owner through NVRHI-style `IObject` interfaces, `QueryInterface`, `AddRef`/`Release`, and `AutoPtr` handles. It is a C++17 API with C-linkage factory symbols, not a C-language header. Namespace `gvdb::portable`, API version 1 and five new interface IDs are independent of the retained `gvdb::IGVDBVolume` and its legacy IID. No `GPDevice` object is accepted or cast to an NVRHI object.
+`GVDBNvrhiApi.h` exposes the CPU topology and GPU volume owner through NVRHI-style `IObject` interfaces, `QueryInterface`, `AddRef`/`Release`, and `AutoPtr` handles. It is a C++17 API with C-linkage factory symbols, not a C-language header. Namespace `gvdb::portable` and API version 1 define the supported GVDB volume contract. No device wrapper or native CUDA pointer is accepted or cast to an NVRHI object.
 
 The implementation composes `HostVolume` and `NvrhiVolume`. Every exposed operation has an implementation. Operator factories, GPU-authored topology fetch and serialization are later additions; they have no placeholder vtable entries here. The header uses public NVRHI and portable data layouts, with no CUDA, OptiX, graphics SDK, Donut or compiler include. Descriptor layouts have explicit 64-bit ABI assertions. Consumers must use a compatible NVRHI/C++ ABI and the package's compile definitions.
 

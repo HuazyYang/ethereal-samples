@@ -1,5 +1,5 @@
 // SPH fluid pool kernels using NVRHI-compatible explicit resources.
-// Adapted from SPHFluidKernels.cu. SPDX-License-Identifier: Apache-2.0
+// Portable SPH implementation. SPDX-License-Identifier: Apache-2.0
 #include "GVDBTypes.slang"
 struct SphParameters {
     float4 gridMinimumAndCellWidth;

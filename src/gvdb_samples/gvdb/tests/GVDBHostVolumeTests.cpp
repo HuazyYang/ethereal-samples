@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Independent CPU semantic tests. The retained implementation is read as an
-// oracle; this fixture does not link GPDevice, invoke a GPU, or duplicate its recursion.
+// oracle; this fixture does not invoke a GPU or duplicate its recursion.
 #include "../GVDBHostVolume.h"
 #include <array>
 #include <cmath>

@@ -2,7 +2,10 @@
 
 **Branch-order correction:** the legacy `fromBranching(r4,r3,r2,r1,r0)` call ends in 4, so its leaf width is 16. The implementation and topology fixtures use leaf-first `{4,3,3,3,3}`. Corrected analytic and full-asset reconstruction pass on all four APIs. Earlier leaf8 memory, rendering and sanitizer measurements are superseded. Corrected reconstruction sanitizer checks pass; current application captures are recorded separately in the sample README.
 
-The application now uses these helpers and the unified NVRHI runtime. The previous application is preserved as `legacy-main.cpp`; `SceneFile.*` is unchanged for legacy builds. See [README.md](README.md) for supported renderers, controls and application validation. Reconstruction references and cross-API tests do not establish image equivalence with the legacy renderer.
+The application now uses these helpers and the unified NVRHI runtime. `SceneFile.*`
+remains the input parser used by the portable application. See [README.md](README.md)
+for supported renderers, controls and application validation. Reconstruction references
+and cross-API tests do not establish image equivalence with the historical renderer.
 
 - `PointCloudScene` retains the original scene defaults, material fields, model transforms, camera/light orbits, frame patterns and literal directory prefixes. Materials use the shared SDK-free `sample-utils/SceneMaterial.h`. Set `SceneDesc::renderScale` before parsing to retain a command-line override; resolve the original zero/unset scale to 1 and negative/unset frame to 0 in the application.
 - `PointCloudInput` loads little-endian count/bounds/ushort3 frames and exposes a CPU decoder for references. Constant axes and odd point counts are valid. NaNs, infinities, reversed bounds, incomplete triples and truncated payloads fail explicitly. Legacy trailing extension bytes remain accepted.

@@ -48,7 +48,7 @@ must contain nonblack model pixels; an empty black section does not pass.
 The dense working grid and CPU topology construction are explicit migration
 choices; they replace the old hierarchical voxelizer orchestration. Numerical
 triangle-boundary behavior follows the portable voxelizer contract documented in
-`gvdb/slang/GVDBMigration.md`. `legacy-main.cpp` retains the old non-Slang build.
+`gvdb/slang/GVDBMigration.md`. The portable Slang/NVRHI build is the supported implementation.
 
 The corrected leaf32 analytic and Lucy asset cases pass on all four APIs. See
 `branch-order-analytic-tests.log` and `branch-order-display-asset-tests.log` in the

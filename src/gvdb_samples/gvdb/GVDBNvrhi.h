@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
-// M5 Step A DRAFT: additive ownership vocabulary, not a replacement for GVDB.h.
+// Portable ownership vocabulary shared by the host and NVRHI implementations.
 // There are no exported factories, device/queue wrappers, or operator implementations
 // in this header. Include it without CUDA, OptiX, graphics SDKs, Donut, or ComputeRuntime.
 #include <nvrhi/nvrhi.h>

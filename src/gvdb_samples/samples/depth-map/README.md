@@ -1,6 +1,6 @@
 # Depth-map
 
-Lucy mesh rasterization, sparse explosion-volume ray marching clipped by raster depth, and graphics composition. All three stages are Slang artifacts loaded through NVRHI. The default uses CUDA compute when that backend is built; `--compute-api graphics` keeps computation on the selected graphics device. The legacy implementation remains in `legacy-main.cpp` and is selected when the Slang target is disabled.
+Lucy mesh rasterization, sparse explosion-volume ray marching clipped by raster depth, and graphics composition. All three stages are Slang artifacts loaded through NVRHI. The default uses CUDA compute when that backend is built; `--compute-api graphics` keeps computation on the selected graphics device. The portable Slang/NVRHI application is the supported implementation.
 
 ```powershell
 depth-map -dx12 --compute-api cuda
@@ -13,7 +13,7 @@ Select the graphics API with `-dx11`, `-dx12` or `-vk`. Select CUDA independentl
 
 Mouse controls preserve the original orbit, pan and distance gestures; Shift adjusts the light. WASDQE translates the volume, arrow keys rotate it, P switches depth projection mode, and brackets adjust exact-mode bias. `--frames N --screenshot image.png` captures and closes an interactive run. `--headless` validates the actual Lucy/explosion scene, including nonzero mesh and volume coverage and a measurable depth-clipping effect. `--volume` and `--mesh` override asset paths.
 
-Volume loading uses the public serializer and retains its immutable snapshot after the temporary owner and serializer are released. The clipping shader binds that snapshot's canonical raw R32 atlas and topology ranges. The default apron refresh uses the public voxel operator, recorded after import on the same command list; callers setting `Scene::refreshApron=false` retain the imported apron bytes. Rasterization, transfer lookup and clipping equations are unchanged. Production remap and apron artifacts are built even with `BUILD_TESTING=OFF`; the old structured-atlas path exists only in the comparison test target.
+Volume loading uses the public serializer and retains its immutable snapshot after the temporary owner and serializer are released. The clipping shader binds that snapshot's canonical raw R32 atlas and topology ranges. The default apron refresh uses the public voxel operator, recorded after import on the same command list; callers setting `Scene::refreshApron=false` retain the imported apron bytes. Rasterization, transfer lookup and clipping equations are unchanged. Production remap and apron artifacts are built even with `BUILD_TESTING=OFF`; the structured-atlas path exists only in the comparison test target.
 
 The CUDA route shares an R32_FLOAT raster color attachment containing projected depth and an R32_UINT output texture containing packed RGBA8. The kernel loads the imported depth texture directly. The public route supplies each API's required resource flags, including unkeyed NT sharing on D3D11. Shared GPU timeline waits/signals and public whole-resource release/acquire calls order raster, CUDA and composition; normal frames use no CPU wait or readback. Allocation, resize, asset replacement and requested screenshots may wait. The code contains no CUDA, DXGI, Direct3D or Vulkan SDK calls.
 

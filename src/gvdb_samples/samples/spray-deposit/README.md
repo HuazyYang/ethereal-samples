@@ -1,6 +1,6 @@
 # Slang spray deposition
 
-`spray-deposit` runs the retained metal-part deposition example through NVRHI on D3D11, D3D12, Vulkan and CUDA. Graphics backends provide a window and Inspector; CUDA runs headlessly. The original application remains in `legacy-main.cpp` for the separate legacy build.
+`spray-deposit` runs the retained metal-part deposition example through NVRHI on D3D11, D3D12, Vulkan and CUDA. Graphics backends provide a window and Inspector; CUDA runs headlessly. The portable Slang/NVRHI application is the supported implementation.
 
 ```powershell
 spray-deposit.exe -dx12

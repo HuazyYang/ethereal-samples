@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
-// M5 Step B CPU implementation draft. No GPU work, legacy GPDevice, or exported ABI.
+// CPU topology owner. No GPU work, device wrapper, or exported ABI.
 // Single-threaded mutable owner: synchronize access externally. IDs remain stable
 // across growth; clear/reconfigure invalidate them by changing revision().epoch.
 #include "GVDBNvrhi.h"

@@ -46,7 +46,7 @@ Use `--self-test` for independent transformed voxel/apron, coarse-value, activat
 
 Production artifacts are generated with tests disabled. Runtime consumers load offline artifacts and require no shader compiler or CUDA Toolkit discovery.
 
-`legacy-main.cpp` retains the previous implementation for the non-Slang build.
+The portable Slang/NVRHI application is the supported implementation.
 
 Earlier portable checkpoint evidence (before the ownership migration):
 

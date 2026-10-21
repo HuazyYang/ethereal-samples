@@ -37,7 +37,8 @@ The legacy color texture has a separate retained bug: its RGBA8_UINT array uses 
 
 Validation evidence: build/fluid-topology-cpu.log, build/fluid-topology-compute-tests.log, build/fluid-topology-rt-full-tests.log, build/fluid-topology-*-validation.log, build/fluid-topology-*-memcheck.log, build/fluid-topology-cross-api.json build/fluid-legacy-color-probe.log and build/fluid-legacy-color-corrected-comparison.json. The matching reference images are build/fluid-new.png and build/fluid-legacy-color-corrected.png; build/fluid-legacy.png preserves the uncorrected reference.
 
-The prior application remains in legacy-main.cpp with its original FluidSystem and CUDA kernels. Non-Slang legacy builds select it explicitly.
+The portable application is the supported fluid-surface implementation. It uses
+the NVRHI owner and offline Slang artifacts on every enabled backend.
 
 ## Public reconstruction ownership
 

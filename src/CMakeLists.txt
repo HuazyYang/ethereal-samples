@@ -41,10 +41,6 @@ endforeach()
 # --- ethereal samples -----------------------------------------------------------
 add_subdirectory(ddgi_samples)
 add_subdirectory(vxgi_samples)
-if (ETHEREAL_BUILD_GVDB_LEGACY)
-	add_subdirectory(gvdb_samples)
-endif()
-
 # --- Donut examples (from Donut-Samples/examples) --------------------------------
 add_subdirectory(basic_triangle)
 add_subdirectory(vertex_buffer)

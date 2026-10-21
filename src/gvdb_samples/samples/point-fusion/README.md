@@ -82,6 +82,6 @@ The remap, point conversion, gather, apron mutation, and raw surface artifacts
 are production dependencies and are generated with `BUILD_TESTING=OFF`,
 including graphics-only builds without CUDA SDK discovery.
 
-`legacy-main.cpp` and `PointFusionScan.cu` retain the previous non-Slang build.
+The portable Slang/NVRHI application is the supported build.
 `PointFusionUpdate.slang` remains as the prior portable gather reference; the
 application now dispatches the shared public gather implementation.

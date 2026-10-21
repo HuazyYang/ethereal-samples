@@ -65,13 +65,13 @@ Test PASSED
 
 ### Sparse volumes and fluids
 
-The [GVDB collection](src/gvdb_samples/README.md) ports sparse-volume operations and examples to CUDA,
-Donut and NVRHI. OptiX 9 supplies the optional ray tracing path. The SPH fluid pool uses the same compute
-and application framework, with a particle renderer rather than a GVDB volume.
+The [GVDB collection](src/gvdb_samples/README.md) provides portable sparse-volume operations and examples
+through Slang and NVRHI. CUDA and OptiX are runtime backends for the migrated applications. The SPH fluid
+pool uses the same compute and application framework, with a particle renderer rather than a GVDB volume.
 
 | | |
 |---|---|
-| [**render-to-file**](src/gvdb_samples/samples/render-to-file)<br>Load a sparse explosion volume, raycast it with CUDA and write a PNG without a window.<br>[<img src="doc/images/render-to-file.png" width="380" alt="render-to-file rendered output">](doc/images/render-to-file.png) | [**render-kernel**](src/gvdb_samples/samples/render-kernel)<br>Render the same sparse volume with a custom CUDA raycast kernel.<br>[<img src="doc/images/render-kernel.png" width="380" alt="render-kernel rendered output">](doc/images/render-kernel.png) |
+| [**render-to-file**](src/gvdb_samples/samples/render-to-file)<br>Load a sparse explosion volume, render it through the shared Slang path and write a PNG without a window.<br>[<img src="doc/images/render-to-file.png" width="380" alt="render-to-file rendered output">](doc/images/render-to-file.png) | [**render-kernel**](src/gvdb_samples/samples/render-kernel)<br>Render the same sparse volume through the shared Slang ray-tracing path.<br>[<img src="doc/images/render-kernel.png" width="380" alt="render-kernel rendered output">](doc/images/render-kernel.png) |
 | [**3d-print**](src/gvdb_samples/samples/3d-print)<br>Solid voxelization of the Lucy mesh, with selectable voxel size and a cross-section inset.<br>[<img src="doc/images/3d-print.png" width="380" alt="3d-print rendered output">](doc/images/3d-print.png) | [**depth-map**](src/gvdb_samples/samples/depth-map)<br>Composite a raycast volume with polygon geometry using the rasterized depth buffer.<br>[<img src="doc/images/depth-map.png" width="380" alt="depth-map rendered output">](doc/images/depth-map.png) |
 | [**resample**](src/gvdb_samples/samples/resample)<br>Resample a dense RAW volume into a sparse GVDB topology.<br>[<img src="doc/images/resample.png" width="380" alt="resample rendered output">](doc/images/resample.png) | [**spray-deposit**](src/gvdb_samples/samples/spray-deposit)<br>Use ray bundles to deposit material into voxels, followed by smoothing.<br>[<img src="doc/images/spray-deposit.png" width="380" alt="spray-deposit rendered output">](doc/images/spray-deposit.png) |
 | [**point-fusion**](src/gvdb_samples/samples/point-fusion)<br>Fuse simulated depth scans into a growing sparse volume of a procedural city.<br>[<img src="doc/images/point-fusion.png" width="380" alt="point-fusion rendered output">](doc/images/point-fusion.png) | [**point-cloud**](src/gvdb_samples/samples/point-cloud)<br>Convert point data to a level set and render the resulting surface with OptiX.<br>[<img src="doc/images/point-cloud.png" width="380" alt="point-cloud rendered output">](doc/images/point-cloud.png) |
@@ -108,8 +108,8 @@ in `build/bin`; all configurations share that output directory.
 # Rebuild selected targets after configuration
 .\build.ps1 -Config Release -Target basic_triangle,DDGISample,VXGISample
 
-# Optional CUDA / OptiX collection
-.\build.ps1 -CMakeArgs '-DETHEREAL_BUILD_SAMPLES=ON','-DETHEREAL_BUILD_GVDB=ON','-DETHEREAL_WITH_OPTIX=ON'
+# GVDB Slang/NVRHI collection (CUDA and OptiX are optional runtime backends)
+.\build.ps1 -CMakeArgs '-DETHEREAL_BUILD_SAMPLES=ON','-DETHEREAL_BUILD_GVDB=ON'
 
 # WaveWorks: ISPC must be on PATH
 .\build.ps1 -Target waveworks_ocean,waveworks_beach -CMakeArgs '-DETHEREAL_BUILD_WAVEWORKS=ON'
@@ -121,9 +121,10 @@ in `build/bin`; all configurations share that output directory.
 .\build.ps1 -Target aftermath_sample -CMakeArgs '-DETHEREAL_BUILD_SAMPLES=ON','-DDONUT_WITH_AFTERMATH=ON'
 ```
 
-GVDB needs the CUDA toolkit. Its OptiX samples also need the OptiX 9 SDK, discoverable through
-`OptiX_INSTALL_DIR` or the supported default installation path. Without that SDK the OptiX targets are skipped;
-`-DETHEREAL_WITH_OPTIX=OFF` explicitly disables them. WaveWorks currently targets Windows x64 and needs
+The portable GVDB targets do not require NVCC or CUDA Toolkit discovery. CUDA and OptiX execution requires
+the corresponding runtime backend and driver; OptiX samples also need the OptiX 9 SDK, discoverable through
+`OptiX_INSTALL_DIR` or the supported default installation path. Without that SDK the OptiX targets are skipped.
+WaveWorks currently targets Windows x64 and needs
 ISPC plus the D3D and Vulkan shader toolchains described in its build guide.
 
 ```powershell

@@ -1,6 +1,6 @@
 # NVRHI GVDB serialization
 
-`GVDBNvrhiSerializer.h` adds queryable `IGVDBSerializer` and `IGVDBSaveTicket` interfaces to the existing version-1 public volume API. They have new IIDs and no legacy `GPDevice` dependency. Include `GVDBNvrhiSerializer.cmake` to add the implementation to `gvdb_nvrhi_api`; installed applications link `gvdb::nvrhi_api` from `find_package(gvdbNvrhi 1 CONFIG REQUIRED)`. The package supports static and shared API libraries. CUDA, graphics SDKs and the Slang compiler are not serializer dependencies.
+`GVDBNvrhiSerializer.h` adds queryable `IGVDBSerializer` and `IGVDBSaveTicket` interfaces to the version-1 public volume API. Include `GVDBNvrhiSerializer.cmake` to add the implementation to `gvdb_nvrhi_api`; installed applications link `gvdb::nvrhi_api` from `find_package(gvdbNvrhi 1 CONFIG REQUIRED)`. The package supports static and shared API libraries. CUDA, graphics SDKs and the Slang compiler are not serializer dependencies.
 
 ## Explicit phases
 

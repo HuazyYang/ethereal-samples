@@ -1,4 +1,10 @@
-# GVDB public interface migration inventory
+# GVDB public interface migration inventory (historical)
+
+The migration is complete for the production GVDB targets. The former `GVDB.h`,
+`GPDevice` layer, affine scene/volume implementation and handwritten CUDA source
+were retired after the portable NVRHI/Slang acceptance gates passed. This file
+remains as historical design context; the supported interfaces are the
+`GVDBNvrhi*` and `GVDBHostVolume` APIs in this directory.
 
 This is the historical initial integration inventory. The CPU owner, public volume,
 transactional VBX and owned voxel/filter APIs have since been implemented and

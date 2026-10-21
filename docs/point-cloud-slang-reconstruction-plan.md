@@ -1,6 +1,6 @@
 # Point-cloud Slang input and reconstruction slice
 
-This plan began with reusable input and reconstruction helpers and has since been integrated into the point-cloud application. Mixed mesh/volume rendering, progressive samples, environment lighting and time-series presentation now use the shared Slang renderer. The original main is preserved as `legacy-main.cpp`; SceneFile.* remains the legacy reference.
+This plan began with reusable input and reconstruction helpers and has since been integrated into the point-cloud application. Mixed mesh/volume rendering, progressive samples, environment lighting and time-series presentation now use the shared Slang renderer. The historical main is retained only as a reference in this archived plan; `SceneFile.*` remains the input parser.
 
 ## Preserved behavior
 

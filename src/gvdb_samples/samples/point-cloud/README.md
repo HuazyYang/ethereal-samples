@@ -34,7 +34,7 @@ Validation on 2026-10-18:
 
 At 128x96 the compute D3D11/D3D12/Vulkan PNGs are identical; CUDA differs by one byte value in two pixels. Mixed RT PNGs have sparse differences from floating-point and secondary-ray divergence: D3D12 versus Vulkan differs in 10 pixels with mean absolute RGB byte error 0.00705; CUDA differs in 41 pixels with mean error 0.00798. Maximum errors are 57 and 44 respectively. Bit-identical RT output is not claimed.
 
-Logs are under the aggregate build directory: `point-cloud-app-build.log`, `point-cloud-app-input-tests.log`, `point-cloud-app-asset-tests.log`, `point-cloud-final-window-*.log`, `corrected-reconstruction-*-memcheck.log`, and `checkpoint-4-point-cloud-*-memcheck.log`. The previous source remains available as `legacy-main.cpp`; non-Slang builds retain that target.
+Logs are under the aggregate build directory: `point-cloud-app-build.log`, `point-cloud-app-input-tests.log`, `point-cloud-app-asset-tests.log`, `point-cloud-final-window-*.log`, `corrected-reconstruction-*-memcheck.log`, and `checkpoint-4-point-cloud-*-memcheck.log`.
 
 ## Public snapshot ownership (2026-10-19)
 
