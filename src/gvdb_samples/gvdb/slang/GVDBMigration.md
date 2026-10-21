@@ -1,7 +1,7 @@
 # GVDB public interface migration inventory (historical)
 
 The migration is complete for the production GVDB targets. The former `GVDB.h`,
-`GPDevice` layer, affine scene/volume implementation and handwritten CUDA source
+legacy device layer, affine scene/volume implementation and handwritten CUDA source
 were retired after the portable NVRHI/Slang acceptance gates passed. This file
 remains as historical design context; the supported interfaces are the
 `GVDBNvrhi*` and `GVDBHostVolume` APIs in this directory.
@@ -13,11 +13,10 @@ validated on Windows. Current entry-level retirement gaps are tracked in the
 aggregate `docs/slang-next-status.md` records accepted checkpoints. The table
 below preserves the earlier migration analysis rather than current completion.
 
-The NVRHI public device and command-list design is retained. The legacy GVDB
-public header still contains 22 declarations exposing `donut::gp` types. Those
-cannot become NVRHI objects merely by changing the backend implementation:
-`gp::IBuffer`, `gp::ITexture`, `gp::IKernel`, `gp::IDeviceQueue`, and `gp::IDevice`
-are separate interfaces. A second device abstraction is not needed. The next
+The NVRHI public device and command-list design is retained. The historical
+public header exposed backend-specific resource and queue types that could not
+become NVRHI objects merely by changing the backend implementation. A second
+device abstraction is not needed. The next
 integration step is to make the GVDB factory/resource exposure points accept
 NVRHI objects directly and route operations to the existing Slang programs.
 

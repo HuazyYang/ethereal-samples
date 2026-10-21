@@ -10,6 +10,6 @@ offline Slang artifacts and NVRHI resources on D3D11, D3D12, Vulkan and CUDA
 where the corresponding backend is enabled. Host topology and VBX tests can be
 built without CUDA toolkit or NVCC discovery.
 
-The former `donut::gp` device layer, affine GVDB scene/volume implementation,
-handwritten CUDA kernels and legacy sample launchers have been removed. CUDA
+The former device layer, affine GVDB scene/volume implementation, handwritten
+CUDA kernels and legacy sample launchers have been removed. CUDA
 execution uses the NVRHI backend and the Slang kernel manifests directly.
