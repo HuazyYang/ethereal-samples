@@ -18,6 +18,7 @@
 #endif
 
 #include <nvrhi/vulkan.h>
+#include <nvrhi/factory.h>
 
 bool InitializeWaveWorksVulkanDispatch(VkInstance instance, VkDevice device);
 
@@ -865,7 +866,7 @@ WWRESULT Local_Waves_Simulation::init11(
         nvrhi::d3d11::DeviceDesc deviceDesc;
         deviceDesc.messageCallback = m_messageCallback;
         deviceDesc.context = reinterpret_cast<ID3D11DeviceContext*>(deviceContext);
-        m_device = nvrhi::d3d11::createDevice(deviceDesc);
+        nvrhi::createGraphicsFactory(nvrhi::GraphicsFactoryDesc())->createD3D11Device(deviceDesc, &m_device);
         if (!m_device) return WWE_FAIL;
 
         nvrhi::CommandListParameters commandListParams;
@@ -907,7 +908,9 @@ WWRESULT Local_Waves_Simulation::init12(
     deviceDesc.errorCB = m_messageCallback;
     deviceDesc.pDevice = reinterpret_cast<ID3D12Device*>(device);
     deviceDesc.pGraphicsCommandQueue = reinterpret_cast<ID3D12CommandQueue*>(queue);
-    m_device = nvrhi::d3d12::createDevice(deviceDesc);
+    nvrhi::d3d12::DeviceHandle d3d12Device;
+    nvrhi::createGraphicsFactory(nvrhi::GraphicsFactoryDesc())->createD3D12Device(deviceDesc, &d3d12Device);
+    m_device = d3d12Device.Get();
     if (!m_device) return WWE_FAIL;
 
     nvrhi::CommandListParameters commandListParams;
@@ -972,7 +975,9 @@ WWRESULT Local_Waves_Simulation::initVK(
     deviceDesc.numDeviceExtensions = numDeviceExtensions;
     if (!InitializeWaveWorksVulkanDispatch(deviceDesc.instance, deviceDesc.device))
         return WWE_FAIL;
-    m_device = nvrhi::vulkan::createDevice(deviceDesc);
+    nvrhi::vulkan::DeviceHandle vulkanDevice;
+    nvrhi::createGraphicsFactory(nvrhi::GraphicsFactoryDesc())->createVulkanDevice(deviceDesc, &vulkanDevice);
+    m_device = vulkanDevice.Get();
     if (!m_device) return WWE_FAIL;
 
     nvrhi::CommandListParameters commandListParams;

@@ -29,7 +29,7 @@ target_compile_definitions(waveworks_sdk PRIVATE GFSDK_WAVEWORKS_BUILDING_DLL=1
     WAVEWORKS_DYNAMIC_BUILD=1 NOMINMAX WIN32_LEAN_AND_MEAN _CRT_SECURE_NO_WARNINGS _USE_MATH_DEFINES)
 target_include_directories(waveworks_sdk PUBLIC include PRIVATE src "${algebra_dir}"
     "${CMAKE_CURRENT_BINARY_DIR}/shaders")
-target_link_libraries(waveworks_sdk PRIVATE nvrhi nvrhi_d3d11 nvrhi_d3d12 nvrhi_vk Vulkan::Headers)
+target_link_libraries(waveworks_sdk PRIVATE nvrhi_factory nvrhi nvrhi_d3d11 nvrhi_d3d12 nvrhi_vk Vulkan::Headers)
 set_target_properties(waveworks_sdk PROPERTIES OUTPUT_NAME WaveWorks FOLDER Demos/WaveWorks)
 set_property(SOURCE src/ShaderBytecode.c APPEND PROPERTY OBJECT_DEPENDS "${waveworks_shader_headers}")
 add_dependencies(waveworks_sdk waveworks_sdk_shaders)
