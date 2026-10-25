@@ -3,22 +3,35 @@
 #   OptixRenderer   OptiX path tracer over volume + mesh instances (needs OptiX)
 #   GVDBApp         Donut application base (devices, scene graph, camera/light
 #                   orbit, screen presentation, debug lines, ImGui)
-#   HeadlessContext console samples (devices + file system), ImageIO (PNG)
-#   ObjMesh         OBJ -> Donut MeshInfo / MeshInstance and gp buffers
+#   HeadlessContext console samples (CUDA device + file system), ImageIO (PNG)
+#   ObjMesh         OBJ -> Donut MeshInfo / MeshInstance and device buffers
 
-# --- CUDA render kernels ----------------------------------------------------
+# --- CUDA render kernels (Slang) ----------------------------------------------
+# kernels/*.slang -> bin/shaders/gvdb/*.nvsc, next to the library's containers.
 
-gvdb_add_ptx(gvdb_sample_utils_ptx
-    SOURCES "kernels/GVDBRaycast.cu"
-)
-target_sources(gvdb_sample_utils_ptx_objects PRIVATE "kernels/GVDBRaycast.cuh" "kernels/GVDBScene.cuh")
+ethereal_compile_shader_containers(
+    TARGET gvdb_sample_utils_kernels
+    SOURCES "kernels/GVDBRaycast.slang"
+    TARGETS ptx
+    OUTPUT_DIRECTORY "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/shaders/gvdb"
+    BASE_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/kernels"
+    INCLUDE_DIRECTORIES "${GVDB_INCLUDE_ROOT}/gvdb/shaders" "${CMAKE_CURRENT_LIST_DIR}/kernels"
+    EXTRA_FLAGS ${GVDB_SHADER_FLAGS}
+    FOLDER "GVDBSamples/shaders")
 
-if (ETHEREAL_OPTIX_FOUND)
-    gvdb_add_ptx(gvdb_sample_utils_optix_ptx
-        OPTIX
-        SOURCES "kernels/optix/OptixPrograms.cu"
-    )
-    target_sources(gvdb_sample_utils_optix_ptx_objects PRIVATE "kernels/optix/OptixLaunchParams.h")
+# --- OptiX programs (Slang) ---------------------------------------------------
+# kernels/optix/OptixPrograms.slang -> bin/shaders/gvdb/OptixPrograms.nvsc (OptixRenderer).
+
+if (NVRHI_WITH_OPTIX)
+    ethereal_compile_shader_containers(
+        TARGET gvdb_sample_utils_optix
+        SOURCES "kernels/optix/OptixPrograms.slang"
+        TARGETS optix
+        OUTPUT_DIRECTORY "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/shaders/gvdb"
+        BASE_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/kernels/optix"
+        INCLUDE_DIRECTORIES "${GVDB_INCLUDE_ROOT}/gvdb/shaders" "${CMAKE_CURRENT_LIST_DIR}/kernels"
+        EXTRA_FLAGS ${GVDB_SHADER_FLAGS}
+        FOLDER "GVDBSamples/shaders")
 endif()
 
 # --- HLSL -------------------------------------------------------------------
@@ -44,8 +57,6 @@ add_library(gvdb_sample_utils STATIC
     ObjMesh.cpp
     VolRenderer.h
     VolRenderer.cpp
-    OptixRenderer.h
-    OptixRenderer.cpp
     ScreenPresenter.h
     ScreenPresenter.cpp
     DebugDraw.h
@@ -56,17 +67,34 @@ add_library(gvdb_sample_utils STATIC
     HeadlessContext.cpp
     ImageIO.h
     ImageIO.cpp
+    kernels/GVDBScene.slangh
+    kernels/GVDBRaycast.slangh
+    kernels/GVDBRaycast.slang
 )
+set_source_files_properties(kernels/GVDBScene.slangh kernels/GVDBRaycast.slangh kernels/GVDBRaycast.slang
+    PROPERTIES HEADER_FILE_ONLY ON)
+if (NVRHI_WITH_OPTIX)
+    target_sources(gvdb_sample_utils PRIVATE
+        OptixRenderer.h
+        OptixRenderer.cpp
+        kernels/optix/OptixConstants.h
+        kernels/optix/OptixPrograms.slang)
+    set_source_files_properties(kernels/optix/OptixPrograms.slang PROPERTIES HEADER_FILE_ONLY ON)
+    add_dependencies(gvdb_sample_utils gvdb_sample_utils_optix)
+endif()
 target_include_directories(gvdb_sample_utils
     PUBLIC "$<BUILD_INTERFACE:${GVDB_SAMPLES_INCLUDE_ROOT}>"
 )
 # PUBLIC gvdb: the headers include <gvdb/GVDB.h> / <gvdb/GVDBScene.h>.
-target_link_libraries(gvdb_sample_utils PUBLIC gvdb gpdevice donut_core donut_engine donut_app)
+target_link_libraries(gvdb_sample_utils PUBLIC gvdb donut_core donut_engine donut_app)
+if (TARGET nvrhi_factory)
+    target_link_libraries(gvdb_sample_utils PUBLIC nvrhi_factory)
+endif()
 target_compile_definitions(gvdb_sample_utils PUBLIC "GVDB_SAMPLES_ASSETS_DIR=\"${GVDB_SAMPLES_ASSETS_DIR}\"")
 target_link_libraries(gvdb_sample_utils PRIVATE stb)
-add_dependencies(gvdb_sample_utils gvdb_sample_utils_ptx gvdb_sample_utils_shaders)
-if (TARGET gvdb_sample_utils_optix_ptx)
-    add_dependencies(gvdb_sample_utils gvdb_sample_utils_optix_ptx)
+add_dependencies(gvdb_sample_utils gvdb_sample_utils_shaders)
+if (TARGET gvdb_sample_utils_kernels)
+    add_dependencies(gvdb_sample_utils gvdb_sample_utils_kernels)
 endif()
 set_target_properties(gvdb_sample_utils PROPERTIES FOLDER "GVDBSamples")
 if(MSVC)

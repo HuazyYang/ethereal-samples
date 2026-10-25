@@ -2,6 +2,7 @@
 #include "HeadlessContext.h"
 #include "SampleTypes.h"
 #include <donut/app/ApplicationBase.h>
+#include <donut/app/DeviceManager.h>
 #include <donut/core/log.h>
 #include <cstdio>
 
@@ -15,7 +16,7 @@ std::filesystem::path HeadlessContext::getAssetPath(const char *name) const {
 
 nvrhi::AutoPtr<gvdb::IGVDBVolume> HeadlessContext::createVolume() const {
     nvrhi::AutoPtr<gvdb::IGVDBVolume> volume;
-    if (NVRHI_FAILED(gvdb::createGVDBVolume(gpQueue, vfs, &volume))) {
+    if (NVRHI_FAILED(gvdb::createGVDBVolume(compute, &volume))) {
         log::error("createGVDBVolume failed");
         return nullptr;
     }
@@ -23,7 +24,7 @@ nvrhi::AutoPtr<gvdb::IGVDBVolume> HeadlessContext::createVolume() const {
 }
 
 void HeadlessContext::sync() const {
-    syncQueue(gpDevice, gpQueue);
+    syncCompute(compute);
 }
 
 bool createHeadlessContext(HeadlessContext &ctx, bool wantOptix) {
@@ -33,28 +34,22 @@ bool createHeadlessContext(HeadlessContext &ctx, bool wantOptix) {
     ctx.vfs = MAKE_RC_OBJ_PTR(vfs::RootFileSystem);
     std::filesystem::path exeDir = app::GetDirectoryWithExecutable();
     ctx.vfs->mount("assets", std::filesystem::path(GVDB_SAMPLES_ASSETS_DIR));
-    ctx.vfs->mount("ptx", exeDir / "ptx");
+    ctx.vfs->mount("shaders/gvdb", exeDir / "shaders" / "gvdb");
 
-    gp::CUDADeviceDesc desc;
-    auto callback = MAKE_RC_OBJ_PTR(GPDeviceMessageCallback);
-    desc.messageCallback = callback;
-    if (NVRHI_FAILED(gp::createCUDADevice(desc, &ctx.gpDevice)) || !ctx.gpDevice) {
+    nvrhi::GraphicsFactoryDesc factoryDesc;
+    factoryDesc.messageCallback = app::DefaultMessageCallback::GetInstance();
+    ctx.factory = nvrhi::createGraphicsFactory(factoryDesc);
+    nvrhi::cuda::DeviceDesc desc;
+    desc.messageCallback = app::DefaultMessageCallback::GetInstance();
+    desc.enableOptix = wantOptix;
+    if (!ctx.factory || NVRHI_FAILED(ctx.factory->createCudaDevice(desc, &ctx.cudaDevice)) || !ctx.cudaDevice) {
         log::error("Cannot create the CUDA device");
         return false;
     }
-    gp::DeviceQueueDesc queueDesc;
-    queueDesc.priority = gp::DeviceQueuePriority::Normal;
-    if (NVRHI_FAILED(ctx.gpDevice->createDeviceQueue(queueDesc, &ctx.gpQueue)) || !ctx.gpQueue) {
-        log::error("Cannot create the CUDA queue");
+    if (wantOptix && !ctx.cudaDevice->isOptixAvailable()) log::warning("OptiX not available; continuing without it");
+    if (NVRHI_FAILED(gvdb::createComputeContext(ctx.cudaDevice, ctx.vfs, &ctx.compute))) {
+        log::error("Cannot create the compute context");
         return false;
-    }
-
-    if (wantOptix) {
-        gp::RTDeviceDesc rtDesc;
-        if (NVRHI_FAILED(gp::createOptiXDevice(rtDesc, ctx.gpDevice, &ctx.rtDevice)) || !ctx.rtDevice) {
-            log::warning("OptiX device not available; continuing without it");
-            ctx.rtDevice = nullptr;
-        }
     }
 
     ctx.sceneGraph = MAKE_RC_OBJ_PTR(gvdb::GVDBSceneGraph);

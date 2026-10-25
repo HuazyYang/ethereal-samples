@@ -39,8 +39,8 @@ class InteractiveOptixApp : public GVDBApp {
     void setInitialShading(gvdb::VolumeShading shading) { m_shading = shading; }
 
     bool OnInit() override {
-        if (!getRTDevice()) {
-            log::error("interactive-optix: no OptiX device (OptiX SDK not found at build time or no driver support).");
+        if (!isOptixAvailable()) {
+            log::error("interactive-optix: no OptiX on the CUDA device (no driver support).");
             return false;
         }
 
@@ -83,15 +83,16 @@ class InteractiveOptixApp : public GVDBApp {
         attrs.threshold = {0.1f, 0.0f, 0.3f};
         attrs.cutoff = {0.001f, 0.001f, 0.0f};
         attrs.epsilon = 0.001f;
-        attrs.transferFunction = MAKE_RC_OBJ_PTR(gvdb::VolumeTransferFunction, getGPDevice());
+        attrs.transferFunction = MAKE_RC_OBJ_PTR(gvdb::VolumeTransferFunction, getCompute());
         attrs.transferFunction->setLinear(0.00f, 0.25f, {0.f, 0.f, 0.f, 0.0f}, {0.f, 0.f, 0.f, 0.0f});
         attrs.transferFunction->setLinear(0.25f, 0.50f, {0.f, 0.5f, 1.f, 0.0f}, {0.f, 0.f, 1.f, 0.2f});
         attrs.transferFunction->setLinear(0.50f, 0.75f, {0.f, 0.f, 1.f, 0.2f}, {0.f, 1.f, 1.f, 0.3f});
         attrs.transferFunction->setLinear(0.75f, 1.00f, {0.f, 1.f, 1.f, 0.3f}, {0.f, 1.f, 1.f, 1.0f});
-        attrs.transferFunction->commit(getGPQueue());
+        attrs.transferFunction->commit();
 
         // ---- OptiX renderer and materials (RebuildOptixGraph of the reference) ----
-        m_renderer = std::make_unique<OptixRenderer>(getGPDevice(), getRTDevice(), getGPQueue(), getVFS());
+        m_renderer = std::make_unique<OptixRenderer>(getCompute());
+        if (!m_renderer->isValid()) return false;
         m_renderer->getViewParams().backgroundColor = {0.1f, 0.2f, 0.4f, 1.f};
 
         OptixMaterialParams surf;
@@ -155,8 +156,8 @@ class InteractiveOptixApp : public GVDBApp {
         // progressive sampling: sample 0 restarts the accumulation
         m_renderer->setSample(m_frame, m_sample);
         m_renderer->render(getSceneGraph(), getRenderView(int(width), int(height)));
-        UT_V_GP(getGPQueue()->copyBufferRegion(getPresenter()->getRenderBuffer(0), 0, m_renderer->getOutputBuffer(), 0,
-                                               size_t(width) * height * 4));
+        getCompute()->getCommandList()->copyBuffer(getPresenter()->getRenderBuffer(0), 0, m_renderer->getOutputBuffer(), 0,
+                                                   size_t(width) * height * 4);
 
         if (!m_screenshotPath.empty() && m_frame == 0 && m_sample + 1 >= m_screenshotSamples) {
             std::vector<uint8_t> rgba;

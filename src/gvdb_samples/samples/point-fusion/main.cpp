@@ -1,6 +1,6 @@
 // point-fusion (gPointFusion): a procedural city of boxes (buildings, curbs,
 // streets) is scanned by a simulated depth camera mounted on a car
-// (PointFusionScan.cu, loaded as ptx/PointFusionScan.ptx): every frame one
+// (PointFusionScan.slang, shaders/gvdb/PointFusionScan.nvsc): every frame one
 // 240x180 jittered depth image is turned into points, the points are fused
 // incrementally into one volume (accumulateTopology -> updateAtlas ->
 // insertPointsSubcell -> gatherLevelSet(accumulate) -> updateApron) and the
@@ -41,14 +41,16 @@ constexpr int GRID_CNT = GRID_X * GRID_Y;
 constexpr float GRID_SCALE = 5.0f;   // voxels per metre
 constexpr int SEED_COUNT = 128 * 128;
 
-// Same layout as ScanObj / ScanInfo in PointFusionScan.cu.
+// Same layout as ScanObj / ScanInfo in PointFusionScan.slang (an array of 48-byte objects; the scan constants
+// by value as a kernel argument).
 struct GVDB_ALIGN(16) ScanObj {
     dm::float3 pos;
     dm::float3 size;
     dm::float3 loc;
     uint32_t clr;
 };
-struct GVDB_ALIGN(16) ScanInfo {
+static_assert(sizeof(ScanObj) == 48, "ScanObj layout differs from PointFusionScan.slang");
+struct ScanInfo {
     dm::int3 gridRes;
     dm::float3 gridSize;
     dm::float3 cams;
@@ -104,39 +106,26 @@ class PointFusionApp : public GVDBApp {
         attrs.extinct = {-1.0f, 1.1f, 0.0f};
         attrs.threshold = {0.0f, 3.0f, -1.0f};           // SetVolumeRange(0, 3, -1)
         attrs.cutoff = {0.005f, 0.001f, 0.0f};
-        attrs.transferFunction = MAKE_RC_OBJ_PTR(gvdb::VolumeTransferFunction, getGPDevice());
+        attrs.transferFunction = MAKE_RC_OBJ_PTR(gvdb::VolumeTransferFunction, getCompute());
         attrs.transferFunction->setLinear(0.f, 1.f, {0.f, 0.f, 0.f, 0.f}, {1.f, 1.f, 1.f, 0.1f});
-        attrs.transferFunction->commit(getGPQueue());
+        attrs.transferFunction->commit();
 
-        m_renderer = std::make_unique<VolRenderer>(getGPDevice(), getGPQueue(), getVFS());
+        m_renderer = std::make_unique<VolRenderer>(getCompute());
         m_renderer->getViewParams().backgroundColor = {0.1f, 0.2f, 0.3f, 1.f};
         m_renderer->getViewParams().shadowParams = {0.8f, 1.f, 0.f};
 
         // ---- scan kernel ----
-        {
-            nvrhi::AutoPtr<nvrhi::IDataBlob> ptx;
-            if (NVRHI_FAILED(getVFS()->readFile("ptx/PointFusionScan.ptx", &ptx)) || !ptx) {
-                log::error("point-fusion: cannot read ptx/PointFusionScan.ptx");
-                return false;
-            }
-            size_t len = ptx->GetSize();
-            ptx->Resize(len + 1);
-            static_cast<char *>(ptx->GetDataPtr())[len] = 0;
-            UT_V_GP(getGPDevice()->createModule({}, ptx->GetDataPtr(), len + 1, &m_scanModule));
-            if (!m_scanModule || NVRHI_FAILED(m_scanModule->getKernel("scanBuildings", &m_scanKernel))) {
-                log::error("point-fusion: kernel scanBuildings not found");
-                return false;
-            }
-        }
+        m_scanKernel = getCompute()->getKernel("shaders/gvdb/PointFusionScan.nvsc", "scanBuildings");
+        if (!m_scanKernel) return false;
 
         // ---- point lists, hit counter, jitter seeds ----
-        gp::IDevice *dev = getGPDevice();
-        auto makeBuffer = [dev](size_t bytes, bool staging) {
-            gp::BufferDesc desc;
+        nvrhi::IDevice *dev = getCudaDevice();
+        auto makeBuffer = [dev](size_t bytes, bool readback) {
+            nvrhi::BufferDesc desc;
             desc.byteSize = bytes;
-            desc.isStaging = staging;
-            nvrhi::AutoPtr<gp::IBuffer> b;
-            UT_V_GP(dev->createBuffer(desc, &b));
+            if (readback) desc.cpuAccess = nvrhi::CpuAccessMode::Read;
+            nvrhi::BufferHandle b;
+            UT_CHECK(dev->createBuffer(desc, &b));
             return b;
         };
         m_pntsGP = makeBuffer(size_t(m_maxPnts) * sizeof(dm::float3), false);
@@ -152,7 +141,7 @@ class PointFusionApp : public GVDBApp {
             std::vector<uint32_t> seeds(SEED_COUNT);
             srand(1043);
             for (auto &s : seeds) s = uint32_t(rand());
-            UT_V_GP(getGPQueue()->writeBuffer(m_seedsGP, seeds.data(), seeds.size() * sizeof(uint32_t), 0));
+            getCompute()->getCommandList()->writeBuffer(m_seedsGP, seeds.data(), seeds.size() * sizeof(uint32_t), 0);
         }
         // Brick-sized blocks of the "far" level set value (3.0, FillChannel(0, 3)
         // of the reference) and of transparent black for the colour channel,
@@ -162,9 +151,9 @@ class PointFusionApp : public GVDBApp {
             size_t voxels = size_t(bwa.x) * bwa.y * bwa.z;
             std::vector<float> farValues(voxels, 3.0f);
             m_fillFar = makeBuffer(voxels * sizeof(float), false);
-            UT_V_GP(getGPQueue()->writeBuffer(m_fillFar, farValues.data(), voxels * sizeof(float), 0));
+            getCompute()->getCommandList()->writeBuffer(m_fillFar, farValues.data(), voxels * sizeof(float), 0);
             m_fillZero = makeBuffer(voxels * sizeof(uint32_t), false);
-            UT_V_GP(getGPQueue()->clearBufferUint(m_fillZero, 0u));
+            getCompute()->getCommandList()->clearBufferUInt(m_fillZero, 0u);
         }
 
         setupChannels();
@@ -300,10 +289,10 @@ class PointFusionApp : public GVDBApp {
             }
         }
 
-        gp::BufferDesc desc;
+        nvrhi::BufferDesc desc;
         desc.byteSize = m_objs.size() * sizeof(ScanObj);
-        UT_V_GP(getGPDevice()->createBuffer(desc, &m_objsGP));
-        UT_V_GP(getGPQueue()->writeBuffer(m_objsGP, m_objs.data(), desc.byteSize, 0));
+        UT_CHECK(getCudaDevice()->createBuffer(desc, &m_objsGP));
+        getCompute()->getCommandList()->writeBuffer(m_objsGP, m_objs.data(), desc.byteSize, 0);
         log::info("City: %d objects.", int(m_objs.size()));
     }
 
@@ -318,34 +307,31 @@ class PointFusionApp : public GVDBApp {
         info.cams = scanView.rayTopLeft;
         info.camu = scanView.rayU;
         info.camv = scanView.rayV;
-        UT_V_GP(getGPQueue()->setConstantBuffer(m_scanKernel, "scan", &info, sizeof(info)));
 
         m_numPnts = m_scanRes.x * m_scanRes.y;   // max number of points per frame
         const float tmax = m_gridSize * 4.f * GRID_SCALE;
         const dm::float3 pos = scanView.eye;
         const int numObj = int(m_objs.size());
 
-        UT_V_GP(getGPQueue()->clearBufferUint(m_pntOutGP, 0u));
-        using KA = gp::KernelArg;
-        KA args[] = {KA::Scalar(pos), KA::Scalar(m_scanRes), KA::Scalar(numObj), KA::Scalar(tmax),
-                     KA::Buffer(m_objsGP), KA::Buffer(m_pntsGP), KA::Buffer(m_clrsGP), KA::Buffer(m_seedsGP),
-                     KA::Buffer(m_pntOutGP)};
-        gp::dim3 block{16, 16, 1};
-        gp::dim3 grid{m_scanRes.x / block.x + 1, m_scanRes.y / block.y + 1, 1};
-        UT_V_GP(getGPQueue()->launch(m_scanKernel, grid, block, args, sizeof(args) / sizeof(args[0])));
+        getCompute()->getCommandList()->clearBufferUInt(m_pntOutGP, 0u);
+        gvdb::launchKernel(getCompute()->getCommandList(), m_scanKernel,
+                           gvdb::groupsFor(m_scanKernel, dm::uint3(uint32_t(m_scanRes.x), uint32_t(m_scanRes.y), 1u)),
+                           info, pos, m_scanRes, numObj, tmax, gvdb::deviceAddress(m_objsGP),
+                           gvdb::deviceAddress(m_pntsGP), gvdb::deviceAddress(m_clrsGP), gvdb::deviceAddress(m_seedsGP),
+                           gvdb::deviceAddress(m_pntOutGP));
 
         // count hit points
-        UT_V_GP(getGPQueue()->copyBufferRegion(m_pntOutStaging, 0, m_pntOutGP, 0, sizeof(int)));
+        getCompute()->getCommandList()->copyBuffer(m_pntOutStaging, 0, m_pntOutGP, 0, sizeof(int));
         if (m_showPoints) {
-            UT_V_GP(getGPQueue()->copyBufferRegion(m_pntsStaging, 0, m_pntsGP, 0, size_t(m_numPnts) * sizeof(dm::float3)));
-            UT_V_GP(getGPQueue()->copyBufferRegion(m_clrsStaging, 0, m_clrsGP, 0, size_t(m_numPnts) * sizeof(uint32_t)));
+            getCompute()->getCommandList()->copyBuffer(m_pntsStaging, 0, m_pntsGP, 0, size_t(m_numPnts) * sizeof(dm::float3));
+            getCompute()->getCommandList()->copyBuffer(m_clrsStaging, 0, m_clrsGP, 0, size_t(m_numPnts) * sizeof(uint32_t));
         }
-        syncQueue(getGPDevice(), getGPQueue());
+        syncCompute(getCompute());
         void *data = nullptr;
-        UT_V_GP(getGPDevice()->mapBuffer(m_pntOutStaging, &data));
+        data = getCudaDevice()->mapBuffer(m_pntOutStaging, nvrhi::CpuAccessMode::Read);
         if (data) {
             m_totalPnts += *static_cast<const int *>(data);
-            getGPDevice()->unmapBuffer(m_pntOutStaging);
+            getCudaDevice()->unmapBuffer(m_pntOutStaging);
         }
     }
 
@@ -410,8 +396,8 @@ class PointFusionApp : public GVDBApp {
 
     void drawPoints() {
         void *pdata = nullptr, *cdata = nullptr;
-        UT_V_GP(getGPDevice()->mapBuffer(m_pntsStaging, &pdata));
-        UT_V_GP(getGPDevice()->mapBuffer(m_clrsStaging, &cdata));
+        pdata = getCudaDevice()->mapBuffer(m_pntsStaging, nvrhi::CpuAccessMode::Read);
+        cdata = getCudaDevice()->mapBuffer(m_clrsStaging, nvrhi::CpuAccessMode::Read);
         if (pdata && cdata) {
             const dm::float3 *pnts = static_cast<const dm::float3 *>(pdata);
             const uint32_t *clrs = static_cast<const uint32_t *>(cdata);
@@ -421,8 +407,8 @@ class PointFusionApp : public GVDBApp {
                 getDebugDraw()->line(pnts[n], pnts[n] + dm::float3(0.f, 1.f, 0.f), unpackColorA(clrs[n]));
             }
         }
-        if (pdata) getGPDevice()->unmapBuffer(m_pntsStaging);
-        if (cdata) getGPDevice()->unmapBuffer(m_clrsStaging);
+        if (pdata) getCudaDevice()->unmapBuffer(m_pntsStaging);
+        if (cdata) getCudaDevice()->unmapBuffer(m_clrsStaging);
     }
 
     void drawCamera() {
@@ -546,15 +532,14 @@ class PointFusionApp : public GVDBApp {
     nvrhi::AutoPtr<engine::SceneGraphNode> m_scanCameraNode;
     OrbitController m_car;
 
-    nvrhi::AutoPtr<gp::IModule> m_scanModule;
-    nvrhi::AutoPtr<gp::IKernel> m_scanKernel;
+    gvdb::IComputeKernel *m_scanKernel = nullptr;
     std::vector<ScanObj> m_objs;
-    nvrhi::AutoPtr<gp::IBuffer> m_objsGP;
-    nvrhi::AutoPtr<gp::IBuffer> m_pntsGP, m_pntsStaging;
-    nvrhi::AutoPtr<gp::IBuffer> m_clrsGP, m_clrsStaging;
-    nvrhi::AutoPtr<gp::IBuffer> m_pntOutGP, m_pntOutStaging;
-    nvrhi::AutoPtr<gp::IBuffer> m_seedsGP;
-    nvrhi::AutoPtr<gp::IBuffer> m_fillFar, m_fillZero;
+    nvrhi::BufferHandle m_objsGP;
+    nvrhi::BufferHandle m_pntsGP, m_pntsStaging;
+    nvrhi::BufferHandle m_clrsGP, m_clrsStaging;
+    nvrhi::BufferHandle m_pntOutGP, m_pntOutStaging;
+    nvrhi::BufferHandle m_seedsGP;
+    nvrhi::BufferHandle m_fillFar, m_fillZero;
     std::vector<uint8_t> m_filledBricks;
     std::mt19937 m_rng{1043};
 

@@ -35,27 +35,28 @@ enum class VolumeShading : uint8_t {
 };
 
 // A transfer function: TRANSFER_FUNC_SIZE float4 entries over the value range
-// [threshold.y, threshold.z] of the instance that uses it, mirrored to the GPU.
+// [threshold.y, threshold.z] of the instance that uses it, mirrored to a buffer
+// of the CUDA device.
 class VolumeTransferFunction : public nvrhi::ObjectImpl<nvrhi::IObject> {
  public:
     NVRHI_BEGIN_INTERFACE_TABLE_INLINE(VolumeTransferFunction)
     NVRHI_IMPLEMENTS_INTERFACE(nvrhi::IObject)
     NVRHI_END_INTERFACE_TABLE()
 
-    explicit VolumeTransferFunction(donut::gp::IDevice *device);
+    explicit VolumeTransferFunction(IComputeContext *context);
 
     // Linear ramp from value a at t0 to value b at t1, t in [0, 1].
     void setLinear(float t0, float t1, dm::float4 a, dm::float4 b);
     const dm::float4 *getData() const { return m_data.data(); }
     dm::float4 *getData() { return m_data.data(); }
-    // Uploads the host data; getGPU() is valid afterwards.
-    void commit(donut::gp::IDeviceQueue *queue);
-    donut::gp::IBuffer *getGPU() const { return m_gpu.Get(); }
+    // Records the upload of the host data into the context; getGPU() is valid afterwards.
+    void commit();
+    nvrhi::IBuffer *getGPU() const { return m_gpu.Get(); }
 
  private:
     std::vector<dm::float4> m_data;
-    nvrhi::AutoPtr<donut::gp::IDevice> m_device;
-    nvrhi::AutoPtr<donut::gp::IBuffer> m_gpu;
+    nvrhi::AutoPtr<IComputeContext> m_context;
+    nvrhi::BufferHandle m_gpu;
 };
 
 // Per-instance rendering attributes (the scene-wide volume settings of the

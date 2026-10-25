@@ -1,7 +1,8 @@
 #ifndef GVDB_GVDB_H
 #define GVDB_GVDB_H
-// GVDB sparse voxel database (port of NVIDIA GVDB Voxels 1.1.1) on the gp
-// compute abstraction, as a set of COM-style interfaces:
+// GVDB sparse voxel database (port of NVIDIA GVDB Voxels 1.1.1) on the nvrhi
+// CUDA backend with Slang kernels (GVDBCompute.h), as a set of COM-style
+// interfaces:
 //
 //   IGVDBVolume      the data structure: level configuration, node pools
 //                    (host arrays mirrored to GPU buffers), atlas map, channel
@@ -21,16 +22,12 @@
 // voxel); renderers map it to application space with their own transform.
 // Bricks are the level-0 nodes; their voxels live in one 3D texture per
 // channel ("atlas"), each brick padded by an apron of `apron` voxels.
-#include <gvdb/GPDevice.h>
+#include <gvdb/GVDBCompute.h>
 #include <nvrhi/core/foundation.h>
 #include <nvrhi/core/autoptr.h>
 #include <nvrhi/core/datablob.h>
 #include <donut/core/math/math.h>
 #include <vector>
-
-namespace donut::vfs {
-class IFileSystem;
-}
 
 namespace gvdb {
 
@@ -46,9 +43,11 @@ namespace gvdb {
 
 #define GVDB_SCAN_BLOCKSIZE 512
 
-// PTX modules of the library, as served by the file system given to createGVDBVolume().
-#define GVDB_PTX_OPERATORS "ptx/GVDBOperators.ptx"
-#define GVDB_PTX_PARTICLES "ptx/GVDBParticles.ptx"
+// Shader containers of the library (shaders/*.slang), as served by the file system of the
+// compute context given to createGVDBVolume().
+#define GVDB_SHADERS_OPERATORS "shaders/gvdb/GVDBOperators.nvsc"
+#define GVDB_SHADERS_PARTICLES "shaders/gvdb/GVDBParticles.nvsc"
+#define GVDB_SHADERS_PRIMITIVES "shaders/gvdb/GVDBPrimitives.nvsc"
 
 enum { MAXLEV = 10 };
 enum { MAX_CHANNEL = 32 };
@@ -61,12 +60,12 @@ enum AtlasFormat {
     ATLAS_FORMAT_R8_UINT,       // T_UCHAR
     ATLAS_FORMAT_RGBA8_UINT,    // T_UCHAR4
     ATLAS_FORMAT_R32_FLOAT,     // T_FLOAT
-    ATLAS_FORMAT_RGB32_FLOAT,   // T_FLOAT3 (storage only: no apron / operator kernels)
+    ATLAS_FORMAT_RGB32_FLOAT,   // T_FLOAT3: VBX type only (CUDA arrays have no 3-channel formats)
     ATLAS_FORMAT_RGBA32_FLOAT,  // T_FLOAT4
 };
 
 uint32_t atlasFormatBytes(AtlasFormat format);
-donut::gp::Format atlasFormatToGP(AtlasFormat format);
+nvrhi::Format atlasFormatToNVRHI(AtlasFormat format);
 // GVDB channel type codes used in VBX files (T_UCHAR=0, T_UCHAR4=2, T_FLOAT=3, T_FLOAT3=4, T_FLOAT4=5).
 int atlasFormatToVBXType(AtlasFormat format);
 bool atlasFormatFromVBXType(int vbxType, AtlasFormat &format);
@@ -129,7 +128,8 @@ struct AtlasNode {
     int leafNode;   // brick index in level 0, or -1 for an empty slot
 };
 
-// The GPU-side description of a volume, consumed by every kernel (VDBInfo in GVDB.cuh).
+// The GPU-side description of a volume, consumed by every kernel (VDBInfo in shaders/GVDB.slangh,
+// same layout: GVDBVolume checks it against the reflection of the kernels).
 struct GVDB_ALIGN(16) VDBInfo {
     int				dim[MAXLEV]; // Log base 2 of lateral resolution of each node per level
     int				res[MAXLEV]; // Lateral resolution of each node per level
@@ -138,9 +138,9 @@ struct GVDB_ALIGN(16) VDBInfo {
     int				nodecnt[MAXLEV]; // Total number of allocated nodes per level
     int				nodewid[MAXLEV]; // Size of a node at each level in bytes
     int				childwid[MAXLEV]; // Size of the child list per node at each level in bytes
-    donut::gp::NativeHandle		nodelist[MAXLEV]; // GPU pointer to each level's pool group 0 (nodes)
-    donut::gp::NativeHandle		childlist[MAXLEV]; // GPU pointer to each level's pool group 1 (child lists)
-    donut::gp::NativeHandle		atlas_map; // GPU pointer to the atlas map (which maps from atlas to world space)
+    uint64_t		nodelist[MAXLEV]; // GPU pointer to each level's pool group 0 (nodes)
+    uint64_t		childlist[MAXLEV]; // GPU pointer to each level's pool group 1 (child lists)
+    uint64_t		atlas_map; // GPU pointer to the atlas map (which maps from atlas to world space)
     dm::int3		atlas_cnt; // Number of bricks on each axis of the atlas
     dm::int3		atlas_res; // Total resolution in voxels of the atlas
     int				atlas_apron; // Apron size
@@ -148,8 +148,9 @@ struct GVDB_ALIGN(16) VDBInfo {
     int				top_lev; // Top level (i.e. tree spans from voxels to level 0 to level top_lev)
     dm::float3		bmin; // Inclusive minimum of axis-aligned bounding box in voxels
     dm::float3		bmax; // Inclusive maximum of axis-aligned bounding box in voxels
-    donut::gp::NativeHandle	volIn[MAX_CHANNEL]; // Texture reference (read plus interpolation) to atlas per channel
-    donut::gp::NativeHandle	volOut[MAX_CHANNEL]; // Surface reference (read and write) to atlas per channel
+    dm::float3		atlas_rcp; // 1 / atlas_res: the texture handles sample with normalized coordinates
+    uint64_t	volIn[MAX_CHANNEL]; // Texture handle (read plus interpolation) of the atlas per channel
+    uint64_t	volOut[MAX_CHANNEL]; // Surface handle (read and write) of the atlas per channel
 };
 
 // ============================================================================
@@ -174,7 +175,7 @@ struct GVDBAtlasConfig {
 
 struct GVDBChannelDesc {
     AtlasFormat format = ATLAS_FORMAT_R32_FLOAT;
-    donut::gp::SamplerDesc samplerDesc;            // filtering / addressing of the atlas texture
+    nvrhi::SamplerDesc samplerDesc;                // filtering / addressing of the atlas texture
     dm::float4 voidValue = dm::float4::zero();     // apron value outside the volume
 };
 
@@ -183,12 +184,12 @@ struct GVDBPoolView {
     void *data = nullptr;        // first element
     uint64_t count = 0;          // allocated elements
     uint64_t stride = 0;         // bytes per element
-    donut::gp::IBuffer *gpu = nullptr;   // GPU mirror (valid after commitPools / updateAtlas)
+    nvrhi::IBuffer *gpu = nullptr;   // GPU mirror (valid after commitPools / updateAtlas)
 };
 
-// A strided array of per-point attributes in a gp buffer.
+// A strided array of per-point attributes in a buffer of the CUDA device.
 struct PointData {
-    donut::gp::IBuffer *buffer = nullptr;
+    nvrhi::IBuffer *buffer = nullptr;
     uint64_t offset = 0;    // byte offset of the first element
     uint32_t stride = 0;    // byte stride between elements
     uint32_t count = 0;
@@ -236,7 +237,7 @@ struct IGVDBVolume : public nvrhi::IObject {
     virtual void destroyChannels() = 0;
     virtual int getNumChannels() const = 0;
     virtual const GVDBChannelDesc &getChannelDesc(int channel) const = 0;
-    virtual donut::gp::ITexture *getChannelTexture(int channel) = 0;   // valid after updateAtlas()
+    virtual nvrhi::ITexture *getChannelTexture(int channel) = 0;   // valid after updateAtlas()
 
     // ---- level geometry (functions of the configuration) ----
     virtual uint8_t getNumLevels() const = 0;
@@ -288,22 +289,22 @@ struct IGVDBVolume : public nvrhi::IObject {
     virtual dm::uint3 getAtlasResDim() const = 0;               // voxels (with aprons)
     virtual dm::uint3 getAtlasPackedResDim() const = 0;         // voxels (without aprons)
     virtual const std::vector<AtlasNode> &getAtlasMap() const = 0;
-    virtual donut::gp::IBuffer *getAtlasMapGPU() = 0;
+    virtual nvrhi::IBuffer *getAtlasMapGPU() = 0;
     // Copies a tightly packed block of srcBlockDim voxels into a channel at dstOffset (voxels).
-    virtual void copyAtlasBlock(int channel, dm::int3 dstOffset, donut::gp::IBuffer *src, dm::uint3 srcBlockDim) = 0;
+    virtual void copyAtlasBlock(int channel, dm::int3 dstOffset, nvrhi::IBuffer *src, dm::uint3 srcBlockDim) = 0;
 
     // ---- GPU mirror ----
-    virtual donut::gp::IDevice *getDevice() const = 0;
-    virtual donut::gp::IDeviceQueue *getQueue() const = 0;
+    virtual nvrhi::cuda::IDevice *getDevice() const = 0;
+    virtual IComputeContext *getContext() const = 0;
     virtual void commitPools() = 0;                             // host pools -> GPU
     virtual void fetchPools() = 0;                              // GPU -> host pools (after GPU topology edits)
     virtual void fillVDBInfo(VDBInfo &info, bool withAtlas) const = 0;
     virtual void invalidateVDBInfo() = 0;
     virtual void prepareVDB() = 0;                              // uploads VDBInfo when out of date
     virtual void prepareVDBPartially() = 0;                     // VDBInfo without atlas (GPU topology kernels)
-    virtual donut::gp::IBuffer *getVDBInfoGPU() = 0;
-    // A kernel of the library PTX modules, cached by name (shared by the operation objects).
-    virtual donut::gp::IKernel *getKernel(const char *name) = 0;
+    virtual nvrhi::IBuffer *getVDBInfoGPU() = 0;
+    // A kernel of the library's shader containers, by name (shared by the operation objects).
+    virtual IComputeKernel *getKernel(const char *name) = 0;
 
     // ---- statistics ----
     virtual GVDBUsage getUsage() = 0;
@@ -326,16 +327,16 @@ struct IGVDBVoxelOps : public nvrhi::IObject {
     // Runs an operator over the atlas of a channel (8x8x8 blocks); params = p1..p3.
     virtual void compute(ComputeOp op, int channel, int numIterations, dm::float3 params, bool updateApron,
                          bool skipOverAprons, float boundValue = 0.f) = 0;
-    // Runs a user kernel `k(VDBInfo*, int3 atlasRes, uchar channel)` over the atlas.
-    virtual void computeKernel(donut::gp::IKernel *kernel, int channel, bool updateApron, bool skipOverAprons) = 0;
+    // Runs a user kernel `k(VDBInfo* gvdb, int3 atlasRes, uint8_t channel)` with [numthreads(8, 8, 8)] over the atlas.
+    virtual void computeKernel(IComputeKernel *kernel, int channel, bool updateApron, bool skipOverAprons) = 0;
     virtual void updateApron() = 0;                              // all channels, boundary = voidValue
     virtual void updateApron(int channel, float boundValue) = 0;
     // Samples a dense float volume (src, srcRes) into the channel. xform maps
     // index space to source voxels; values remapped from inRange to outRange.
-    virtual void resample(int channel, const dm::float4x4 &xform, dm::int3 srcRes, donut::gp::IBuffer *src,
+    virtual void resample(int channel, const dm::float4x4 &xform, dm::int3 srcRes, nvrhi::IBuffer *src,
                           dm::float3 inRange, dm::float3 outRange) = 0;
     // Averages the dense source onto a dstRes grid covering [0, dstMax]; read back to the host.
-    virtual void downsample(const dm::float4x4 &xform, dm::int3 srcRes, donut::gp::IBuffer *src, dm::int3 dstRes,
+    virtual void downsample(const dm::float4x4 &xform, dm::int3 srcRes, nvrhi::IBuffer *src, dm::int3 dstRes,
                             dm::float3 dstMax, dm::float3 inRange, dm::float3 outRange,
                             std::vector<float> &outValues) = 0;
     virtual float reduction(int channel) = 0;                    // sum of a float channel
@@ -386,10 +387,10 @@ struct IGVDBVoxelizer : public nvrhi::IObject {
     virtual IGVDBVolume *getVolume() const = 0;
 
     // Rebuilds the topology from a triangle mesh (float3 vertices, uint3 indices
-    // in gp buffers) and writes valSurface / valInside into the channel.
+    // in buffers of the CUDA device) and writes valSurface / valInside into the channel.
     // matModelToIndex maps model space to index space.
-    virtual nvrhi::FRESULT solidVoxelize(int channel, donut::gp::IBuffer *vertices, uint32_t numVertices,
-                                         donut::gp::IBuffer *indices, uint32_t numIndices,
+    virtual nvrhi::FRESULT solidVoxelize(int channel, nvrhi::IBuffer *vertices, uint32_t numVertices,
+                                         nvrhi::IBuffer *indices, uint32_t numIndices,
                                          const dm::box3 &modelBounds, const dm::affine3 &matModelToIndex,
                                          float valSurface, float valInside) = 0;
 };
@@ -409,8 +410,8 @@ struct IGVDBSerializer : public nvrhi::IObject {
 // Factories
 // ============================================================================
 
-// vfs must serve GVDB_PTX_OPERATORS and GVDB_PTX_PARTICLES.
-nvrhi::FRESULT createGVDBVolume(donut::gp::IDeviceQueue *queue, donut::vfs::IFileSystem *vfs, IGVDBVolume **volume);
+// The file system of the context must serve the GVDB_SHADERS_* containers.
+nvrhi::FRESULT createGVDBVolume(IComputeContext *context, IGVDBVolume **volume);
 nvrhi::FRESULT createGVDBVoxelOps(IGVDBVolume *volume, IGVDBVoxelOps **ops);
 nvrhi::FRESULT createGVDBPointOps(IGVDBVolume *volume, IGVDBPointOps **ops);
 nvrhi::FRESULT createGVDBVoxelizer(IGVDBVolume *volume, IGVDBVoxelizer **voxelizer);

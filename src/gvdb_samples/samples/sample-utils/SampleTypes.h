@@ -1,12 +1,16 @@
 #ifndef SAMPLETYPES_H
 #define SAMPLETYPES_H
 #include <nvrhi/core/foundation.h>
-#include <gvdb/GPDevice.h>
+#include <gvdb/GVDBCompute.h>
 #include <donut/core/log.h>
 #include <nvrhi/core/memory.h>
 #include <donut/core/math/math.h>
 #include <gvdb/GVDBScene.h>
 #include <string>
+
+// Shader containers of sample-utils (kernels/*.slang), next to the library's ones.
+#define GVDB_SHADERS_RAYCAST "shaders/gvdb/GVDBRaycast.nvsc"
+#define GVDB_SHADERS_OPTIX "shaders/gvdb/OptixPrograms.nvsc"
 
 namespace SampleUtils {
 
@@ -23,26 +27,14 @@ nvrhi::AutoPtr<gvdb::GVDBVolumeInstance> attachVolumeInstance(gvdb::GVDBSceneGra
 // Sets the node transform of an attached leaf from an affine (decomposed into T R S).
 void setNodeTransform(donut::engine::SceneGraphNode *node, const dm::affine3 &transform);
 
-// Host-side wait for everything enqueued on the queue so far. IDevice::waitForQueue
-// only waits for the sync points recorded by commitQueue, so a fresh one is
-// committed first.
-inline void syncQueue(donut::gp::IDevice *device, donut::gp::IDeviceQueue *queue) {
-    if (!device || !queue) return;
-    device->commitQueue(queue);
-    device->waitForQueue(queue);
+// Host-side wait for the GVDB work recorded so far (submits it first).
+inline void syncCompute(gvdb::IComputeContext *context) {
+    if (context) context->finish();
 }
 
-// Shared-resource flags for an nvrhi texture / buffer that CUDA imports:
-//   D3D11  -> NT handle + keyed mutex (the gp interop synchronises with it),
-//   D3D12  -> shared heap,
-//   Vulkan -> exactly `Shared` (nvrhi's Vulkan backend only adds the external
-//             memory info when the flags equal Shared).
-inline nvrhi::SharedResourceFlags interopSharedFlags(nvrhi::IDevice *device) {
-    switch (device->getGraphicsAPI()) {
-        case nvrhi::GraphicsAPI::D3D11: return nvrhi::SharedResourceFlags::Shared | nvrhi::SharedResourceFlags::Shared_NTHandle;
-        default: return nvrhi::SharedResourceFlags::Shared;
-    }
-}
+// Shared-resource flags for an nvrhi texture / buffer that the CUDA device imports (IInteropDevice):
+// D3D12 and Vulkan only; GVDBApp refuses D3D11.
+inline nvrhi::SharedResourceFlags interopSharedFlags() { return nvrhi::SharedResourceFlags::Shared; }
 
 // RGBA8 packing of the reference COLORA macro (r in the low byte).
 inline uint32_t packColorA(float r, float g, float b, float a) {
@@ -50,41 +42,15 @@ inline uint32_t packColorA(float r, float g, float b, float a) {
     return c(r) | (c(g) << 8) | (c(b) << 16) | (c(a) << 24);
 }
 
-#define UT_V_GP(expr)                                                      \
+// Logs a failed FRESULT call.
+#define UT_CHECK(expr)                                                       \
     do {                                                                     \
         auto rc = (expr);                                                    \
-        if (NVRHI_FAILED(rc)) {                                                   \
-            donut::log::error("GPDevice failed with error: %d", (int)rc); \
-            NVRHI_ASSERT(0);                                              \
+        if (NVRHI_FAILED(rc)) {                                              \
+            donut::log::error("%s failed with error %d", #expr, (int)rc);   \
+            NVRHI_ASSERT(0);                                                 \
         }                                                                    \
     } while (0)
-
-struct GPDeviceMessageCallback : public nvrhi::ObjectImpl<donut::gp::IMessageCallback> {
-    NVRHI_BEGIN_INTERFACE_TABLE_INLINE(GPDeviceMessageCallback)
-    NVRHI_IMPLEMENTS_INTERFACE(donut::gp::IMessageCallback)
-    NVRHI_END_INTERFACE_TABLE()
-
-    void message(donut::gp::MessageSeverity severity, const char *desc) override {
-        using namespace donut;
-        log::Severity logSeverity;
-        switch (severity) {
-            default:
-            case gp::MessageSeverity::Info:
-                logSeverity = log::Severity::Info;
-                break;
-            case gp::MessageSeverity::Warning:
-                logSeverity = log::Severity::Warning;
-                break;
-            case gp::MessageSeverity::Error:
-                logSeverity = log::Severity::Error;
-                break;
-            case gp::MessageSeverity::Fatal:
-                logSeverity = log::Severity::Fatal;
-        }
-
-        donut::log::message(logSeverity, "%s", desc);
-    }
-};
 
 template <typename T>
 class Range {

@@ -1,19 +1,20 @@
 // CUDA raycaster over the volume instances of a GVDBSceneGraph.
 //
-// Per instance the kernels' `scn` constant (ScnInfo, see kernels/GVDBScene.cuh)
-// is filled from the view, the instance's VolumeRenderAttributes and its node
-// transform, exactly as the reference VolumeGVDB::PrepareRender did:
+// Per instance the kernels' ScnInfo (see kernels/GVDBScene.slangh) is filled
+// from the view, the instance's VolumeRenderAttributes and its node transform,
+// exactly as the reference VolumeGVDB::PrepareRender did:
 //   xform    = index -> world (the node transform)
 //   invxform = world -> index
 //   invxrot  = inverse of the linear (scale * rotation) part: world directions -> index directions
 // The matrices are dm::float4x4 (row-major, row-vector convention), which is
-// the layout the reference Matrix4F / the kernel mmult() expect.
+// the layout the reference Matrix4F / the kernel mmult() expect. The block is
+// written into a buffer before each launch (same command list, so every launch
+// reads its own version) and passed by address.
 #include "VolRenderer.h"
 #include "SampleTypes.h"
 #include <donut/core/log.h>
-#include <nvrhi/core/datablob.h>
+#include <cstddef>
 #include <cstring>
-#include <iterator>
 
 namespace SampleUtils {
 
@@ -21,9 +22,8 @@ using namespace donut;
 
 namespace {
 
-// Host mirror of the device ScnInfo (kernels/GVDBScene.cuh). Pointers are
-// NativeHandle (CUdeviceptr) sized members so the layout matches on x64.
-struct GVDB_ALIGN(16) ScnInfo {
+// Host mirror of ScnInfo (kernels/GVDBScene.slangh). Pointers are device addresses.
+struct ScnInfo {
     int width;
     int height;
     float camnear;
@@ -41,8 +41,8 @@ struct GVDB_ALIGN(16) ScnInfo {
     float invxform[16];
     float invxrot[16];
     float bias;
-    char shading;
-    char filtering;
+    int8_t shading;
+    int8_t filtering;
     int frame;
     int samples;
     dm::float3 extinct;
@@ -51,15 +51,15 @@ struct GVDB_ALIGN(16) ScnInfo {
     dm::float3 thresh;
     float epsilon;
     int gvdb_channel;
-    gp::NativeHandle transfer;
-    gp::NativeHandle outbuf;
-    gp::NativeHandle dbuf;
+    uint64_t transfer;
+    uint64_t outbuf;
+    uint64_t dbuf;
 };
 static_assert(offsetof(ScnInfo, backclr) == 112, "ScnInfo layout differs from the device struct");
 static_assert(offsetof(ScnInfo, bias) == 320, "ScnInfo layout differs from the device struct");
 static_assert(offsetof(ScnInfo, frame) == 328, "ScnInfo layout differs from the device struct");
 static_assert(offsetof(ScnInfo, transfer) == 392, "ScnInfo layout differs from the device struct");
-static_assert(sizeof(ScnInfo) == 416, "ScnInfo layout differs from the device struct");
+static_assert(offsetof(ScnInfo, dbuf) == 408, "ScnInfo layout differs from the device struct");
 
 const char *kernelNameForShading(gvdb::VolumeShading shading) {
     switch (shading) {
@@ -78,34 +78,45 @@ const char *kernelNameForShading(gvdb::VolumeShading shading) {
 }  // namespace
 
 struct VolRenderer::Impl {
-    nvrhi::AutoPtr<gp::IModule> module;
-    nvrhi::AutoPtr<gp::IKernel> kernels[8];
-    nvrhi::AutoPtr<gp::IKernel> raytraceKernel;
-    nvrhi::AutoPtr<gp::IKernel> compositeKernel;
-    nvrhi::AutoPtr<gp::IBuffer> scratch;   // layer buffer for compositing
-    size_t scratchBytes = 0;
+    gvdb::IComputeKernel *kernels[8] = {};
+    gvdb::IComputeKernel *raytraceKernel = nullptr;
+    gvdb::IComputeKernel *compositeKernel = nullptr;
+    nvrhi::BufferHandle scratch;   // layer buffer for compositing
+    nvrhi::BufferHandle scnBuffer;   // the ScnInfo of the next launch
     nvrhi::AutoPtr<gvdb::VolumeTransferFunction> defaultTransfer;
 
-    gp::IKernel *kernelFor(gvdb::VolumeShading shading) {
+    gvdb::IComputeKernel *kernelFor(gvdb::VolumeShading shading) {
         int i = int(shading);
         if (i < 0 || i >= 8) return nullptr;
-        return kernels[i].Get();
+        return kernels[i];
     }
 
-    // GPU handle of the instance's transfer function (committed on demand), or
+    // Device address of the instance's transfer function (committed on demand), or
     // of a default white ramp when the instance has none.
-    gp::NativeHandle getTransfer(gp::IDevice *device, gp::IDeviceQueue *queue, gvdb::GVDBVolumeInstance *instance) {
+    uint64_t getTransfer(gvdb::IComputeContext *context, gvdb::GVDBVolumeInstance *instance) {
         gvdb::VolumeTransferFunction *tf = instance->GetRenderAttributes().transferFunction.Get();
         if (!tf) {
             if (!defaultTransfer) {
-                defaultTransfer = MAKE_RC_OBJ_PTR(gvdb::VolumeTransferFunction, device);
+                defaultTransfer = MAKE_RC_OBJ_PTR(gvdb::VolumeTransferFunction, context);
                 defaultTransfer->setLinear(0.f, 1.f, dm::float4(0.f, 0.f, 0.f, 0.f), dm::float4(1.f, 1.f, 1.f, 1.f));
-                defaultTransfer->commit(queue);
+                defaultTransfer->commit();
             }
             tf = defaultTransfer.Get();
         }
-        if (!tf->getGPU()) tf->commit(queue);
-        return tf->getGPU() ? tf->getGPU()->getNativeHandle() : 0;
+        if (!tf->getGPU()) tf->commit();
+        return gvdb::deviceAddress(tf->getGPU());
+    }
+
+    // Records the upload of the block of the next launch; returns its address.
+    uint64_t uploadScn(gvdb::IComputeContext *context, const ScnInfo &scn) {
+        if (!scnBuffer) {
+            nvrhi::BufferDesc desc;
+            desc.byteSize = sizeof(ScnInfo);
+            desc.debugName = "VolRenderer ScnInfo";
+            UT_CHECK(context->getDevice()->createBuffer(desc, &scnBuffer));
+        }
+        context->getCommandList()->writeBuffer(scnBuffer, &scn, sizeof(scn), 0);
+        return gvdb::deviceAddress(scnBuffer);
     }
 };
 
@@ -148,31 +159,21 @@ RenderView makeRenderView(const engine::PerspectiveCamera *camera, const engine:
     return makeRenderView(viewToWorld, fov, zNear, zFar, lightPos, width, height);
 }
 
-VolRenderer::VolRenderer(gp::IDevice *device, gp::IDeviceQueue *queue, vfs::IFileSystem *vfs)
-    : m_impl(std::make_unique<Impl>()), m_device(device), m_queue(queue) {
-    nvrhi::AutoPtr<nvrhi::IDataBlob> blob;
-    if (!vfs || NVRHI_FAILED(vfs->readFile("ptx/GVDBRaycast.ptx", &blob)) || !blob) {
-        log::error("VolRenderer: cannot read ptx/GVDBRaycast.ptx");
-        return;
-    }
-    size_t len = blob->GetSize();
-    blob->Resize(len + 1);
-    static_cast<char *>(blob->GetDataPtr())[len] = 0;
-    UT_V_GP(m_device->createModule({}, blob->GetDataPtr(), len + 1, &m_impl->module));
-    if (!m_impl->module) return;
-
-    for (int i = 0; i < 8; ++i) {
-        const char *name = kernelNameForShading(gvdb::VolumeShading(i));
-        if (NVRHI_FAILED(m_impl->module->getKernel(name, &m_impl->kernels[i])))
-            log::error("VolRenderer: kernel %s not found in GVDBRaycast.ptx", name);
-    }
-    UT_V_GP(m_impl->module->getKernel("gvdbRaytrace", &m_impl->raytraceKernel));
-    UT_V_GP(m_impl->module->getKernel("gvdbCompositeOver", &m_impl->compositeKernel));
+VolRenderer::VolRenderer(gvdb::IComputeContext *context) : m_impl(std::make_unique<Impl>()), m_context(context) {
+    for (int i = 0; i < 8; ++i)
+        m_impl->kernels[i] = m_context->getKernel(GVDB_SHADERS_RAYCAST, kernelNameForShading(gvdb::VolumeShading(i)));
+    m_impl->raytraceKernel = m_context->getKernel(GVDB_SHADERS_RAYCAST, "gvdbRaytrace");
+    m_impl->compositeKernel = m_context->getKernel(GVDB_SHADERS_RAYCAST, "gvdbCompositeOver");
 }
 
-VolRenderer::~VolRenderer() {}
+VolRenderer::~VolRenderer() {
+    if (m_context) m_context->finish();
+}
 
-void VolRenderer::setDepthBuffer(gp::IBuffer *depthBuffer) { m_depthBuffer = depthBuffer; }
+void VolRenderer::setDepthBuffer(nvrhi::IBuffer *depthBuffer) {
+    m_context->releaseAfterUse(m_depthBuffer.Get());
+    m_depthBuffer = depthBuffer;
+}
 
 namespace {
 
@@ -189,10 +190,10 @@ void fillMatrices(ScnInfo &scn, const dm::affine3 &indexToWorld) {
 
 }  // namespace
 
-// Fills `scn` for one instance. transfer: the GPU transfer function handle.
+// Fills `scn` for one instance. transfer: the device address of the transfer function.
 static void prepareScnInfo(ScnInfo &scn, const VolumeViewParams &params, const RenderView &view,
                            gvdb::GVDBVolumeInstance *instance, gvdb::VolumeShading shading, dm::float4 background,
-                           gp::NativeHandle transfer, gp::NativeHandle depthBuffer, int width, int height) {
+                           uint64_t transfer, uint64_t depthBuffer, int width, int height) {
     const gvdb::VolumeRenderAttributes &attrs = instance->GetRenderAttributes();
     dm::affine3 indexToWorld = instance->GetIndexToWorld();
     dm::affine3 worldToIndex = dm::inverse(indexToWorld);
@@ -213,8 +214,8 @@ static void prepareScnInfo(ScnInfo &scn, const VolumeViewParams &params, const R
     scn.backclr = background;
     fillMatrices(scn, indexToWorld);
     scn.bias = params.rayNormalBias;
-    scn.shading = char(shading);
-    scn.filtering = char(params.filterMode);
+    scn.shading = int8_t(shading);
+    scn.filtering = int8_t(params.filterMode);
     scn.frame = params.frame;
     scn.samples = params.sample;
     scn.extinct = attrs.extinct;
@@ -228,7 +229,7 @@ static void prepareScnInfo(ScnInfo &scn, const VolumeViewParams &params, const R
     scn.dbuf = depthBuffer;
 }
 
-void VolRenderer::render(gvdb::GVDBSceneGraph *scene, const RenderView &view, gp::IBuffer *outRGBA8) {
+void VolRenderer::render(gvdb::GVDBSceneGraph *scene, const RenderView &view, nvrhi::IBuffer *outRGBA8) {
     if (!scene || !outRGBA8) return;
     bool first = true;
     for (const auto &instance : scene->GetVolumeInstances()) {
@@ -239,13 +240,13 @@ void VolRenderer::render(gvdb::GVDBSceneGraph *scene, const RenderView &view, gp
         // No volumes: clear to the background colour.
         dm::float4 c = dm::saturate(m_viewParams.backgroundColor) * 255.f;
         uint32_t packed = uint32_t(c.x) | (uint32_t(c.y) << 8) | (uint32_t(c.z) << 16) | (uint32_t(c.w) << 24);
-        UT_V_GP(m_queue->clearBufferUint(outRGBA8, packed));
+        m_context->getCommandList()->clearBufferUInt(outRGBA8, packed);
     }
 }
 
-void VolRenderer::renderInstance(gvdb::GVDBVolumeInstance *instance, const RenderView &view, gp::IBuffer *outRGBA8,
+void VolRenderer::renderInstance(gvdb::GVDBVolumeInstance *instance, const RenderView &view, nvrhi::IBuffer *outRGBA8,
                                  bool compositeOver, gvdb::VolumeShading overrideShading) {
-    if (!instance || !outRGBA8 || !m_impl->module) return;
+    if (!instance || !outRGBA8) return;
     gvdb::IGVDBVolume *volume = instance->GetVolume();
     if (!volume) return;
 
@@ -255,24 +256,25 @@ void VolRenderer::renderInstance(gvdb::GVDBVolumeInstance *instance, const Rende
     const size_t bytes = size_t(width) * size_t(height) * 4;
 
     if (shading == gvdb::VolumeShading::Off) {
-        if (!compositeOver) UT_V_GP(m_queue->clearBufferUint(outRGBA8, 0u));
+        if (!compositeOver) m_context->getCommandList()->clearBufferUInt(outRGBA8, 0u);
         return;
     }
-    gp::IKernel *kernel = m_impl->kernelFor(shading);
+    gvdb::IComputeKernel *kernel = m_impl->kernelFor(shading);
     if (!kernel) {
         log::error("VolRenderer: no kernel for shading mode %d", int(shading));
         return;
     }
 
-    gp::IBuffer *target = outRGBA8;
+    nvrhi::IBuffer *target = outRGBA8;
     dm::float4 background = m_viewParams.backgroundColor;
     if (compositeOver) {
-        if (!m_impl->scratch || m_impl->scratchBytes < bytes) {
-            gp::BufferDesc desc;
+        if (!m_impl->scratch || m_impl->scratch->getDesc().byteSize < bytes) {
+            m_context->releaseAfterUse(m_impl->scratch.Get());
+            nvrhi::BufferDesc desc;
             desc.byteSize = bytes;
+            desc.debugName = "VolRenderer layer";
             m_impl->scratch = nullptr;
-            UT_V_GP(m_device->createBuffer(desc, &m_impl->scratch));
-            m_impl->scratchBytes = bytes;
+            UT_CHECK(m_context->getDevice()->createBuffer(desc, &m_impl->scratch));
         }
         target = m_impl->scratch.Get();
         background = dm::float4::zero();   // transparent: kernels leave premultiplied colour + opacity
@@ -281,30 +283,24 @@ void VolRenderer::renderInstance(gvdb::GVDBVolumeInstance *instance, const Rende
     volume->prepareVDB();
 
     ScnInfo scn;
-    prepareScnInfo(scn, m_viewParams, view, instance, shading, background,
-                   m_impl->getTransfer(m_device, m_queue, instance),
-                   m_depthBuffer ? m_depthBuffer->getNativeHandle() : 0, width, height);
-    UT_V_GP(m_queue->setConstantBuffer(kernel, "scn", &scn, sizeof(scn)));
+    prepareScnInfo(scn, m_viewParams, view, instance, shading, background, m_impl->getTransfer(m_context, instance),
+                   gvdb::deviceAddress(m_depthBuffer), width, height);
+    const uint64_t scnAddress = m_impl->uploadScn(m_context, scn);
 
-    gvdb::uchar chan = gvdb::uchar(instance->GetRenderAttributes().channel);
-    gp::KernelArg args[] = {gp::KernelArg::Buffer(volume->getVDBInfoGPU()), gp::KernelArg::Scalar(chan),
-                            gp::KernelArg::Buffer(target)};
-    gp::dim3 block{16, 16, 1};
-    gp::dim3 grid{(width + block.x - 1) / block.x, (height + block.y - 1) / block.y, 1};
-    UT_V_GP(m_queue->launch(kernel, grid, block, args, std::size(args)));
+    nvrhi::ICommandList *commandList = m_context->getCommandList();
+    const uint8_t chan = uint8_t(instance->GetRenderAttributes().channel);
+    gvdb::launchKernel(commandList, kernel, gvdb::groupsFor(kernel, dm::uint3(uint32_t(width), uint32_t(height), 1u)),
+                       scnAddress, gvdb::deviceAddress(volume->getVDBInfoGPU()), chan, gvdb::deviceAddress(target));
 
     if (compositeOver) {
-        int numPixels = width * height;
-        gp::KernelArg cargs[] = {gp::KernelArg::Buffer(outRGBA8), gp::KernelArg::Buffer(target),
-                                 gp::KernelArg::Scalar(numPixels)};
-        gp::dim3 cblock{256, 1, 1};
-        gp::dim3 cgrid{(numPixels + 255) / 256, 1, 1};
-        UT_V_GP(m_queue->launch(m_impl->compositeKernel, cgrid, cblock, cargs, std::size(cargs)));
+        const int numPixels = width * height;
+        gvdb::launchKernel(commandList, m_impl->compositeKernel, gvdb::groupsFor(m_impl->compositeKernel, uint64_t(numPixels)),
+                           gvdb::deviceAddress(outRGBA8), gvdb::deviceAddress(target), numPixels);
     }
 }
 
-void VolRenderer::renderCustom(gp::IKernel *kernel, gvdb::GVDBVolumeInstance *instance, const RenderView &view,
-                               gp::IBuffer *outRGBA8) {
+void VolRenderer::renderCustom(gvdb::IComputeKernel *kernel, gvdb::GVDBVolumeInstance *instance, const RenderView &view,
+                               nvrhi::IBuffer *outRGBA8) {
     if (!kernel || !instance || !outRGBA8) return;
     gvdb::IGVDBVolume *volume = instance->GetVolume();
     if (!volume) return;
@@ -312,20 +308,17 @@ void VolRenderer::renderCustom(gp::IKernel *kernel, gvdb::GVDBVolumeInstance *in
 
     ScnInfo scn;
     prepareScnInfo(scn, m_viewParams, view, instance, instance->GetRenderAttributes().shading,
-                   m_viewParams.backgroundColor, m_impl->getTransfer(m_device, m_queue, instance),
-                   m_depthBuffer ? m_depthBuffer->getNativeHandle() : 0, view.width, view.height);
-    // The user module has its own `scn` symbol (it includes GVDBScene.cuh).
-    UT_V_GP(m_queue->setConstantBuffer(kernel, "scn", &scn, sizeof(scn)));
+                   m_viewParams.backgroundColor, m_impl->getTransfer(m_context, instance),
+                   gvdb::deviceAddress(m_depthBuffer), view.width, view.height);
+    const uint64_t scnAddress = m_impl->uploadScn(m_context, scn);
 
-    gvdb::uchar chan = gvdb::uchar(instance->GetRenderAttributes().channel);
-    gp::KernelArg args[] = {gp::KernelArg::Buffer(volume->getVDBInfoGPU()), gp::KernelArg::Scalar(chan),
-                            gp::KernelArg::Buffer(outRGBA8)};
-    gp::dim3 block{8, 8, 1};
-    gp::dim3 grid{(view.width + block.x - 1) / block.x, (view.height + block.y - 1) / block.y, 1};
-    UT_V_GP(m_queue->launch(kernel, grid, block, args, std::size(args)));
+    const uint8_t chan = uint8_t(instance->GetRenderAttributes().channel);
+    gvdb::launchKernel(m_context->getCommandList(), kernel,
+                       gvdb::groupsFor(kernel, dm::uint3(uint32_t(view.width), uint32_t(view.height), 1u)), scnAddress,
+                       gvdb::deviceAddress(volume->getVDBInfoGPU()), chan, gvdb::deviceAddress(outRGBA8));
 }
 
-void VolRenderer::raytrace(gvdb::GVDBVolumeInstance *instance, gp::IBuffer *rays, uint32_t numRays, float bias,
+void VolRenderer::raytrace(gvdb::GVDBVolumeInstance *instance, nvrhi::IBuffer *rays, uint32_t numRays, float bias,
                            const RenderView &view) {
     if (!instance || !rays || numRays == 0 || !m_impl->raytraceKernel) return;
     gvdb::IGVDBVolume *volume = instance->GetVolume();
@@ -336,17 +329,13 @@ void VolRenderer::raytrace(gvdb::GVDBVolumeInstance *instance, gp::IBuffer *rays
     // rays are not screen rays).
     ScnInfo scn;
     prepareScnInfo(scn, m_viewParams, view, instance, instance->GetRenderAttributes().shading,
-                   m_viewParams.backgroundColor, m_impl->getTransfer(m_device, m_queue, instance),
-                   0, 1, 1);
-    UT_V_GP(m_queue->setConstantBuffer(m_impl->raytraceKernel, "scn", &scn, sizeof(scn)));
+                   m_viewParams.backgroundColor, m_impl->getTransfer(m_context, instance), 0, 1, 1);
+    const uint64_t scnAddress = m_impl->uploadScn(m_context, scn);
 
-    gvdb::uchar chan = gvdb::uchar(instance->GetRenderAttributes().channel);
-    int count = int(numRays);
-    gp::KernelArg args[] = {gp::KernelArg::Buffer(volume->getVDBInfoGPU()), gp::KernelArg::Scalar(chan),
-                            gp::KernelArg::Scalar(count), gp::KernelArg::Buffer(rays), gp::KernelArg::Scalar(bias)};
-    gp::dim3 block{64, 1, 1};
-    gp::dim3 grid{(count + block.x - 1) / block.x, 1, 1};
-    UT_V_GP(m_queue->launch(m_impl->raytraceKernel, grid, block, args, std::size(args)));
+    const uint8_t chan = uint8_t(instance->GetRenderAttributes().channel);
+    gvdb::launchKernel(m_context->getCommandList(), m_impl->raytraceKernel,
+                       gvdb::groupsFor(m_impl->raytraceKernel, uint64_t(numRays)), scnAddress,
+                       gvdb::deviceAddress(volume->getVDBInfoGPU()), chan, int(numRays), gvdb::deviceAddress(rays), bias);
 }
 
 }  // namespace SampleUtils

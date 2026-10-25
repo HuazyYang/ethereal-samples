@@ -1,22 +1,21 @@
 // sph_fluid_pool: port of fluids5.0 (Rama Hoetzlein, http://fluids3.com), the
-// SPH "wave pool". The fluid is simulated by CUDA kernels through the gp
-// abstraction (sph::ISPHParticles = data, sph::ISPHSolver = operations) and
-// rasterized as points by nvrhi from vertex buffers shared with the compute
+// SPH "wave pool". The fluid is simulated by Slang kernels on the nvrhi CUDA
+// device (sph::ISPHParticles = data, sph::ISPHSolver = operations) and
+// rasterized as points by nvrhi from vertex buffers shared with the CUDA
 // device (the CUDA / OpenGL interop buffers of the reference).
 //
 //   sph_fluid_pool [--particles N] [--example 0..3] [--paused] [--check N]
-//                  [--screenshot file.png [--frames N]] [-d3d12 | -d3d11 | -vk] [--debug]
+//                  [--screenshot file.png [--frames N]] [-d3d12 | -vk] [--debug]
 //
 // --check N reads the particles back after simulation step N and logs a sanity
 // report (finite values, bounding box against the domain, speed and density range).
 //
-// Frame (GVDBApp::Render): OnRender runs one simulation step on the gp queue
-// between the presenter's beginGPFrame / endGPFrame, so the graphics queue
-// waits for it; OnDrawOverlay then clears an own colour + depth target, draws
-// the particles and the ground grid into it and blits it to the back buffer.
-// Where the graphics API cannot share vertex buffers with the compute device
-// (ISPHParticles::areRenderBuffersShared() is false) the particles are copied
-// through the host once per step instead (ISPHParticles::updateRenderBuffers).
+// Frame (GVDBApp::Render): OnRender records one simulation step into the
+// compute context between the presenter's beginComputeFrame / endComputeFrame:
+// the CUDA queue waits for the previous frame's graphics work, the graphics
+// queue for the step. OnDrawOverlay then clears an own colour + depth target,
+// draws the particles and the ground grid into it and blits it to the back
+// buffer. D3D11 cannot share the vertex buffers and is refused (GVDBApp).
 #include "SPHFluid.h"
 #include "SPHFluidScene.h"
 #include <sample-utils/GVDBApp.h>
@@ -80,27 +79,22 @@ class SPHFluidPoolApp : public GVDBApp {
             const float seconds = std::chrono::duration<float>(std::chrono::high_resolution_clock::now() - m_firstFrameTime).count();
             const float frameMs = 1000.f * seconds / float(m_frames - 1);
             const float waitMs = m_waitSum / float(m_frames);   // previous frame's rasterization and presentation
-            if (m_mirrorCount)
-                log::info("Frames: %u, %.2f msec per frame (%.2f waiting for the previous frame before the timed step); "
-                          "vertex buffers copied through the host, %.2f msec per copy",
-                          m_frames, frameMs, waitMs, m_mirrorSum / float(m_mirrorCount));
-            else
-                log::info("Frames: %u, %.2f msec per frame (%.2f waiting for the previous frame before the timed step); "
-                          "vertex buffers shared with the compute device",
-                          m_frames, frameMs, waitMs);
+            log::info("Frames: %u, %.2f msec per frame (%.2f waiting for the previous frame before the timed step); "
+                      "vertex buffers shared with the CUDA device",
+                      m_frames, frameMs, waitMs);
         }
-        syncQueue(getGPDevice(), getGPQueue());
+        syncCompute(getCompute());
         if (GetDevice()) GetDevice()->waitForIdle();
     }
 
     bool OnInit() override {
         log::info("Starting particles:");
-        if (NVRHI_FAILED(sph::createSPHParticles(getGPQueue(), &m_particles)) || !m_particles) {
+        if (NVRHI_FAILED(sph::createSPHParticles(getCompute(), &m_particles)) || !m_particles) {
             log::error("createSPHParticles failed");
             return false;
         }
         if (!restart()) return false;
-        if (NVRHI_FAILED(sph::createSPHSolver(m_particles, getVFS(), &m_solver)) || !m_solver) {
+        if (NVRHI_FAILED(sph::createSPHSolver(m_particles, &m_solver)) || !m_solver) {
             log::error("createSPHSolver failed");
             return false;
         }
@@ -138,7 +132,7 @@ class SPHFluidPoolApp : public GVDBApp {
             nvrhi::FRESULT fr = m_particles->configure(desc);
             if (NVRHI_FAILED(fr)) {
                 log::error("Cannot allocate the particle buffers for %u particles on %s (error %d). The Position / Color / "
-                           "Velocity buffers are nvrhi vertex buffers imported into CUDA.",
+                           "Velocity buffers are vertex buffers imported into the CUDA device.",
                            m_options.maxParticles, nvrhi::utils::GraphicsAPIToString(GetDevice()->getGraphicsAPI()),
                            int(fr));
                 return false;
@@ -152,52 +146,18 @@ class SPHFluidPoolApp : public GVDBApp {
         m_particles->clear();
         m_particles->addPointsInVolume(params.init_min, params.init_max);
 
-        // Initial transfer. On D3D11 the shared buffers are written under their keyed mutexes.
-        lockSharedBuffersGP();
+        // Initial transfer.
         nvrhi::FRESULT fr = m_particles->commit();
-        unlockSharedBuffersGP(0);
         if (NVRHI_FAILED(fr)) {
             log::error("Cannot upload the particles (error %d)", int(fr));
             return false;
         }
         if (m_solver) m_solver->reset();
-        m_renderBuffersStale = true;
         m_fps = dm::float3(0.f);
         m_elapsedSum = 0.f;
         log::info("# Particles:  %u (max %u), example %d", m_particles->getNumParticles(), m_particles->getMaxParticles(),
                   m_options.example);
         return true;
-    }
-
-    // ---- D3D11: keyed mutexes of the shared vertex buffers (no-ops on D3D12 / Vulkan) ----
-    // The gp queue acquires with key 0 and hands over with key 1; the graphics
-    // side acquires with key 1 and hands back with key 0.
-    nvrhi::IBuffer *sharedBuffer(sph::ParticleBuffer slot) const {
-        return m_particles->areRenderBuffersShared() ? m_particles->getRenderBuffer(slot) : nullptr;
-    }
-    void lockSharedBuffersGP() {
-        gp::GraphicsInteropKeyedMutexWaitParams waits[3];
-        uint32_t count = 0;
-        for (sph::ParticleBuffer slot : kSharedSlots)
-            if (sharedBuffer(slot)) waits[count++] = {m_particles->getBuffer(slot), 0u, ~0u};
-        if (count) UT_V_GP(getInteropDevice()->acquireGPResourceKeyedMutexes(getGPQueue(), waits, count));
-    }
-    void unlockSharedBuffersGP(uint32_t key) {
-        gp::GraphicsInteropKeyedMutexSignalParams signals[3];
-        uint32_t count = 0;
-        for (sph::ParticleBuffer slot : kSharedSlots)
-            if (sharedBuffer(slot)) signals[count++] = {m_particles->getBuffer(slot), key};
-        if (count) UT_V_GP(getInteropDevice()->releaseGPResourceKeyedMutexes(getGPQueue(), signals, count));
-    }
-    void lockSharedBuffersGraphics() {
-        for (sph::ParticleBuffer slot : kSharedSlots)
-            if (nvrhi::IBuffer *buffer = sharedBuffer(slot))
-                UT_V_GP(getInteropDevice()->acquireNVRHIBufferKeyedMutex(buffer, 1u, ~0u));
-    }
-    void unlockSharedBuffersGraphics() {
-        for (sph::ParticleBuffer slot : kSharedSlots)
-            if (nvrhi::IBuffer *buffer = sharedBuffer(slot))
-                UT_V_GP(getInteropDevice()->releaseNVRHIBufferKeyedMutex(buffer, 0u));
     }
 
     bool createPipelines() {
@@ -423,7 +383,7 @@ class SPHFluidPoolApp : public GVDBApp {
 
     void OnResize(uint32_t width, uint32_t height) override { createRasterTargets(width, height); }
 
-    // gp side of the frame: Sample::display's "Run fluid simulation!".
+    // CUDA side of the frame: Sample::display's "Run fluid simulation!".
     void OnRender(uint32_t width, uint32_t height) override {
         if (!m_rasterFramebuffer || m_colorTexture->getDesc().width != width || m_colorTexture->getDesc().height != height)
             createRasterTargets(width, height);
@@ -438,27 +398,25 @@ class SPHFluidPoolApp : public GVDBApp {
             m_resetRequested = false;
             log::info("Starting particles:");
             // The previous frame's draw may still read the shared buffers.
-            syncQueue(getGPDevice(), getGPQueue());
+            syncCompute(getCompute());
             GetDevice()->waitForIdle();
             if (!restart()) log::error("Reset failed");
         }
 
-        lockSharedBuffersGP();
         if (!m_paused) {
-            // The Inspector shows the compute time: wait for the queue to measure
+            // The Inspector shows the compute time: wait for the CUDA device to measure
             // the step (what the reference's cuCtxSynchronize does every frame).
-            // Without a visible Inspector the step is only enqueued.
+            // Without a visible Inspector the step is only recorded.
             const bool timing = m_measureTiming && (getFrameCounter() - m_inspectorFrame) <= 2;
             auto tWait = std::chrono::high_resolution_clock::now();
-            if (timing) syncQueue(getGPDevice(), getGPQueue());   // exclude what was queued before (the previous frame)
+            if (timing) syncCompute(getCompute());   // exclude what was queued before (the previous frame)
             auto t0 = std::chrono::high_resolution_clock::now();
             m_waitSum += std::chrono::duration<float, std::milli>(t0 - tWait).count();
 
             m_solver->step();
-            m_renderBuffersStale = true;
 
             if (timing) {
-                syncQueue(getGPDevice(), getGPQueue());
+                syncCompute(getCompute());
                 m_elapsed = std::chrono::duration<float, std::milli>(std::chrono::high_resolution_clock::now() - t0).count();
                 if (m_elapsed > 0.f) {
                     m_elapsedSum += m_elapsed;
@@ -469,22 +427,10 @@ class SPHFluidPoolApp : public GVDBApp {
             }
             if (m_options.checkStep != 0 && m_solver->getFrame() == m_options.checkStep) sanityCheck();
         }
-        unlockSharedBuffersGP(1);
     }
 
     // Graphics side: Particles::Draw and the grid, into the own target, then to the back buffer.
     void OnDrawOverlay(nvrhi::ICommandList *commandList, nvrhi::IFramebuffer *framebuffer) override {
-        // Without shared vertex buffers the particles are copied through the host (waits for the step).
-        if (m_renderBuffersStale) {
-            auto t0 = std::chrono::high_resolution_clock::now();
-            UT_V_GP(m_particles->updateRenderBuffers(commandList));
-            m_renderBuffersStale = false;
-            if (!m_particles->areRenderBuffersShared()) {
-                m_mirrorSum += std::chrono::duration<float, std::milli>(std::chrono::high_resolution_clock::now() - t0).count();
-                m_mirrorCount++;
-            }
-        }
-        lockSharedBuffersGraphics();
         if (m_rasterFramebuffer) {
             const nvrhi::FramebufferInfoEx &rasterInfo = m_rasterFramebuffer->getFramebufferInfo();
             RenderView view = getRenderView(int(rasterInfo.width), int(rasterInfo.height));
@@ -515,7 +461,6 @@ class SPHFluidPoolApp : public GVDBApp {
                 commandList->draw(args);
             }
         }
-        unlockSharedBuffersGraphics();
 
         if (m_presentSet) {
             const nvrhi::FramebufferInfoEx &fbInfo = framebuffer->getFramebufferInfo();
@@ -538,7 +483,6 @@ class SPHFluidPoolApp : public GVDBApp {
         ImGui::Text("Space = Pause sim");
         ImGui::Text("R key = Reset sim");
         ImGui::Text("# Particles:  %u", m_particles->getNumParticles());
-        if (!m_particles->areRenderBuffersShared()) ImGui::Text("(vertex buffers copied through the host)");
         if (m_measureTiming && m_fps.y > 0.f)
             ImGui::Text("Compute: %4.0f FPS (%4.2f msec)", m_fps.z, 1000.0f / m_fps.z);
         else
@@ -597,9 +541,6 @@ class SPHFluidPoolApp : public GVDBApp {
     }
 
  private:
-    static constexpr sph::ParticleBuffer kSharedSlots[3] = {sph::ParticleBuffer::Position, sph::ParticleBuffer::Color,
-                                                            sph::ParticleBuffer::Velocity};
-
     SPHFluidPoolOptions m_options;
     nvrhi::AutoPtr<sph::ISPHParticles> m_particles;
     nvrhi::AutoPtr<sph::ISPHSolver> m_solver;
@@ -608,7 +549,6 @@ class SPHFluidPoolApp : public GVDBApp {
 
     bool m_paused = false;
     bool m_resetRequested = false;
-    bool m_renderBuffersStale = true;   // the device buffers changed since updateRenderBuffers()
     bool m_measureTiming = true;
     uint32_t m_inspectorFrame = 0;
     float m_elapsed = 0.f;
@@ -616,9 +556,7 @@ class SPHFluidPoolApp : public GVDBApp {
     // run statistics, logged at exit
     uint32_t m_frames = 0;
     std::chrono::high_resolution_clock::time_point m_firstFrameTime;
-    float m_mirrorSum = 0.f;
     float m_waitSum = 0.f;
-    uint32_t m_mirrorCount = 0;
     dm::float3 m_fps = dm::float3(0.f);   // m_fps of the reference: sum of FPS, steps, average
 
     // own colour + depth target and its presentation

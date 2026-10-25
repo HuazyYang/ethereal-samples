@@ -8,13 +8,12 @@
 //-----------------------------------------------------------------------------
 // Host side of the fluid system (fluid_system.cpp of the reference, GPU path
 // RUN_GPU_FULL only): parameter setup of the "wave pool" example, uniform
-// grid, gp buffers, kernel launches. The CPU simulation paths, neighbour
+// grid, buffers, kernel launches. The CPU simulation paths, neighbour
 // tables, recording / playback and the GL drawing of the reference are not
 // ported.
 #include "FluidSystem.h"
 #include <sample-utils/SampleTypes.h>
 #include <donut/core/log.h>
-#include <nvrhi/core/datablob.h>
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
@@ -26,6 +25,7 @@ using namespace SampleUtils;
 namespace {
 
 constexpr float PI_F = 3.141592f;
+constexpr const char *c_Kernels = "shaders/gvdb/FluidSystemKernels.nvsc";
 
 FluidFloat3 toF3(dm::float3 v) { return FluidFloat3{v.x, v.y, v.z}; }
 FluidInt3 toI3(dm::int3 v) { return FluidInt3{v.x, v.y, v.z}; }
@@ -42,57 +42,39 @@ float randomRange(float lo, float hi) { return lo + float(rand()) / float(RAND_M
 
 }  // namespace
 
-FluidSystem::FluidSystem(gp::IDevice *device, gp::IDeviceQueue *queue) : m_device(device), m_queue(queue) {}
+FluidSystem::FluidSystem(gvdb::IComputeContext *context) : m_context(context) {}
 
 FluidSystem::~FluidSystem() {
-    if (m_device && m_queue) syncQueue(m_device, m_queue);
+    // the kernels reach the buffers through device addresses
+    if (m_context) m_context->finish();
 }
 
-bool FluidSystem::createBuffer(nvrhi::AutoPtr<gp::IBuffer> &buffer, size_t bytes) {
-    buffer = nullptr;
-    gp::BufferDesc desc;
+nvrhi::BufferHandle FluidSystem::createBuffer(size_t bytes, const char *name) {
+    nvrhi::BufferDesc desc;
     desc.byteSize = std::max<size_t>(bytes, 16);
-    if (NVRHI_FAILED(m_device->createBuffer(desc, &buffer))) {
+    desc.debugName = name;
+    nvrhi::BufferHandle buffer;
+    if (NVRHI_FAILED(m_context->getDevice()->createBuffer(desc, &buffer)))
         log::error("FluidSystem: cannot allocate a buffer of %llu bytes", (unsigned long long)bytes);
-        return false;
-    }
-    return true;
-}
-
-void FluidSystem::launch(gp::IKernel *kernel, int blocks, int threads, const gp::KernelArg *args, size_t argc) {
-    UT_V_GP(m_queue->launch(kernel, gp::dim3{blocks, 1, 1}, gp::dim3{threads, 1, 1}, args, argc));
+    return buffer;
 }
 
 // ---------------------------------------------------------------------------
 // Initialize: kernels
 // ---------------------------------------------------------------------------
 
-bool FluidSystem::initialize(vfs::IFileSystem *vfs) {
-    nvrhi::AutoPtr<nvrhi::IDataBlob> ptx;
-    if (!vfs || NVRHI_FAILED(vfs->readFile("ptx/FluidSystemKernels.ptx", &ptx)) || !ptx) {
-        log::error("FluidSystem: cannot read ptx/FluidSystemKernels.ptx");
-        return false;
-    }
-    size_t len = ptx->GetSize();
-    ptx->Resize(len + 1);
-    static_cast<char *>(ptx->GetDataPtr())[len] = 0;
-    if (NVRHI_FAILED(m_device->createModule({}, ptx->GetDataPtr(), len + 1, &m_module))) {
-        log::error("FluidSystem: cannot create the kernel module");
-        return false;
-    }
+bool FluidSystem::initialize() {
     struct {
         const char *name;
-        nvrhi::AutoPtr<gp::IKernel> *kernel;
+        gvdb::IComputeKernel **kernel;
     } kernels[] = {
         {"insertParticles", &m_kInsert}, {"countingSortFull", &m_kCountingSort}, {"computePressure", &m_kPressure},
         {"computeForce", &m_kForce},     {"advanceParticles", &m_kAdvance},      {"prefixSum", &m_kPrefixSum},
         {"prefixFixup", &m_kPrefixFixup},
     };
     for (auto &k : kernels) {
-        if (NVRHI_FAILED(m_module->getKernel(k.name, &(*k.kernel)))) {
-            log::error("FluidSystem: kernel %s not found", k.name);
-            return false;
-        }
+        *k.kernel = m_context->getKernel(c_Kernels, k.name);
+        if (!*k.kernel) return false;   // getKernel() reported why
     }
     return true;
 }
@@ -266,49 +248,52 @@ bool FluidSystem::allocateBuffers() {
         {FCLR, sizeof(uint32_t), true},   {FGCELL, sizeof(uint32_t), true},    {FGNDX, sizeof(uint32_t), true},
         {FGRID, sizeof(uint32_t), false},
     };
+    // A restart replaces buffers that recorded work may still use.
+    for (int n = 0; n < FLUID_NUM_BUF; ++n) {
+        m_context->releaseAfterUse(m_buf[n]);
+        m_context->releaseAfterUse(m_temp[n]);
+        m_buf[n] = nullptr;
+        m_temp[n] = nullptr;
+    }
+    nvrhi::ICommandList *cmd = commandList();
     for (auto &b : bufs) {
-        if (!createBuffer(m_buf[b.id], b.stride * f.szPnts)) return false;
-        UT_V_GP(m_queue->clearBufferUint(m_buf[b.id], 0));
+        m_buf[b.id] = createBuffer(b.stride * f.szPnts, "FluidSystem particles");
+        if (!m_buf[b.id]) return false;
+        cmd->clearBufferUInt(m_buf[b.id], 0);
         if (b.dual) {
-            if (!createBuffer(m_temp[b.id], b.stride * f.szPnts)) return false;
-            UT_V_GP(m_queue->clearBufferUint(m_temp[b.id], 0));
-        } else {
-            m_temp[b.id] = nullptr;
+            m_temp[b.id] = createBuffer(b.stride * f.szPnts, "FluidSystem particles (unsorted)");
+            if (!m_temp[b.id]) return false;
+            cmd->clearBufferUInt(m_temp[b.id], 0);
         }
     }
-    if (!createBuffer(m_buf[FGRIDCNT], sizeof(uint32_t) * f.szGrid)) return false;
-    if (!createBuffer(m_buf[FGRIDOFF], sizeof(uint32_t) * f.szGrid)) return false;
-    UT_V_GP(m_queue->clearBufferUint(m_buf[FGRIDCNT], 0));
-    UT_V_GP(m_queue->clearBufferUint(m_buf[FGRIDOFF], 0));
+    m_buf[FGRIDCNT] = createBuffer(sizeof(uint32_t) * f.szGrid, "FluidSystem grid counts");
+    if (!m_buf[FGRIDCNT]) return false;
+    m_buf[FGRIDOFF] = createBuffer(sizeof(uint32_t) * f.szGrid, "FluidSystem grid offsets");
+    if (!m_buf[FGRIDOFF]) return false;
+    cmd->clearBufferUInt(m_buf[FGRIDCNT], 0);
+    cmd->clearBufferUInt(m_buf[FGRIDOFF], 0);
 
     // auxiliary arrays of the three-level prefix sum
     const int blockSize = FLUID_SCAN_BLOCKSIZE << 1;
     const int numElem1 = m_gridTotal;
     const int numElem2 = numElem1 / blockSize + 1;
     const int numElem3 = numElem2 / blockSize + 1;
-    if (!createBuffer(m_buf[FAUXARRAY1], sizeof(uint32_t) * numElem2)) return false;
-    if (!createBuffer(m_buf[FAUXSCAN1], sizeof(uint32_t) * numElem2)) return false;
-    if (!createBuffer(m_buf[FAUXARRAY2], sizeof(uint32_t) * numElem3)) return false;
-    if (!createBuffer(m_buf[FAUXSCAN2], sizeof(uint32_t) * numElem3)) return false;
-    m_stagingPos = m_stagingVel = m_stagingClr = nullptr;
+    m_buf[FAUXARRAY1] = createBuffer(sizeof(uint32_t) * numElem2, "FluidSystem scan");
+    if (!m_buf[FAUXARRAY1]) return false;
+    m_buf[FAUXSCAN1] = createBuffer(sizeof(uint32_t) * numElem2, "FluidSystem scan");
+    if (!m_buf[FAUXSCAN1]) return false;
+    m_buf[FAUXARRAY2] = createBuffer(sizeof(uint32_t) * numElem3, "FluidSystem scan");
+    if (!m_buf[FAUXARRAY2]) return false;
+    m_buf[FAUXSCAN2] = createBuffer(sizeof(uint32_t) * numElem3, "FluidSystem scan");
+    if (!m_buf[FAUXSCAN2]) return false;
     return true;
 }
 
-bool FluidSystem::uploadConstants() {
-    FluidBufs fb = {}, ft = {};
+void FluidSystem::updateBufferTables() {
     for (int n = 0; n < FLUID_NUM_BUF; ++n) {
-        fb.ptr[n] = m_buf[n] ? (unsigned long long)m_buf[n]->getNativeHandle() : 0ull;
-        ft.ptr[n] = m_temp[n] ? (unsigned long long)m_temp[n]->getNativeHandle() : fb.ptr[n];
+        m_fbuf.ptr[n] = gvdb::deviceAddress(m_buf[n]);
+        m_ftemp.ptr[n] = m_temp[n] ? gvdb::deviceAddress(m_temp[n]) : m_fbuf.ptr[n];
     }
-    // The symbols belong to the module; any of its kernels addresses them.
-    nvrhi::FRESULT fr = m_queue->setConstantBuffer(m_kInsert, "fbuf", &fb, sizeof(fb));
-    if (!NVRHI_FAILED(fr)) fr = m_queue->setConstantBuffer(m_kInsert, "ftemp", &ft, sizeof(ft));
-    if (!NVRHI_FAILED(fr)) fr = m_queue->setConstantBuffer(m_kInsert, "fparam", &m_params, sizeof(m_params));
-    if (NVRHI_FAILED(fr)) {
-        log::error("FluidSystem: cannot upload the constant tables (%d)", int(fr));
-        return false;
-    }
-    return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -351,7 +336,7 @@ void FluidSystem::setupAddVolume(dm::float3 vmin, dm::float3 vmax, float spacing
 // ---------------------------------------------------------------------------
 
 bool FluidSystem::start(int numParticles) {
-    if (!m_module) {
+    if (!m_kInsert) {
         log::error("FluidSystem: initialize() first");
         return false;
     }
@@ -374,9 +359,10 @@ bool FluidSystem::start(int numParticles) {
     log::info("FluidSystem: %d particles", m_numPoints);
 
     // TransferToCUDA: the other buffers start at zero
-    UT_V_GP(m_queue->writeBuffer(m_buf[FPOS], m_hostPos.data(), m_hostPos.size() * sizeof(dm::float3), 0));
-    UT_V_GP(m_queue->writeBuffer(m_buf[FCLR], m_hostClr.data(), m_hostClr.size() * sizeof(uint32_t), 0));
-    return uploadConstants();
+    commandList()->writeBuffer(m_buf[FPOS], m_hostPos.data(), m_hostPos.size() * sizeof(dm::float3), 0);
+    commandList()->writeBuffer(m_buf[FCLR], m_hostClr.data(), m_hostClr.size() * sizeof(uint32_t), 0);
+    updateBufferTables();
+    return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -396,47 +382,42 @@ void FluidSystem::run() {
 }
 
 void FluidSystem::insertParticles() {
-    UT_V_GP(m_queue->clearBufferUint(m_buf[FGRIDCNT], 0));
-    UT_V_GP(m_queue->clearBufferUint(m_buf[FGRIDOFF], 0));
-    gp::KernelArg args[] = {gp::KernelArg::Scalar(m_numPoints)};
-    launch(m_kInsert, m_params.numBlocks, m_params.numThreads, args, 1);
+    commandList()->clearBufferUInt(m_buf[FGRIDCNT], 0);
+    commandList()->clearBufferUInt(m_buf[FGRIDOFF], 0);
+    gvdb::launchKernel(commandList(), m_kInsert, gvdb::groupsFor(m_kInsert, uint64_t(m_numPoints)), m_params, m_fbuf,
+                       m_numPoints);
 }
 
 void FluidSystem::prefixSumCells() {
-    using KA = gp::KernelArg;
     const int blockSize = FLUID_SCAN_BLOCKSIZE << 1;
     const int numElem1 = m_gridTotal;
     const int numElem2 = numElem1 / blockSize + 1;
     const int numElem3 = numElem2 / blockSize + 1;
-    const int threads = FLUID_SCAN_BLOCKSIZE;
     const int zon = 1;
     const int zeroOffsets = 1;
-    const KA nullPtr = KA::Scalar(uint64_t(0));
+    const uint64_t nullPtr = 0;
+    auto groups = [](int n) { return dm::uint3(uint32_t(n), 1u, 1u); };
 
-    gp::IBuffer *array1 = m_buf[FGRIDCNT];   // input
-    gp::IBuffer *scan1 = m_buf[FGRIDOFF];    // output
-    gp::IBuffer *array2 = m_buf[FAUXARRAY1];
-    gp::IBuffer *scan2 = m_buf[FAUXSCAN1];
-    gp::IBuffer *array3 = m_buf[FAUXARRAY2];
-    gp::IBuffer *scan3 = m_buf[FAUXSCAN2];
+    const uint64_t array1 = gvdb::deviceAddress(m_buf[FGRIDCNT]);   // input
+    const uint64_t scan1 = gvdb::deviceAddress(m_buf[FGRIDOFF]);    // output
+    const uint64_t array2 = gvdb::deviceAddress(m_buf[FAUXARRAY1]);
+    const uint64_t scan2 = gvdb::deviceAddress(m_buf[FAUXSCAN1]);
+    const uint64_t array3 = gvdb::deviceAddress(m_buf[FAUXARRAY2]);
+    const uint64_t scan3 = gvdb::deviceAddress(m_buf[FAUXSCAN2]);
 
+    nvrhi::ICommandList *cmd = commandList();
     // sum array1 -> scan1, array2
-    KA argsA[] = {KA::Buffer(array1), KA::Buffer(scan1), KA::Buffer(array2), KA::Scalar(numElem1), KA::Scalar(zeroOffsets)};
-    launch(m_kPrefixSum, numElem2, threads, argsA, 5);
+    gvdb::launchKernel(cmd, m_kPrefixSum, groups(numElem2), array1, scan1, array2, numElem1, zeroOffsets);
     // sum array2 -> scan2, array3
-    KA argsB[] = {KA::Buffer(array2), KA::Buffer(scan2), KA::Buffer(array3), KA::Scalar(numElem2), KA::Scalar(zon)};
-    launch(m_kPrefixSum, numElem3, threads, argsB, 5);
+    gvdb::launchKernel(cmd, m_kPrefixSum, groups(numElem3), array2, scan2, array3, numElem2, zon);
     if (numElem3 > 1) {
         // sum array3 -> scan3
-        KA argsC[] = {KA::Buffer(array3), KA::Buffer(scan3), nullPtr, KA::Scalar(numElem3), KA::Scalar(zon)};
-        launch(m_kPrefixSum, 1, threads, argsC, 5);
+        gvdb::launchKernel(cmd, m_kPrefixSum, groups(1), array3, scan3, nullPtr, numElem3, zon);
         // merge scan3 into scan2
-        KA argsD[] = {KA::Buffer(scan2), KA::Buffer(scan3), KA::Scalar(numElem2)};
-        launch(m_kPrefixFixup, numElem3, threads, argsD, 3);
+        gvdb::launchKernel(cmd, m_kPrefixFixup, groups(numElem3), scan2, scan3, numElem2);
     }
     // merge scan2 into scan1
-    KA argsE[] = {KA::Buffer(scan1), KA::Buffer(scan2), KA::Scalar(numElem1)};
-    launch(m_kPrefixFixup, numElem2, threads, argsE, 3);
+    gvdb::launchKernel(cmd, m_kPrefixFixup, groups(numElem2), scan1, scan2, numElem1);
 }
 
 void FluidSystem::countingSortFull() {
@@ -447,26 +428,25 @@ void FluidSystem::countingSortFull() {
     } copies[] = {{FPOS, 12}, {FVEL, 12}, {FVEVAL, 12}, {FFORCE, 12}, {FPRESS, 4},
                   {FDENSITY, 4}, {FCLR, 4}, {FGCELL, 4}, {FGNDX, 4}};
     for (auto &c : copies)
-        UT_V_GP(m_queue->copyBufferRegion(m_temp[c.id], 0, m_buf[c.id], 0, c.stride * size_t(m_numPoints)));
+        commandList()->copyBuffer(m_temp[c.id], 0, m_buf[c.id], 0, c.stride * size_t(m_numPoints));
 
-    gp::KernelArg args[] = {gp::KernelArg::Scalar(m_numPoints)};
-    launch(m_kCountingSort, m_params.numBlocks, m_params.numThreads, args, 1);
+    gvdb::launchKernel(commandList(), m_kCountingSort, gvdb::groupsFor(m_kCountingSort, uint64_t(m_numPoints)),
+                       m_params, m_fbuf, m_ftemp, m_numPoints);
 }
 
 void FluidSystem::computePressure() {
-    gp::KernelArg args[] = {gp::KernelArg::Scalar(m_numPoints)};
-    launch(m_kPressure, m_params.numBlocks, m_params.numThreads, args, 1);
+    gvdb::launchKernel(commandList(), m_kPressure, gvdb::groupsFor(m_kPressure, uint64_t(m_numPoints)), m_params,
+                       m_fbuf, m_numPoints);
 }
 
 void FluidSystem::computeForce() {
-    gp::KernelArg args[] = {gp::KernelArg::Scalar(m_params.pnum)};
-    launch(m_kForce, m_params.numBlocks, m_params.numThreads, args, 1);
+    gvdb::launchKernel(commandList(), m_kForce, gvdb::groupsFor(m_kForce, uint64_t(m_params.pnum)), m_params, m_fbuf,
+                       m_params.pnum);
 }
 
 void FluidSystem::advance() {
-    using KA = gp::KernelArg;
-    KA args[] = {KA::Scalar(m_time), KA::Scalar(m_dt), KA::Scalar(m_p.simScale), KA::Scalar(m_params.pnum)};
-    launch(m_kAdvance, m_params.numBlocks, m_params.numThreads, args, 4);
+    gvdb::launchKernel(commandList(), m_kAdvance, gvdb::groupsFor(m_kAdvance, uint64_t(m_params.pnum)), m_params,
+                       m_fbuf, m_time, m_dt, m_p.simScale, m_params.pnum);
 }
 
 // ---------------------------------------------------------------------------
@@ -480,26 +460,7 @@ void FluidSystem::readback(std::vector<dm::float3> &pos, std::vector<dm::float3>
     if (m_numPoints == 0) return;
     const size_t bytes3 = sizeof(dm::float3) * m_numPoints;
     const size_t bytes1 = sizeof(uint32_t) * m_numPoints;
-    auto staging = [&](nvrhi::AutoPtr<gp::IBuffer> &buffer, size_t bytes) {
-        if (buffer && buffer->getDesc()->byteSize >= bytes) return true;
-        gp::BufferDesc desc;
-        desc.byteSize = bytes;
-        desc.isStaging = true;
-        return !NVRHI_FAILED(m_device->createBuffer(desc, &buffer));
-    };
-    if (!staging(m_stagingPos, bytes3) || !staging(m_stagingVel, bytes3) || !staging(m_stagingClr, bytes1)) return;
-    UT_V_GP(m_queue->copyBufferRegion(m_stagingPos, 0, m_buf[FPOS], 0, bytes3));
-    UT_V_GP(m_queue->copyBufferRegion(m_stagingVel, 0, m_buf[FVEL], 0, bytes3));
-    UT_V_GP(m_queue->copyBufferRegion(m_stagingClr, 0, m_buf[FCLR], 0, bytes1));
-    syncQueue(m_device, m_queue);
-
-    auto fetch = [&](gp::IBuffer *buffer, void *dst, size_t bytes) {
-        void *data = nullptr;
-        UT_V_GP(m_device->mapBuffer(buffer, &data));
-        if (data) memcpy(dst, data, bytes);
-        m_device->unmapBuffer(buffer);
-    };
-    fetch(m_stagingPos, pos.data(), bytes3);
-    fetch(m_stagingVel, vel.data(), bytes3);
-    fetch(m_stagingClr, clr.data(), bytes1);
+    m_context->readBuffer(m_buf[FPOS], 0, pos.data(), bytes3);
+    m_context->readBuffer(m_buf[FVEL], 0, vel.data(), bytes3);
+    m_context->readBuffer(m_buf[FCLR], 0, clr.data(), bytes1);
 }

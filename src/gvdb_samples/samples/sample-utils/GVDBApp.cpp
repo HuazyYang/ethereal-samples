@@ -106,13 +106,19 @@ class GVDBAppGuiPass : public app::ImGuiRenderPass {
 GVDBApp::GVDBApp(app::DeviceManager *deviceManager) : IRenderPass(deviceManager) {}
 
 GVDBApp::~GVDBApp() {
-    syncQueue(m_gpDevice, m_gpQueue);
+    syncCompute(m_compute);
     if (GetDevice()) GetDevice()->waitForIdle();
     m_debugDraw.reset();
     m_presenter.reset();
 }
 
 bool GVDBApp::Init(bool wantOptix) {
+    if (GetDevice()->getGraphicsAPI() == nvrhi::GraphicsAPI::D3D11) {
+        log::error("The GVDB samples need D3D12 or Vulkan: the CUDA device shares its render targets with the "
+                   "graphics device, which D3D11 cannot do. Run with -d3d12 or -vk.");
+        return false;
+    }
+
     // ---- file system ----
     m_vfs = MAKE_RC_OBJ_PTR(vfs::RootFileSystem);
     std::filesystem::path exeDir = app::GetDirectoryWithExecutable();
@@ -121,40 +127,36 @@ bool GVDBApp::Init(bool wantOptix) {
     // existing mount point and resolves in mount order. "shaders/donut" is
     // where Donut's own passes (ImGui) look for their shaders.
     m_vfs->mount("shaders/donut", exeDir / "shaders" / "framework" / apiName);
+    m_vfs->mount("shaders/gvdb", exeDir / "shaders" / "gvdb");   // CUDA shader containers of gvdb and sample-utils
     if (!m_sampleName.empty()) {
         std::filesystem::path sampleShaders = exeDir / "shaders" / m_sampleName / apiName;
         if (std::filesystem::exists(sampleShaders)) m_vfs->mount("shaders/" + m_sampleName, sampleShaders);
     }
     m_vfs->mount("shaders", exeDir / "shaders" / "gvdb_sample_utils" / apiName);
     m_vfs->mount("assets", std::filesystem::path(GVDB_SAMPLES_ASSETS_DIR));
-    m_vfs->mount("ptx", exeDir / "ptx");
     m_shaderFactory = MAKE_RC_OBJ_PTR(engine::ShaderFactory, GetDevice(), m_vfs, "shaders");
 
-    // ---- devices ----
+    // ---- devices: the CUDA device on the adapter of the graphics device ----
     {
-        gp::CUDADeviceDesc desc;
-        auto callback = MAKE_RC_OBJ_PTR(GPDeviceMessageCallback);
-        desc.messageCallback = callback;
-        if (NVRHI_FAILED(gp::createCUDADevice(desc, &m_gpDevice)) || !m_gpDevice) {
+        nvrhi::cuda::DeviceDesc desc;
+        desc.messageCallback = app::DefaultMessageCallback::GetInstance();
+        desc.graphicsDevice = GetDevice();
+        desc.enableOptix = wantOptix;
+        if (NVRHI_FAILED(GetDeviceManager()->GetGraphicsFactory()->createCudaDevice(desc, &m_cudaDevice)) ||
+            !m_cudaDevice) {
             log::error("GVDBApp: cannot create the CUDA device");
             return false;
         }
-        gp::DeviceQueueDesc queueDesc;
-        queueDesc.priority = gp::DeviceQueuePriority::AboveNormal;
-        if (NVRHI_FAILED(m_gpDevice->createDeviceQueue(queueDesc, &m_gpQueue)) || !m_gpQueue) {
-            log::error("GVDBApp: cannot create the CUDA queue");
+        if (NVRHI_FAILED(m_cudaDevice->QueryInterface(NVRHI_IID_PPV_ARGS(&m_interopDevice))) || !m_interopDevice ||
+            !m_interopDevice->isInteropSupported()) {
+            log::error("GVDBApp: the CUDA device cannot share resources with the graphics device");
             return false;
         }
-        if (NVRHI_FAILED(createGPAndNVRHIDevice(GetDevice(), m_gpDevice, &m_interopDevice)) || !m_interopDevice) {
-            log::error("GVDBApp: cannot create the nvrhi <-> CUDA interop device");
+        if (wantOptix && !m_cudaDevice->isOptixAvailable())
+            log::warning("GVDBApp: OptiX not available; continuing without it");
+        if (NVRHI_FAILED(gvdb::createComputeContext(m_cudaDevice, m_vfs, &m_compute))) {
+            log::error("GVDBApp: cannot create the compute context");
             return false;
-        }
-        if (wantOptix) {
-            gp::RTDeviceDesc rtDesc;
-            if (NVRHI_FAILED(gp::createOptiXDevice(rtDesc, m_gpDevice, &m_rtDevice)) || !m_rtDevice) {
-                log::warning("GVDBApp: OptiX device not available; continuing without it");
-                m_rtDevice = nullptr;
-            }
         }
     }
 
@@ -186,8 +188,7 @@ bool GVDBApp::Init(bool wantOptix) {
     const nvrhi::FramebufferInfoEx &fbInfo = fb->getFramebufferInfo();
     w = int(fbInfo.width);
     h = int(fbInfo.height);
-    m_presenter = std::make_unique<ScreenPresenter>(GetDevice(), m_interopDevice, m_gpDevice, m_gpQueue, m_shaderFactory,
-                                                    fbInfo);
+    m_presenter = std::make_unique<ScreenPresenter>(GetDevice(), m_interopDevice, m_compute, m_shaderFactory, fbInfo);
     m_presenter->createTarget(uint32_t(w), uint32_t(h));
     m_debugDraw = std::make_unique<DebugDraw>(GetDevice(), m_shaderFactory, fbInfo);
     GetDevice()->createCommandList(nvrhi::CommandListParameters(), &m_commandList);
@@ -210,7 +211,7 @@ RenderView GVDBApp::getRenderView(int width, int height) const {
 
 nvrhi::AutoPtr<gvdb::IGVDBVolume> GVDBApp::createVolume() {
     nvrhi::AutoPtr<gvdb::IGVDBVolume> volume;
-    if (NVRHI_FAILED(gvdb::createGVDBVolume(m_gpQueue, m_vfs, &volume))) {
+    if (NVRHI_FAILED(gvdb::createGVDBVolume(m_compute, &volume))) {
         log::error("createGVDBVolume failed");
         return nullptr;
     }
@@ -257,24 +258,21 @@ void GVDBApp::Render(nvrhi::IFramebuffer *framebuffer) {
     if (m_presenter->getWidth(0) != fbInfo.width || m_presenter->getHeight(0) != fbInfo.height)
         m_presenter->resizeTarget(0, fbInfo.width, fbInfo.height);
 
-    // gp side
-    m_presenter->beginGPFrame();
+    // CUDA side
+    m_presenter->beginComputeFrame();
     OnRender(fbInfo.width, fbInfo.height);
-    m_presenter->endGPFrame();
+    m_presenter->endComputeFrame();
 
     // graphics side
     m_commandList->open();
-    m_presenter->beginGraphics(m_commandList);
     m_presenter->blit(m_commandList, framebuffer, 0);
     OnDrawOverlay(m_commandList, framebuffer);
     if (m_debugDraw->getLineCount() > 0) {
         RenderView view = getRenderView(int(fbInfo.width), int(fbInfo.height));
         m_debugDraw->flush(m_commandList, framebuffer, view.viewProj);
     }
-    m_presenter->endGraphics(m_commandList);
     m_commandList->close();
     GetDevice()->executeCommandList(m_commandList);
-    m_presenter->endGraphicsFrame();
 
     if (!m_screenshotPath.empty() && m_frameCounter >= m_screenshotFrames) captureScreenshot(framebuffer);
 }
@@ -406,6 +404,12 @@ int runGVDBApp(int argc, const char *const *argv, const GVDBAppOptions &options,
     if (api == nvrhi::GraphicsAPI::VULKAN) {
         // CUDA interop needs exportable memory / timeline semaphores (opaque Win32 handles).
         params.requiredVulkanDeviceExtensions = {"VK_KHR_external_memory_win32", "VK_KHR_external_semaphore_win32"};
+    }
+    if (api == nvrhi::GraphicsAPI::D3D11) {
+        // (A warning: Donut's log breaks into the debugger on errors.)
+        log::warning("%s: the GVDB samples need D3D12 or Vulkan (no CUDA interop with D3D11); run with -d3d12 or -vk",
+                     options.title);
+        return 1;
     }
     if (!deviceManager->CreateWindowDeviceAndSwapChain(params, options.title)) {
         log::error("Cannot initialize a graphics device with the requested parameters");

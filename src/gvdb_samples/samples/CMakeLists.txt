@@ -1,5 +1,5 @@
 # The samples. Runtime artifacts follow the project convention: everything in
-# "${CMAKE_BINARY_DIR}/bin" (executables), "bin/ptx" (CUDA / OptiX modules) and
+# "${CMAKE_BINARY_DIR}/bin" (executables), "bin/shaders/gvdb" (CUDA / OptiX shader containers) and
 # "bin/shaders/<target>" (HLSL). Assets are read from GVDB_SAMPLES_ASSETS_DIR.
 
 add_subdirectory(sample-utils)

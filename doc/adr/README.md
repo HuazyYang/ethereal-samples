@@ -82,4 +82,4 @@ Commits (with repository), files, related ADRs and plans.
 | ADR | Title | Status | Date |
 | --- | --- | --- | --- |
 | [0001](0001-nv-asteroids-on-the-ethereal-dev-object-model.md) | nv_asteroids builds on the ethereal-dev object model, not a second Donut | Accepted | 2026-10-04 |
-| [0002](0002-gvdb-on-the-nvrhi-cuda-backend-in-slang.md) | The GVDB samples run on the NVRHI CUDA backend, in Slang | Proposed | 2026-10-22 |
+| [0002](0002-gvdb-on-the-nvrhi-cuda-backend-in-slang.md) | The GVDB samples run on the NVRHI CUDA backend, in Slang | Accepted | 2026-10-22 |

@@ -42,23 +42,12 @@ bool loadPNG(const std::filesystem::path &path, std::vector<uint8_t> &rgba8, uin
     return true;
 }
 
-bool saveRenderBufferPNG(const std::filesystem::path &path, gp::IDevice *device, gp::IDeviceQueue *queue,
-                         gp::IBuffer *rgba8, uint32_t width, uint32_t height) {
-    if (!device || !queue || !rgba8) return false;
-    const size_t bytes = size_t(width) * height * 4;
-    gp::BufferDesc desc;
-    desc.byteSize = bytes;
-    desc.isStaging = true;
-    nvrhi::AutoPtr<gp::IBuffer> staging;
-    UT_V_GP(device->createBuffer(desc, &staging));
-    UT_V_GP(queue->copyBufferRegion(staging, 0, rgba8, 0, bytes));
-    syncQueue(device, queue);
-    void *data = nullptr;
-    UT_V_GP(device->mapBuffer(staging, &data));
-    if (!data) return false;
-    bool ok = savePNG(path, static_cast<const uint8_t *>(data), width, height);
-    device->unmapBuffer(staging);
-    return ok;
+bool saveRenderBufferPNG(const std::filesystem::path &path, gvdb::IComputeContext *context, nvrhi::IBuffer *rgba8,
+                         uint32_t width, uint32_t height) {
+    if (!context || !rgba8) return false;
+    std::vector<uint8_t> pixels(size_t(width) * height * 4);
+    context->readBuffer(rgba8, 0, pixels.data(), pixels.size());
+    return savePNG(path, pixels.data(), width, height);
 }
 
 }  // namespace SampleUtils

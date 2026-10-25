@@ -1,21 +1,23 @@
 #ifndef FLUID_SURFACE_FLUIDSYSTEM_H
 #define FLUID_SURFACE_FLUIDSYSTEM_H
 // SPH fluid simulator (FLUIDS v.3 by Rama Hoetzlein, as shipped with the
-// gFluidSurface sample of GVDB Voxels), GPU path only, on the gp compute
-// abstraction: the particle and grid buffers are gp IBuffers, the kernels of
-// FluidSystemKernels.cu are compiled to PTX (ptx/FluidSystemKernels.ptx) and
-// launched through gp IKernel. One step = insert into the uniform grid,
-// prefix sum of the cell counts, counting sort (deep copy into the sorted
-// buffers), pressure / density, forces, leap-frog advance with the boundary
-// forces of the "wave pool" example.
+// gFluidSurface sample of GVDB Voxels), GPU path only, on the GVDB compute
+// context: the particle and grid buffers are nvrhi buffers of the CUDA device,
+// the kernels are FluidSystemKernels.slang (shaders/gvdb/FluidSystemKernels.nvsc).
+// One step = insert into the uniform grid, prefix sum of the cell counts,
+// counting sort (deep copy into the sorted buffers), pressure / density,
+// forces, leap-frog advance with the boundary forces of the "wave pool" example.
 //
-// The first part of this header is shared with the kernels (the .cu defines
-// FLUID_KERNEL before including it): buffer ids, the buffer table and the
-// parameter block that live in __constant__ memory (fbuf / ftemp / fparam of
-// the reference).
+// FluidBufs and FluidParams are the kernel arguments of the buffer tables and
+// the parameter block (fbuf / ftemp / fparam of the reference, which kept them
+// in __constant__ memory): same layouts as in FluidSystemKernels.slang.
+#include <gvdb/GVDBCompute.h>
+#include <nvrhi/nvrhi.h>
+#include <donut/core/math/math.h>
+#include <vector>
 
 // ---------------------------------------------------------------------------
-// Shared host / device definitions
+// Kernel arguments
 // ---------------------------------------------------------------------------
 
 // Particle and grid buffers. FPOS..FGNDX exist twice (fbuf = sorted / current,
@@ -44,22 +46,18 @@ enum FluidBuf {
 #define FLUID_SCAN_BLOCKSIZE 512
 #define FLUID_THREADS 512
 
-#ifdef FLUID_KERNEL
-typedef float3 FluidFloat3;
-typedef int3 FluidInt3;
-#else
 struct FluidFloat3 {
     float x, y, z;
 };
 struct FluidInt3 {
     int x, y, z;
 };
-#endif
 
-// Device addresses of the buffers (CUdeviceptr values of the gp buffers).
+// Device addresses of the buffers, in FluidBuf order.
 struct FluidBufs {
-    unsigned long long ptr[FLUID_NUM_BUF];
+    uint64_t ptr[FLUID_NUM_BUF];
 };
+static_assert(sizeof(FluidBufs) == 128, "FluidBufs differs from FluidSystemKernels.slang");
 
 // Simulation parameters as the kernels read them (FParams of the reference).
 struct FluidParams {
@@ -84,24 +82,19 @@ struct FluidParams {
     int gridSrch, gridTotal, gridAdjCnt;
     int gridAdj[64];
 };
+static_assert(sizeof(FluidParams) == 516, "FluidParams differs from FluidSystemKernels.slang");
 
-#ifndef FLUID_KERNEL
 // ---------------------------------------------------------------------------
 // Host side
 // ---------------------------------------------------------------------------
-#include <gvdb/GPDevice.h>
-#include <nvrhi/core/autoptr.h>
-#include <donut/core/math/math.h>
-#include <donut/core/vfs/VFS.h>
-#include <vector>
 
 class FluidSystem {
  public:
-    FluidSystem(donut::gp::IDevice *device, donut::gp::IDeviceQueue *queue);
+    explicit FluidSystem(gvdb::IComputeContext *context);
     ~FluidSystem();
 
-    // Loads ptx/FluidSystemKernels.ptx from the file system and resolves the kernels.
-    bool initialize(donut::vfs::IFileSystem *vfs);
+    // Resolves the kernels of FluidSystemKernels.slang (the context's file system serves them).
+    bool initialize();
     // (Re)starts the simulation with `numParticles` particles: the parameters of
     // the reference (wave-pool example), grid, buffers, initial particle block.
     bool start(int numParticles);
@@ -109,7 +102,7 @@ class FluidSystem {
     void run();
 
     int getNumPoints() const { return m_numPoints; }
-    donut::gp::IBuffer *getBuffer(FluidBuf id) const { return m_buf[id].Get(); }
+    nvrhi::IBuffer *getBuffer(FluidBuf id) const { return m_buf[id].Get(); }
     const FluidParams &getParams() const { return m_params; }
     dm::float3 getGridMin() const { return m_gridMin; }
     dm::float3 getGridMax() const { return m_gridMax; }
@@ -118,7 +111,7 @@ class FluidSystem {
     int getFrame() const { return m_frame; }
 
     // Positions, velocities and colours back to the host (TransferFromCUDA of
-    // the reference); waits for the queue.
+    // the reference); finishes the context.
     void readback(std::vector<dm::float3> &pos, std::vector<dm::float3> &vel, std::vector<uint32_t> &clr);
 
  private:
@@ -138,7 +131,7 @@ class FluidSystem {
     void setupFluidParams();       // FluidSetupCUDA + FluidParamCUDA
     bool allocateBuffers();        // AllocateParticles + AllocateGrid
     void setupAddVolume(dm::float3 vmin, dm::float3 vmax, float spacing, float offs, int total);
-    bool uploadConstants();        // fbuf / ftemp / fparam
+    void updateBufferTables();     // fbuf / ftemp
 
     void insertParticles();
     void prefixSumCells();
@@ -147,18 +140,17 @@ class FluidSystem {
     void computeForce();
     void advance();
 
-    bool createBuffer(nvrhi::AutoPtr<donut::gp::IBuffer> &buffer, size_t bytes);
-    void launch(donut::gp::IKernel *kernel, int blocks, int threads, const donut::gp::KernelArg *args, size_t argc);
+    nvrhi::BufferHandle createBuffer(size_t bytes, const char *name);
+    nvrhi::ICommandList *commandList() { return m_context->getCommandList(); }
 
-    nvrhi::AutoPtr<donut::gp::IDevice> m_device;
-    nvrhi::AutoPtr<donut::gp::IDeviceQueue> m_queue;
-    nvrhi::AutoPtr<donut::gp::IModule> m_module;
-    nvrhi::AutoPtr<donut::gp::IKernel> m_kInsert, m_kCountingSort, m_kPressure, m_kForce, m_kAdvance, m_kPrefixSum,
-        m_kPrefixFixup;
+    nvrhi::AutoPtr<gvdb::IComputeContext> m_context;
+    gvdb::IComputeKernel *m_kInsert = nullptr, *m_kCountingSort = nullptr, *m_kPressure = nullptr,
+                         *m_kForce = nullptr, *m_kAdvance = nullptr, *m_kPrefixSum = nullptr,
+                         *m_kPrefixFixup = nullptr;
 
-    nvrhi::AutoPtr<donut::gp::IBuffer> m_buf[FLUID_NUM_BUF];       // fbuf
-    nvrhi::AutoPtr<donut::gp::IBuffer> m_temp[FLUID_NUM_BUF];      // ftemp (FPOS..FGNDX)
-    nvrhi::AutoPtr<donut::gp::IBuffer> m_stagingPos, m_stagingVel, m_stagingClr;
+    nvrhi::BufferHandle m_buf[FLUID_NUM_BUF];       // fbuf
+    nvrhi::BufferHandle m_temp[FLUID_NUM_BUF];      // ftemp (FPOS..FGNDX)
+    FluidBufs m_fbuf = {}, m_ftemp = {};
 
     Params m_p = {};
     FluidParams m_params = {};
@@ -180,7 +172,5 @@ class FluidSystem {
     std::vector<dm::float3> m_hostPos;
     std::vector<uint32_t> m_hostClr;
 };
-
-#endif /* !FLUID_KERNEL */
 
 #endif /* FLUID_SURFACE_FLUIDSYSTEM_H */

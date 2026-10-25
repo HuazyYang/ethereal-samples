@@ -14,6 +14,7 @@
 // wider than Node (the mask follows the header, starting at Node::mask) and child
 // lists are packed in bit order; they are converted to indexed child lists.
 #include <gvdb/GVDB.h>
+#include "GVDBPrimitives.h"
 #include <donut/core/log.h>
 #include <nvrhi/core/datablob.h>
 #include <algorithm>
@@ -29,7 +30,7 @@ namespace {
 
 constexpr uint8_t VBX_MAJOR = 1;
 constexpr uint8_t VBX_MINOR = 11;
-constexpr uint64_t SLAB_BYTES = 64ull << 20;   // atlas transfer granularity (pinned memory)
+constexpr uint64_t SLAB_BYTES = 64ull << 20;   // atlas transfer granularity (upload / readback memory)
 constexpr uint64_t VBX_ID_UNDEFL = 0xFFFFFFFFull;   // the reference's "undefined" node / list id in files
 
 struct Reader {
@@ -303,8 +304,8 @@ class GVDBSerializer final : public nvrhi::ObjectImpl<IGVDBSerializer> {
             }
         }
 
-        gp::IDevice *device = vol->getDevice();
-        gp::IDeviceQueue *queue = vol->getQueue();
+        IComputeContext *context = vol->getContext();
+        nvrhi::BufferHandle slab;   // one z-slab of an atlas, copied into the texture by copyAtlasBlock()
         for (int chan = 0; chan < numChan; ++chan) {
             int32_t chanType = 0, chanStride = 0;
             r.read(chanType);
@@ -320,14 +321,14 @@ class GVDBSerializer final : public nvrhi::ObjectImpl<IGVDBSerializer> {
                 log::error("GVDB: loadVBX(): channel %d stride %d does not match type %d", chan, chanStride, chanType);
                 return nvrhi::FE_INVALID_ARGS;
             }
-            desc.samplerDesc.addressU = gp::SamplerAddressMode::Border;
-            desc.samplerDesc.addressV = gp::SamplerAddressMode::Border;
-            desc.samplerDesc.addressW = gp::SamplerAddressMode::Border;
+            desc.samplerDesc.addressU = nvrhi::SamplerAddressMode::Border;
+            desc.samplerDesc.addressV = nvrhi::SamplerAddressMode::Border;
+            desc.samplerDesc.addressW = nvrhi::SamplerAddressMode::Border;
             int c = vol->addChannel(desc);
-            gp::ITexture *tex = c >= 0 ? vol->getChannelTexture(c) : nullptr;
+            nvrhi::ITexture *tex = c >= 0 ? vol->getChannelTexture(c) : nullptr;
             if (!tex) return nvrhi::FE_GENERIC_ERROR;
 
-            // upload in z-slabs (each one is staged through pinned memory)
+            // upload in z-slabs (each one goes through upload memory and a slab buffer)
             const uint64_t sliceBytes = uint64_t(axisres.x) * axisres.y * chanStride;
             const uint64_t total = sliceBytes * axisres.z;
             if (!r.has(total)) {
@@ -337,19 +338,12 @@ class GVDBSerializer final : public nvrhi::ObjectImpl<IGVDBSerializer> {
             const uint32_t slabZ = uint32_t(std::max<uint64_t>(1, std::min<uint64_t>(axisres.z, SLAB_BYTES / sliceBytes)));
             for (uint32_t z0 = 0; z0 < uint32_t(axisres.z); z0 += slabZ) {
                 const uint32_t dz = std::min(slabZ, uint32_t(axisres.z) - z0);
-                gp::SubresourceFootprint fp;
-                fp.format = atlasFormatToGP(desc.format);
-                fp.width = uint32_t(axisres.x);
-                fp.height = uint32_t(axisres.y);
-                fp.depth = dz;
-                fp.rowPitch = uint32_t(axisres.x) * uint32_t(chanStride);
-                nvrhi::FRESULT fr = queue->writeTextureRegion(tex, 0, r.p + sliceBytes * z0, fp, 0, 0, z0, nullptr);
-                if (NVRHI_FAILED(fr)) {
-                    log::error("GVDB: loadVBX(): atlas upload failed (%d)", int(fr));
-                    return fr;
-                }
-                device->commitQueue(queue);
-                device->waitForQueue(queue);   // bounds the pinned staging memory
+                const uint64_t slabBytes = sliceBytes * dz;
+                slab = GVDBPrimitives::ensureBuffer(context, slab, slabBytes, "GVDB atlas slab");
+                if (!slab) return nvrhi::FE_OUT_OF_MEMORY;
+                context->getCommandList()->writeBuffer(slab, r.p + sliceBytes * z0, slabBytes, 0);
+                vol->copyAtlasBlock(c, dm::int3(0, 0, int(z0)), slab, dm::uint3(uint32_t(axisres.x), uint32_t(axisres.y), dz));
+                context->finish();   // bounds the upload memory
             }
             r.skip(total);
         }
@@ -368,8 +362,8 @@ class GVDBSerializer final : public nvrhi::ObjectImpl<IGVDBSerializer> {
             log::error("GVDB: saveVBX(): the volume is not configured");
             return nvrhi::FE_INVALID_ARGS;
         }
-        gp::IDevice *device = vol->getDevice();
-        gp::IDeviceQueue *queue = vol->getQueue();
+        IComputeContext *context = vol->getContext();
+        nvrhi::cuda::IDevice *device = vol->getDevice();
 
         const int numGrids = 1;
         const int numChan = vol->getNumChannels();
@@ -466,7 +460,7 @@ class GVDBSerializer final : public nvrhi::ObjectImpl<IGVDBSerializer> {
             w.write(int32_t(atlasFormatToVBXType(format)));
             w.write(int32_t(stride));
 
-            gp::ITexture *tex = vol->getChannelTexture(c);
+            nvrhi::ITexture *tex = vol->getChannelTexture(c);
             const uint64_t sliceBytes = uint64_t(axisres.x) * axisres.y * stride;
             if (!tex) {
                 log::warning("GVDB: saveVBX(): channel %d has no atlas texture, writing zeros", c);
@@ -476,38 +470,39 @@ class GVDBSerializer final : public nvrhi::ObjectImpl<IGVDBSerializer> {
             const uint32_t slabZ = uint32_t(std::max<uint64_t>(1, std::min<uint64_t>(axisres.z, SLAB_BYTES / sliceBytes)));
             for (uint32_t z0 = 0; z0 < axisres.z; z0 += slabZ) {
                 const uint32_t dz = std::min(slabZ, axisres.z - z0);
-                const uint64_t bytes = sliceBytes * dz;
 
-                gp::BufferDesc bdesc;
-                bdesc.byteSize = bytes;
-                bdesc.isStaging = true;
-                nvrhi::AutoPtr<gp::IBuffer> staging;
-                if (NVRHI_FAILED(fr = device->createBuffer(bdesc, &staging))) return fr;
+                // A staging texture of the slab, read row by row.
+                nvrhi::TextureDesc sdesc = tex->getDesc();
+                sdesc.width = axisres.x;
+                sdesc.height = axisres.y;
+                sdesc.depth = dz;
+                sdesc.isUAV = false;
+                sdesc.debugName = "GVDB atlas readback";
+                nvrhi::StagingTextureHandle staging;
+                if (NVRHI_FAILED(fr = device->createStagingTexture(sdesc, nvrhi::CpuAccessMode::Read, &staging))) return fr;
 
-                gp::TextureCopyLocation dst = {}, src = {};
-                dst.resource = staging.Get();
-                dst.type = gp::TextureCopyType::PlacedFootprint;
-                dst.placeFootprint.offset = 0;
-                dst.placeFootprint.format = atlasFormatToGP(format);
-                dst.placeFootprint.width = axisres.x;
-                dst.placeFootprint.height = axisres.y;
-                dst.placeFootprint.depth = dz;
-                dst.placeFootprint.rowPitch = axisres.x * stride;
-                src.resource = tex;
-                src.type = gp::TextureCopyType::SubresourceIndex;
-                src.subresourceIndex = 0;
-                gp::GPBox box = {0, 0, z0, axisres.x, axisres.y, z0 + dz};
-                if (NVRHI_FAILED(fr = queue->copyTextureRegion(dst, 0, 0, 0, src, &box))) {
-                    log::error("GVDB: saveVBX(): atlas readback failed (%d)", int(fr));
-                    return fr;
+                nvrhi::TextureSlice srcSlice;
+                srcSlice.z = z0;
+                srcSlice.width = axisres.x;
+                srcSlice.height = axisres.y;
+                srcSlice.depth = dz;
+                nvrhi::TextureSlice dstSlice = srcSlice;
+                dstSlice.z = 0;
+                context->getCommandList()->copyTexture2(staging, dstSlice, tex, srcSlice);
+                context->finish();
+
+                size_t rowPitch = 0;
+                const uint8_t *mapped = static_cast<const uint8_t *>(
+                    device->mapStagingTexture(staging, nvrhi::TextureSlice(), nvrhi::CpuAccessMode::Read, rowPitch));
+                if (!mapped) {
+                    log::error("GVDB: saveVBX(): cannot map the atlas readback of channel %d", c);
+                    return nvrhi::FE_GENERIC_ERROR;
                 }
-                device->commitQueue(queue);
-                if (NVRHI_FAILED(fr = device->waitForQueue(queue))) return fr;
-
-                void *mapped = nullptr;
-                if (NVRHI_FAILED(fr = device->mapBuffer(staging, &mapped))) return fr;
-                w.bytes(mapped, bytes);
-                device->unmapBuffer(staging);
+                const size_t rowBytes = size_t(axisres.x) * stride;
+                for (uint32_t z = 0; z < dz; ++z)
+                    for (uint32_t y = 0; y < axisres.y; ++y)
+                        w.bytes(mapped + (size_t(z) * axisres.y + y) * rowPitch, rowBytes);
+                device->unmapStagingTexture(staging);
             }
         }
         NVRHI_ASSERT(w.offset() == blob->GetSize());

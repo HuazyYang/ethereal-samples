@@ -102,17 +102,20 @@ class PointCloudApp : public GVDBApp {
             return false;
         }
 
-        // GPU buffers (grown when a frame has more points)
-        if (!m_pnt1 || m_pnt1->getDesc()->byteSize < packed.size() * sizeof(uint16_t)) {
-            gp::BufferDesc desc;
+        // GPU buffers (grown when a frame has more points; the kernels of the previous frame may still read the
+        // old ones)
+        if (!m_pnt1 || m_pnt1->getDesc().byteSize < packed.size() * sizeof(uint16_t)) {
+            getCompute()->releaseAfterUse(m_pnt1);
+            getCompute()->releaseAfterUse(m_pnts);
+            nvrhi::BufferDesc desc;
             desc.byteSize = packed.size() * sizeof(uint16_t);
-            UT_V_GP(getGPDevice()->createBuffer(desc, &m_pnt1));
+            desc.debugName = "points (ushort3)";
+            UT_CHECK(getCudaDevice()->createBuffer(desc, &m_pnt1));
             desc.byteSize = size_t(count) * sizeof(dm::float3);
-            UT_V_GP(getGPDevice()->createBuffer(desc, &m_pnts));
-            desc.isStaging = true;
-            UT_V_GP(getGPDevice()->createBuffer(desc, &m_pntsStaging));
+            desc.debugName = "points";
+            UT_CHECK(getCudaDevice()->createBuffer(desc, &m_pnts));
         }
-        UT_V_GP(getGPQueue()->writeBuffer(m_pnt1, packed.data(), packed.size() * sizeof(uint16_t), 0));
+        getCompute()->getCommandList()->writeBuffer(m_pnt1, packed.data(), packed.size() * sizeof(uint16_t), 0);
         m_numPnts = uint32_t(count);
 
         // convert format and transform: ushort (2) -> float (4), (wMin + p * wDelta) * renderScale
@@ -129,13 +132,8 @@ class PointCloudApp : public GVDBApp {
         m_points->setPoints(dst, none, none);
 
         // host copy for drawing the points (the reference's RetrieveData)
-        UT_V_GP(getGPQueue()->copyBufferRegion(m_pntsStaging, 0, m_pnts, 0, size_t(m_numPnts) * sizeof(dm::float3)));
-        syncQueue(getGPDevice(), getGPQueue());
-        void *mapped = nullptr;
-        UT_V_GP(getGPDevice()->mapBuffer(m_pntsStaging, &mapped));
         m_pntsHost.resize(m_numPnts);
-        if (mapped) memcpy(m_pntsHost.data(), mapped, size_t(m_numPnts) * sizeof(dm::float3));
-        getGPDevice()->unmapBuffer(m_pntsStaging);
+        getCompute()->readBuffer(m_pnts, 0, m_pntsHost.data(), size_t(m_numPnts) * sizeof(dm::float3));
 
         log::info("  Done. %u points, bounds <%.1f, %.1f, %.1f> - <%.1f, %.1f, %.1f>", m_numPnts, wMin.x, wMin.y,
                   wMin.z, wMax.x, wMax.y, wMax.z);
@@ -177,7 +175,7 @@ class PointCloudApp : public GVDBApp {
         m_maxSamples = std::max(1, s.maxSamples);
         m_smooth = s.smooth;
         m_smoothParams = s.smoothParams;
-        m_useOptix = !m_opt.forceCuda && getRTDevice() != nullptr;
+        m_useOptix = !m_opt.forceCuda && isOptixAvailable();
         if (!m_useOptix)
             log::warning("point-cloud: rendering with the CUDA raycaster (%s).",
                          m_opt.forceCuda ? "--cuda" : "no OptiX device");
@@ -220,10 +218,10 @@ class PointCloudApp : public GVDBApp {
         attrs.cutoff = s.cutoff;
         attrs.materialId = s.pointMaterial;
         // the only transfer function the reference defines (handle_gui): blue -> green -> red
-        attrs.transferFunction = MAKE_RC_OBJ_PTR(gvdb::VolumeTransferFunction, getGPDevice());
+        attrs.transferFunction = MAKE_RC_OBJ_PTR(gvdb::VolumeTransferFunction, getCompute());
         attrs.transferFunction->setLinear(0.00f, 0.50f, {0.f, 0.f, 1.f, 0.f}, {0.f, 1.f, 0.f, 0.1f});
         attrs.transferFunction->setLinear(0.50f, 1.00f, {0.f, 1.f, 0.f, 0.1f}, {1.f, 0.f, 0.f, 0.1f});
-        attrs.transferFunction->commit(getGPQueue());
+        attrs.transferFunction->commit();
 
         // ---- polygon models (Scene::AddModel(file, scale, offset), instanced at the render scale) ----
         for (const SceneModel &model : s.models) {
@@ -252,7 +250,8 @@ class PointCloudApp : public GVDBApp {
                 log::error("No materials have been specified in scene.");
                 return false;
             }
-            m_optix = std::make_unique<OptixRenderer>(getGPDevice(), getRTDevice(), getGPQueue(), getVFS());
+            m_optix = std::make_unique<OptixRenderer>(getCompute());
+            if (!m_optix->isValid()) return false;
             m_optix->getViewParams().backgroundColor = s.backgroundColor;
             for (const OptixMaterialParams &m : s.materials) m_optix->addMaterial(m);
             for (size_t i = 0; i < m_meshInstances.size(); ++i)
@@ -271,7 +270,7 @@ class PointCloudApp : public GVDBApp {
             log::info("Building the OptiX scene.");
             m_optix->buildScene(getSceneGraph());
         } else {
-            m_cuda = std::make_unique<VolRenderer>(getGPDevice(), getGPQueue(), getVFS());
+            m_cuda = std::make_unique<VolRenderer>(getCompute());
             m_cuda->getViewParams().backgroundColor = s.backgroundColor;
         }
         return true;
@@ -341,8 +340,8 @@ class PointCloudApp : public GVDBApp {
             }
             m_optix->setSample(m_frame, m_sample);
             m_optix->render(getSceneGraph(), view, gvdb::VolumeShading::LevelSet);
-            UT_V_GP(getGPQueue()->copyBufferRegion(getPresenter()->getRenderBuffer(0), 0, m_optix->getOutputBuffer(), 0,
-                                                   size_t(width) * height * 4));
+            getCompute()->getCommandList()->copyBuffer(getPresenter()->getRenderBuffer(0), 0, m_optix->getOutputBuffer(), 0,
+                                                       size_t(width) * height * 4);
         } else {
             static const gvdb::VolumeShading shadings[] = {gvdb::VolumeShading::Off,       gvdb::VolumeShading::Voxel,
                                                            gvdb::VolumeShading::EmptySkip, gvdb::VolumeShading::Section3D,
@@ -408,9 +407,8 @@ class PointCloudApp : public GVDBApp {
 
     // points
     uint32_t m_numPnts = 0;
-    nvrhi::AutoPtr<gp::IBuffer> m_pnt1;          // ushort3 as read from the file
-    nvrhi::AutoPtr<gp::IBuffer> m_pnts;          // float3 index space
-    nvrhi::AutoPtr<gp::IBuffer> m_pntsStaging;
+    nvrhi::BufferHandle m_pnt1;          // ushort3 as read from the file
+    nvrhi::BufferHandle m_pnts;          // float3 index space
     std::vector<dm::float3> m_pntsHost;
     int m_radius = 1;
     dm::float3 m_origin = dm::float3::zero();

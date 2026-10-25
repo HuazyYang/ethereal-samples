@@ -1,5 +1,5 @@
 // fluid-surface (gFluidSurface): an SPH fluid of 1.5M particles simulated on
-// the GPU (FluidSystem, kernels in FluidSystemKernels.cu) is surfaced through
+// the GPU (FluidSystem, kernels in FluidSystemKernels.slang) is surfaced through
 // GVDB every frame: the particle positions (and colours) feed IGVDBPointOps
 // (setPoints -> rebuildTopology -> insertPointsSubcell -> gatherLevelSet),
 // the level set is rendered by the OptiX renderer as a custom primitive next
@@ -60,8 +60,8 @@ class FluidSurfaceApp : public GVDBApp {
     void setInitialShadeStyle(int style) { m_shadeStyle = dm::clamp(style, 0, c_NumShadeStyles - 1); }
 
     bool OnInit() override {
-        if (!getRTDevice()) {
-            log::error("fluid-surface: no OptiX device (OptiX SDK not found at build time or no driver support).");
+        if (!isOptixAvailable()) {
+            log::error("fluid-surface: no OptiX on the CUDA device (no driver support).");
             return false;
         }
         // Unattended run: GVDBApp saves the back buffer after m_screenshotFrames
@@ -75,8 +75,8 @@ class FluidSurfaceApp : public GVDBApp {
 
         // ---- fluid system ----
         log::info("Starting Fluid System.");
-        m_fluid = std::make_unique<FluidSystem>(getGPDevice(), getGPQueue());
-        if (!m_fluid->initialize(getVFS())) return false;
+        m_fluid = std::make_unique<FluidSystem>(getCompute());
+        if (!m_fluid->initialize()) return false;
         if (!m_fluid->start(m_numPnts)) return false;
 
         // ---- volume (reconfigure of the reference) ----
@@ -97,13 +97,14 @@ class FluidSurfaceApp : public GVDBApp {
         attrs.extinct = {-1.0f, 1.5f, 0.0f};
         attrs.threshold = {0.0f, 3.0f, -1.0f};
         attrs.cutoff = {0.005f, 0.01f, 0.0f};
-        attrs.transferFunction = MAKE_RC_OBJ_PTR(gvdb::VolumeTransferFunction, getGPDevice());
+        attrs.transferFunction = MAKE_RC_OBJ_PTR(gvdb::VolumeTransferFunction, getCompute());
         attrs.transferFunction->setLinear(0.f, 1.f, {0.f, 0.f, 0.f, 0.f}, {1.f, 1.f, 1.f, 0.1f});   // library default
-        attrs.transferFunction->commit(getGPQueue());
+        attrs.transferFunction->commit();
         reconfigureChannels();
 
         // ---- OptiX renderer, materials, environment (RebuildOptixGraph) ----
-        m_renderer = std::make_unique<OptixRenderer>(getGPDevice(), getRTDevice(), getGPQueue(), getVFS());
+        m_renderer = std::make_unique<OptixRenderer>(getCompute());
+        if (!m_renderer->isValid()) return false;
         m_renderer->getViewParams().backgroundColor = {0.8f, 0.8f, 0.8f, 1.f};
         {
             std::vector<uint8_t> rgba;
@@ -218,14 +219,14 @@ class FluidSurfaceApp : public GVDBApp {
 
         // OptiX: the topology changed
         m_renderer->updateVolumes(getSceneGraph());
-        syncQueue(getGPDevice(), getGPQueue());
+        syncCompute(getCompute());
         m_msSurface = elapsedMs(t0);
     }
 
     void simulate() {
         auto t0 = std::chrono::high_resolution_clock::now();
         m_fluid->run();
-        syncQueue(getGPDevice(), getGPQueue());
+        syncCompute(getCompute());
         m_msFluid = elapsedMs(t0);
         if (m_shadeStyle == 0) return;   // no surface while the shading is off
         buildSurface();
@@ -263,8 +264,8 @@ class FluidSurfaceApp : public GVDBApp {
 
         m_renderer->setSample(m_frame, m_sample++);
         m_renderer->render(getSceneGraph(), getRenderView(int(width), int(height)));
-        UT_V_GP(getGPQueue()->copyBufferRegion(getPresenter()->getRenderBuffer(0), 0, m_renderer->getOutputBuffer(), 0,
-                                               size_t(width) * height * 4));
+        getCompute()->getCommandList()->copyBuffer(getPresenter()->getRenderBuffer(0), 0, m_renderer->getOutputBuffer(), 0,
+                                                   size_t(width) * height * 4);
 
         if (m_showGui) {
             if (m_showFluid) drawFluid();

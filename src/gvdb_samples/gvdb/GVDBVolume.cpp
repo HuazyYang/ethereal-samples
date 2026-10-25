@@ -1,35 +1,26 @@
 // IGVDBVolume: the GVDB hierarchy (port of VolumeGVDB + the pool / atlas half
-// of Allocator onto the gp compute abstraction).
+// of Allocator onto the nvrhi CUDA backend).
 //
 // Host pools hold the nodes and child lists; commitPools() mirrors them into
-// gp buffers sized to the allocated count. Bricks (level-0 nodes) that are
+// buffers of the CUDA device sized to the allocated count. Bricks (level-0 nodes) that are
 // active (flags != 0) get a slot in the atlas textures in updateAtlas(); the
 // atlas map gives the inverse mapping (slot -> brick). The VDBInfo block the
 // kernels read is rebuilt lazily by prepareVDB().
 #include <gvdb/GVDB.h>
 #include "GVDBAllocator.h"
+#include "GVDBPrimitives.h"
 #include <donut/core/log.h>
-#include <donut/core/vfs/VFS.h>
-#include <nvrhi/core/datablob.h>
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <cstring>
+#include <iterator>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 namespace gvdb {
 
 using namespace donut;
-
-#define GVDB_V_GP(expr)                                                              \
-    do {                                                                             \
-        auto rc_ = (expr);                                                           \
-        if (NVRHI_FAILED(rc_)) {                                                     \
-            donut::log::error("GVDB: gp call failed with error %d: %s", (int)rc_, #expr); \
-            NVRHI_ASSERT(0);                                                         \
-        }                                                                            \
-    } while (0)
 
 namespace {
 
@@ -44,13 +35,12 @@ struct LevelInfo {
 };
 
 struct PoolGPU {
-    nvrhi::AutoPtr<gp::IBuffer> buffer;
+    nvrhi::BufferHandle buffer;
     uint64_t capacity = 0;   // bytes
 };
 
-inline bool isIdentChar(char c) {
-    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '$';
-}
+// The containers the kernels of the library come from (getKernel()).
+const char *const s_shaderContainers[] = {GVDB_SHADERS_OPERATORS, GVDB_SHADERS_PARTICLES, GVDB_SHADERS_PRIMITIVES};
 
 class GVDBVolume final : public nvrhi::ObjectImpl<IGVDBVolume> {
  public:
@@ -58,17 +48,14 @@ class GVDBVolume final : public nvrhi::ObjectImpl<IGVDBVolume> {
     NVRHI_IMPLEMENTS_INTERFACE(IGVDBVolume)
     NVRHI_END_INTERFACE_TABLE()
 
-    GVDBVolume(gp::IDeviceQueue *queue, vfs::IFileSystem *vfs)
-        : m_queue(queue), m_device(queue->getDevice()), m_vfs(vfs) {
+    explicit GVDBVolume(IComputeContext *context)
+        : m_context(context), m_device(context->getDevice()), m_primitives(context) {
         m_atlasGridDim = m_atlasCfg.gridDim;
     }
 
     ~GVDBVolume() {
         // GPU work on the pools / atlas may still be in flight
-        if (m_device && m_queue) {
-            m_device->commitQueue(m_queue);
-            m_device->waitForQueue(m_queue);
-        }
+        if (m_context) m_context->finish();
     }
 
     // ---- configuration -------------------------------------------------
@@ -104,8 +91,8 @@ class GVDBVolume final : public nvrhi::ObjectImpl<IGVDBVolume> {
             m_pool.poolCreate(1, uint8_t(i), sizeof(NodeId) * m_levels[i].voxelCnt, m_levelCfg.initialNodes[i]);
 
         // GPU mirrors are stale; they are recreated by the next commit
-        for (auto &p : m_nodePoolsGPU) p = {};
-        for (auto &p : m_childPoolsGPU) p = {};
+        for (auto &p : m_nodePoolsGPU) dropPool(p);
+        for (auto &p : m_childPoolsGPU) dropPool(p);
 
         m_voxResMax = dm::int3::zero();
         clear();
@@ -130,6 +117,7 @@ class GVDBVolume final : public nvrhi::ObjectImpl<IGVDBVolume> {
         }
         m_channels.push_back(desc);
         m_channelTextures.emplace_back();
+        m_channelSamplers.emplace_back();
         int channel = int(m_channels.size()) - 1;
         ensureChannelTexture(channel);
         invalidateVDBInfo();
@@ -137,8 +125,10 @@ class GVDBVolume final : public nvrhi::ObjectImpl<IGVDBVolume> {
     }
 
     void destroyChannels() override {
+        for (auto &texture : m_channelTextures) m_context->releaseAfterUse(texture.Get());
         m_channels.clear();
         m_channelTextures.clear();
+        m_channelSamplers.clear();
         invalidateVDBInfo();
     }
 
@@ -150,7 +140,7 @@ class GVDBVolume final : public nvrhi::ObjectImpl<IGVDBVolume> {
         return m_channels[channel];
     }
 
-    gp::ITexture *getChannelTexture(int channel) override {
+    nvrhi::ITexture *getChannelTexture(int channel) override {
         if (channel < 0 || channel >= int(m_channelTextures.size())) return nullptr;
         return m_channelTextures[channel].Get();
     }
@@ -465,38 +455,21 @@ class GVDBVolume final : public nvrhi::ObjectImpl<IGVDBVolume> {
     dm::uint3 getAtlasResDim() const override { return m_atlasGridDim * getBrickDimWithApron(); }
     dm::uint3 getAtlasPackedResDim() const override { return m_atlasGridDim * getBrickDim(); }
     const std::vector<AtlasNode> &getAtlasMap() const override { return m_atlasMap; }
-    gp::IBuffer *getAtlasMapGPU() override { return m_atlasMapGPU.Get(); }
+    nvrhi::IBuffer *getAtlasMapGPU() override { return m_atlasMapGPU.Get(); }
 
-    void copyAtlasBlock(int channel, dm::int3 dstOffset, gp::IBuffer *src, dm::uint3 srcBlockDim) override {
-        gp::ITexture *dst = getChannelTexture(channel);
+    void copyAtlasBlock(int channel, dm::int3 dstOffset, nvrhi::IBuffer *src, dm::uint3 srcBlockDim) override {
+        nvrhi::ITexture *dst = getChannelTexture(channel);
         if (!dst || !src) {
             log::error("GVDB: copyAtlasBlock(): channel %d has no atlas texture", channel);
             return;
         }
-        const AtlasFormat format = m_channels[channel].format;
-
-        gp::TextureCopyLocation srcLoc = {}, dstLoc = {};
-        srcLoc.resource = src;
-        srcLoc.type = gp::TextureCopyType::PlacedFootprint;
-        srcLoc.placeFootprint.offset = 0;
-        srcLoc.placeFootprint.format = atlasFormatToGP(format);
-        srcLoc.placeFootprint.width = srcBlockDim.x;
-        srcLoc.placeFootprint.height = srcBlockDim.y;
-        srcLoc.placeFootprint.depth = srcBlockDim.z;
-        srcLoc.placeFootprint.rowPitch = srcBlockDim.x * atlasFormatBytes(format);
-
-        dstLoc.resource = dst;
-        dstLoc.type = gp::TextureCopyType::SubresourceIndex;
-        dstLoc.subresourceIndex = 0;
-
-        GVDB_V_GP(m_queue->copyTextureRegion(dstLoc, uint32_t(dstOffset.x), uint32_t(dstOffset.y),
-                                             uint32_t(dstOffset.z), srcLoc, nullptr));
+        m_primitives.copyBlock(src, srcBlockDim, dstOffset, dst, m_channels[channel].format);
     }
 
     // ---- GPU mirror ----------------------------------------------------
 
-    gp::IDevice *getDevice() const override { return m_device.Get(); }
-    gp::IDeviceQueue *getQueue() const override { return m_queue.Get(); }
+    nvrhi::cuda::IDevice *getDevice() const override { return m_device.Get(); }
+    IComputeContext *getContext() const override { return m_context.Get(); }
 
     void commitPools() override {
         for (uint8_t lev = 0; lev < m_levels.size(); ++lev) {
@@ -507,13 +480,15 @@ class GVDBVolume final : public nvrhi::ObjectImpl<IGVDBVolume> {
     }
 
     void fetchPools() override {
+        // Every pool is copied into one readback buffer, read after one wait.
         struct Job {
-            nvrhi::AutoPtr<gp::IBuffer> staging;
+            nvrhi::IBuffer *src;
             void *dst;
+            uint64_t offset;
             uint64_t bytes;
         };
         std::vector<Job> jobs;
-
+        uint64_t total = 0;
         auto queueFetch = [&](uint8_t grp, uint8_t lev, PoolGPU &gpu) {
             uint64_t bytes = m_pool.poolGetMemoryUsedWidth(grp, lev);
             if (bytes == 0 || !gpu.buffer) return;
@@ -521,30 +496,35 @@ class GVDBVolume final : public nvrhi::ObjectImpl<IGVDBVolume> {
                 log::error("GVDB: fetchPools(): pool (%d, %d) GPU mirror is smaller than the host pool", grp, lev);
                 return;
             }
-            gp::BufferDesc desc;
-            desc.byteSize = bytes;
-            desc.isStaging = true;
-            nvrhi::AutoPtr<gp::IBuffer> staging;
-            GVDB_V_GP(m_device->createBuffer(desc, &staging));
-            GVDB_V_GP(m_queue->copyBufferRegion(staging, 0, gpu.buffer, 0, bytes));
-            jobs.push_back({staging, m_pool.poolData(grp, lev), bytes});
+            jobs.push_back({gpu.buffer.Get(), m_pool.poolData(grp, lev), total, bytes});
+            total += (bytes + 15) & ~uint64_t(15);
         };
-
         for (uint8_t lev = 0; lev < m_levels.size(); ++lev) {
             queueFetch(0, lev, m_nodePoolsGPU[lev]);
             queueFetch(1, lev, m_childPoolsGPU[lev]);
         }
         if (jobs.empty()) return;
 
-        m_device->commitQueue(m_queue);
-        GVDB_V_GP(m_device->waitForQueue(m_queue));
-
-        for (auto &job : jobs) {
-            void *mapped = nullptr;
-            GVDB_V_GP(m_device->mapBuffer(job.staging, &mapped));
-            if (mapped) memcpy(job.dst, mapped, size_t(job.bytes));
-            m_device->unmapBuffer(job.staging);
+        if (!m_fetchBuffer || m_fetchBuffer->getDesc().byteSize < total) {
+            nvrhi::BufferDesc desc;
+            desc.byteSize = total;
+            desc.cpuAccess = nvrhi::CpuAccessMode::Read;
+            desc.debugName = "GVDB pool readback";
+            m_fetchBuffer = nullptr;
+            if (NVRHI_FAILED(m_device->createBuffer(desc, &m_fetchBuffer))) {
+                log::error("GVDB: fetchPools(): cannot create a readback buffer of %llu bytes", (unsigned long long)total);
+                return;
+            }
         }
+        nvrhi::ICommandList *commandList = m_context->getCommandList();
+        for (const Job &job : jobs) commandList->copyBuffer(m_fetchBuffer, job.offset, job.src, 0, job.bytes);
+        m_context->finish();
+
+        const uint8_t *mapped = static_cast<const uint8_t *>(m_device->mapBuffer(m_fetchBuffer, nvrhi::CpuAccessMode::Read));
+        if (mapped) {
+            for (const Job &job : jobs) memcpy(job.dst, mapped + job.offset, size_t(job.bytes));
+        }
+        m_device->unmapBuffer(m_fetchBuffer);
         invalidateVDBInfo();
     }
 
@@ -561,8 +541,8 @@ class GVDBVolume final : public nvrhi::ObjectImpl<IGVDBVolume> {
             info.nodecnt[n] = int(m_pool.poolGetNumUsed(0, lev));
             info.nodewid[n] = int(m_pool.poolGetElementStride(0, lev));
             info.childwid[n] = int(m_pool.poolGetElementStride(1, lev));
-            info.nodelist[n] = m_nodePoolsGPU[n].buffer ? m_nodePoolsGPU[n].buffer->getNativeHandle() : 0;
-            info.childlist[n] = m_childPoolsGPU[n].buffer ? m_childPoolsGPU[n].buffer->getNativeHandle() : 0;
+            info.nodelist[n] = deviceAddress(m_nodePoolsGPU[n].buffer);
+            info.childlist[n] = deviceAddress(m_childPoolsGPU[n].buffer);
             if (info.nodecnt[n] == 1) tlev = n;   // top level for rendering (reference loop)
         }
         info.top_lev = tlev;
@@ -574,16 +554,20 @@ class GVDBVolume final : public nvrhi::ObjectImpl<IGVDBVolume> {
         }
 
         if (withAtlas) {
-            info.atlas_map = m_atlasMapGPU ? m_atlasMapGPU->getNativeHandle() : 0;
+            info.atlas_map = deviceAddress(m_atlasMapGPU);
             info.atlas_cnt = dm::int3(m_atlasGridDim);
             info.atlas_res = dm::int3(getAtlasResDim());
             info.atlas_apron = int(m_atlasCfg.apron);
             info.brick_res = int(getBrickDimWithApron().x);   // brick side INCLUDING the apron
+            const dm::uint3 atlasRes = getAtlasResDim();
+            info.atlas_rcp = dm::float3(1.f / float(atlasRes.x), 1.f / float(atlasRes.y), 1.f / float(atlasRes.z));
+            // The handles of the channel textures: each samples its atlas with its channel's sampler.
             for (size_t c = 0; c < m_channelTextures.size() && c < MAX_CHANNEL; ++c) {
-                gp::ITexture *tex = m_channelTextures[c].Get();
+                nvrhi::ITexture *tex = m_channelTextures[c].Get();
                 if (!tex) continue;
-                info.volIn[c] = tex->getNativeHandle();
-                info.volOut[c] = tex->getUnorderedAccessHandle(0);
+                info.volIn[c] = m_device->getTextureHandle(tex, m_channelSamplers[c], nvrhi::AllSubresources,
+                                                           nvrhi::Format::UNKNOWN);
+                info.volOut[c] = m_device->getSurfaceHandle(tex, 0);
             }
         }
     }
@@ -595,7 +579,7 @@ class GVDBVolume final : public nvrhi::ObjectImpl<IGVDBVolume> {
         if (!m_vdbInfoDirty) return;
         VDBInfo info;
         fillVDBInfo(info, true);
-        GVDB_V_GP(m_queue->writeBuffer(m_vdbInfoGPU, &info, sizeof(info), 0));
+        m_context->getCommandList()->writeBuffer(m_vdbInfoGPU, &info, sizeof(info), 0);
         m_vdbInfoDirty = false;
     }
 
@@ -603,32 +587,23 @@ class GVDBVolume final : public nvrhi::ObjectImpl<IGVDBVolume> {
         if (!ensureVDBInfoBuffer()) return;
         VDBInfo info;
         fillVDBInfo(info, false);
-        GVDB_V_GP(m_queue->writeBuffer(m_vdbInfoGPU, &info, sizeof(info), 0));
+        m_context->getCommandList()->writeBuffer(m_vdbInfoGPU, &info, sizeof(info), 0);
         m_vdbInfoDirty = true;   // the full block (with atlas) still has to go up
     }
 
-    gp::IBuffer *getVDBInfoGPU() override {
+    nvrhi::IBuffer *getVDBInfoGPU() override {
         if (!m_vdbInfoGPU) prepareVDB();
         return m_vdbInfoGPU.Get();
     }
 
-    gp::IKernel *getKernel(const char *name) override {
+    IComputeKernel *getKernel(const char *name) override {
         if (!name || !*name) return nullptr;
-        auto it = m_kernels.find(name);
-        if (it != m_kernels.end()) return it->second.Get();
-
-        loadModules();
-        for (int m = 0; m < 2; ++m) {
-            if (!m_modules[m] || !ptxHasEntry(m_modulePTX[m], name)) continue;
-            nvrhi::AutoPtr<gp::IKernel> kernel;
-            if (NVRHI_SUCCEEDED(m_modules[m]->getKernel(name, &kernel)) && kernel) {
-                gp::IKernel *raw = kernel.Get();
-                m_kernels.emplace(name, std::move(kernel));
-                return raw;
-            }
+        IComputeKernel *kernel = m_context->findKernel(s_shaderContainers, uint32_t(std::size(s_shaderContainers)), name);
+        if (kernel && !m_layoutChecked) {
+            m_layoutChecked = true;
+            checkVDBInfoLayout(kernel);
         }
-        log::error("GVDB: kernel '%s' was not found in %s or %s", name, GVDB_PTX_OPERATORS, GVDB_PTX_PARTICLES);
-        return nullptr;
+        return kernel;
     }
 
     // ---- statistics ----------------------------------------------------
@@ -649,7 +624,7 @@ class GVDBVolume final : public nvrhi::ObjectImpl<IGVDBVolume> {
 
         u.topologyMB = measurePoolsMB();
         u.atlasMB = float(atlasBytesTotal() / MB);
-        u.gpuFreeMB = 0.f;    // gp has no memory query
+        u.gpuFreeMB = 0.f;    // the CUDA backend has no memory query
         u.gpuTotalMB = 0.f;
         return u;
     }
@@ -929,16 +904,12 @@ class GVDBVolume final : public nvrhi::ObjectImpl<IGVDBVolume> {
     void uploadAtlasMap() {
         const uint64_t bytes = uint64_t(m_atlasMap.size()) * sizeof(AtlasNode);
         if (bytes == 0) {
+            m_context->releaseAfterUse(m_atlasMapGPU.Get());
             m_atlasMapGPU = nullptr;
             return;
         }
-        if (!m_atlasMapGPU || m_atlasMapGPU->getDesc()->byteSize < bytes) {
-            gp::BufferDesc desc;
-            desc.byteSize = bytes;
-            m_atlasMapGPU = nullptr;
-            GVDB_V_GP(m_device->createBuffer(desc, &m_atlasMapGPU));
-        }
-        GVDB_V_GP(m_queue->writeBuffer(m_atlasMapGPU, m_atlasMap.data(), bytes, 0));
+        m_atlasMapGPU = GVDBPrimitives::ensureBuffer(m_context, m_atlasMapGPU, bytes, "GVDB atlas map");
+        if (m_atlasMapGPU) m_context->getCommandList()->writeBuffer(m_atlasMapGPU, m_atlasMap.data(), bytes, 0);
     }
 
     void ensureChannelTextures() {
@@ -950,55 +921,60 @@ class GVDBVolume final : public nvrhi::ObjectImpl<IGVDBVolume> {
     void ensureChannelTexture(int c) {
         if (m_levels.empty()) return;   // no brick size yet
         const dm::uint3 res = getAtlasResDim();
+        const GVDBChannelDesc &channel = m_channels[c];
+        if (channel.format == ATLAS_FORMAT_RGB32_FLOAT) {
+            log::error("GVDB: channel %d: RGB32_FLOAT atlases are not supported (CUDA arrays have no 3-channel formats)", c);
+            return;
+        }
 
-        gp::TextureDesc desc;
-        desc.dimension = gp::TextureDimension::Texture3D;
+        if (!m_channelSamplers[c]) {
+            if (NVRHI_FAILED(m_device->createSampler(channel.samplerDesc, &m_channelSamplers[c]))) {
+                log::error("GVDB: cannot create the sampler of channel %d", c);
+                return;
+            }
+        }
+
+        nvrhi::TextureDesc desc;
+        desc.dimension = nvrhi::TextureDimension::Texture3D;
         desc.width = res.x;
         desc.height = res.y;
-        desc.depthOrArraySize = res.z;
+        desc.depth = res.z;
         desc.mipLevels = 1;
-        desc.format = atlasFormatToGP(m_channels[c].format);
-        desc.samplerDesc = m_channels[c].samplerDesc;
+        desc.format = atlasFormatToNVRHI(channel.format);
+        desc.isUAV = true;   // the kernels write through surfaces
+        desc.debugName = "GVDB atlas channel " + std::to_string(c);
 
         auto &tex = m_channelTextures[c];
         if (tex) {
-            const gp::TextureDesc *old = tex->getDesc();
-            if (old->format == desc.format && old->width >= desc.width && old->height >= desc.height &&
-                old->depthOrArraySize >= desc.depthOrArraySize)
+            const nvrhi::TextureDesc &old = tex->getDesc();
+            if (old.format == desc.format && old.width >= desc.width && old.height >= desc.height && old.depth >= desc.depth)
                 return;
         }
 
-        nvrhi::AutoPtr<gp::ITexture> newTex;
-        GVDB_V_GP(m_device->createTexture(desc, &newTex));
-        if (!newTex) return;
-
-        if (tex && tex->getDesc()->format == desc.format) {
-            // preserve the existing atlas content
-            const gp::TextureDesc *old = tex->getDesc();
-            gp::GPBox box = {};
-            box.right = std::min(old->width, desc.width);
-            box.bottom = std::min(old->height, desc.height);
-            box.back = std::min(old->depthOrArraySize, desc.depthOrArraySize);
-            gp::TextureCopyLocation src = {}, dst = {};
-            src.resource = tex.Get();
-            src.type = gp::TextureCopyType::SubresourceIndex;
-            src.subresourceIndex = 0;
-            dst.resource = newTex.Get();
-            dst.type = gp::TextureCopyType::SubresourceIndex;
-            dst.subresourceIndex = 0;
-            GVDB_V_GP(m_queue->copyTextureRegion(dst, 0, 0, 0, src, &box));
-            // the old texture is released below: let the copy finish first
-            m_device->commitQueue(m_queue);
-            GVDB_V_GP(m_device->waitForQueue(m_queue));
+        nvrhi::TextureHandle newTex;
+        if (NVRHI_FAILED(m_device->createTexture(desc, &newTex)) || !newTex) {
+            log::error("GVDB: cannot create the atlas of channel %d (%u x %u x %u)", c, desc.width, desc.height, desc.depth);
+            return;
         }
+
+        if (tex && tex->getDesc().format == desc.format) {
+            // preserve the existing atlas content
+            const nvrhi::TextureDesc &old = tex->getDesc();
+            nvrhi::TextureSlice slice;
+            slice.width = std::min(old.width, desc.width);
+            slice.height = std::min(old.height, desc.height);
+            slice.depth = std::min(old.depth, desc.depth);
+            m_context->getCommandList()->copyTexture1(newTex, slice, tex, slice);
+        }
+        m_context->releaseAfterUse(tex.Get());   // kernels may still use its handles
         tex = newTex;
         invalidateVDBInfo();
     }
 
     uint64_t atlasBytes(int c) const {
         if (c < 0 || c >= int(m_channelTextures.size()) || !m_channelTextures[c]) return 0;
-        const gp::TextureDesc *d = m_channelTextures[c]->getDesc();
-        return uint64_t(d->width) * d->height * d->depthOrArraySize * atlasFormatBytes(m_channels[c].format);
+        const nvrhi::TextureDesc &d = m_channelTextures[c]->getDesc();
+        return uint64_t(d.width) * d.height * d.depth * atlasFormatBytes(m_channels[c].format);
     }
 
     uint64_t atlasBytesTotal() const {
@@ -1021,70 +997,63 @@ class GVDBVolume final : public nvrhi::ObjectImpl<IGVDBVolume> {
         if (bytes == 0) return;   // nothing allocated: keep whatever mirror exists
         if (!gpu.buffer || gpu.capacity < bytes) {
             // size the mirror like the host reservation so that it grows in steps
-            gp::BufferDesc desc;
-            desc.byteSize = std::max(bytes, m_pool.poolGetMemoryReservedWidth(grp, lev));
-            gpu.buffer = nullptr;
-            GVDB_V_GP(m_device->createBuffer(desc, &gpu.buffer));
-            gpu.capacity = gpu.buffer ? desc.byteSize : 0;
+            const uint64_t capacity = std::max(bytes, m_pool.poolGetMemoryReservedWidth(grp, lev));
+            dropPool(gpu);
+            gpu.buffer = GVDBPrimitives::ensureBuffer(m_context, gpu.buffer, capacity, grp == 0 ? "GVDB nodes" : "GVDB child lists");
+            gpu.capacity = gpu.buffer ? capacity : 0;
         }
-        if (gpu.buffer) GVDB_V_GP(m_queue->writeBuffer(gpu.buffer, m_pool.poolData(grp, lev), bytes, 0));
+        if (gpu.buffer) m_context->getCommandList()->writeBuffer(gpu.buffer, m_pool.poolData(grp, lev), bytes, 0);
+    }
+
+    // Drops a pool mirror that recorded kernels may still read.
+    void dropPool(PoolGPU &gpu) {
+        if (m_context) m_context->releaseAfterUse(gpu.buffer.Get());
+        gpu = {};
     }
 
     bool ensureVDBInfoBuffer() {
         if (m_vdbInfoGPU) return true;
-        gp::BufferDesc desc;
-        desc.byteSize = sizeof(VDBInfo);
-        GVDB_V_GP(m_device->createBuffer(desc, &m_vdbInfoGPU));
+        m_vdbInfoGPU = GVDBPrimitives::ensureBuffer(m_context, m_vdbInfoGPU, sizeof(VDBInfo), "GVDB VDBInfo");
         m_vdbInfoDirty = true;
         return m_vdbInfoGPU != nullptr;
     }
 
-    // ---- kernels -----------------------------------------------------------
-
-    void loadModules() {
-        if (m_modulesLoaded) return;
-        m_modulesLoaded = true;
-        const char *paths[2] = {GVDB_PTX_OPERATORS, GVDB_PTX_PARTICLES};
-        for (int m = 0; m < 2; ++m) {
-            if (!m_vfs) {
-                log::error("GVDB: no file system to load %s from", paths[m]);
-                continue;
-            }
-            nvrhi::AutoPtr<nvrhi::IDataBlob> blob;
-            if (NVRHI_FAILED(m_vfs->readFile(paths[m], &blob)) || !blob) {
-                log::error("GVDB: cannot read PTX module %s", paths[m]);
-                continue;
-            }
-            // PTX is text; the driver wants it null-terminated
-            size_t len = blob->GetSize();
-            blob->Resize(len + 1);
-            ((char *)blob->GetDataPtr())[len] = 0;
-            m_modulePTX[m].assign((const char *)blob->GetDataPtr(), len);
-            if (NVRHI_FAILED(m_device->createModule({}, blob->GetDataPtr(), len + 1, &m_modules[m]))) {
-                log::error("GVDB: cannot load PTX module %s", paths[m]);
-                m_modules[m] = nullptr;
+    // The kernels see VDBInfo as shaders/GVDB.slangh declares it: compares its fields with gvdb::VDBInfo
+    // through the reflection of a kernel whose first argument is `VDBInfo* gvdb`.
+    void checkVDBInfoLayout(IComputeKernel *kernel) {
+        const nvrhi::ShaderLibraryReflection *reflection = kernel->getLibraryReflection();
+        const nvrhi::ShaderParameterReflection *argument = kernel->getArgument(0);
+        if (!reflection || !argument || argument->name != "gvdb" || argument->typeIndex >= reflection->types.size()) {
+            m_layoutChecked = false;   // check with the next kernel
+            return;
+        }
+        const uint32_t vdbInfo = reflection->types[argument->typeIndex].elementType;   // the pointee
+        struct Field {
+            const char *name;
+            size_t offset;
+        };
+        static const Field s_fields[] = {
+            {"nodelist", offsetof(VDBInfo, nodelist)},   {"childlist", offsetof(VDBInfo, childlist)},
+            {"atlas_map", offsetof(VDBInfo, atlas_map)}, {"atlas_res", offsetof(VDBInfo, atlas_res)},
+            {"top_lev", offsetof(VDBInfo, top_lev)},     {"bmax", offsetof(VDBInfo, bmax)},
+            {"atlas_rcp", offsetof(VDBInfo, atlas_rcp)}, {"volIn", offsetof(VDBInfo, volIn)},
+            {"volOut", offsetof(VDBInfo, volOut)},
+        };
+        for (const Field &f : s_fields) {
+            const nvrhi::ShaderFieldReflection *field = nvrhi::findShaderField(reflection, vdbInfo, f.name);
+            if (!field || field->offset != f.offset) {
+                log::fatal("GVDB: VDBInfo.%s is at offset %d in the kernels, %zu in GVDB.h: the layouts differ",
+                           f.name, field ? int(field->offset) : -1, f.offset);
+                return;
             }
         }
-    }
-
-    // Does the PTX text declare `.entry name`? Avoids asking the driver for a
-    // kernel the module does not have (which logs an error in the backend).
-    static bool ptxHasEntry(const std::string &ptx, const char *name) {
-        const std::string key = std::string(".entry ") + name;
-        size_t pos = 0;
-        while ((pos = ptx.find(key, pos)) != std::string::npos) {
-            size_t end = pos + key.size();
-            if (end >= ptx.size() || !isIdentChar(ptx[end])) return true;
-            pos = end;
-        }
-        return false;
     }
 
     // ---- data --------------------------------------------------------------
 
-    nvrhi::AutoPtr<gp::IDeviceQueue> m_queue;
-    nvrhi::AutoPtr<gp::IDevice> m_device;
-    nvrhi::AutoPtr<vfs::IFileSystem> m_vfs;
+    nvrhi::AutoPtr<IComputeContext> m_context;
+    nvrhi::AutoPtr<nvrhi::cuda::IDevice> m_device;
+    GVDBPrimitives m_primitives;
 
     GVDBLevelConfig m_levelCfg;
     GVDBAtlasConfig m_atlasCfg;
@@ -1093,11 +1062,12 @@ class GVDBVolume final : public nvrhi::ObjectImpl<IGVDBVolume> {
     NodeId m_root = NodeId::null();
 
     std::vector<GVDBChannelDesc> m_channels;
-    std::vector<nvrhi::AutoPtr<gp::ITexture>> m_channelTextures;
+    std::vector<nvrhi::TextureHandle> m_channelTextures;
+    std::vector<nvrhi::SamplerHandle> m_channelSamplers;
 
     dm::uint3 m_atlasGridDim = {16u, 16u, 1u};   // configured x / y, z grows
     std::vector<AtlasNode> m_atlasMap;
-    nvrhi::AutoPtr<gp::IBuffer> m_atlasMapGPU;
+    nvrhi::BufferHandle m_atlasMapGPU;
 
     PoolGPU m_nodePoolsGPU[MAXLEV];
     PoolGPU m_childPoolsGPU[MAXLEV];
@@ -1106,20 +1076,17 @@ class GVDBVolume final : public nvrhi::ObjectImpl<IGVDBVolume> {
     dm::int3 m_voxResMax = dm::int3::zero();   // largest extents seen (reference mVoxResMax)
     uint64_t m_numActiveBricks = 0;
 
-    nvrhi::AutoPtr<gp::IBuffer> m_vdbInfoGPU;
+    nvrhi::BufferHandle m_vdbInfoGPU;
     bool m_vdbInfoDirty = true;
-
-    bool m_modulesLoaded = false;
-    nvrhi::AutoPtr<gp::IModule> m_modules[2];
-    std::string m_modulePTX[2];
-    std::unordered_map<std::string, nvrhi::AutoPtr<gp::IKernel>> m_kernels;
+    nvrhi::BufferHandle m_fetchBuffer;   // fetchPools() readback
+    bool m_layoutChecked = false;
 };
 
 }  // namespace
 
-nvrhi::FRESULT createGVDBVolume(gp::IDeviceQueue *queue, vfs::IFileSystem *vfs, IGVDBVolume **volume) {
-    if (!queue || !volume) return nvrhi::FE_INVALID_ARGS;
-    *volume = MAKE_RC_OBJ(GVDBVolume, queue, vfs);
+nvrhi::FRESULT createGVDBVolume(IComputeContext *context, IGVDBVolume **volume) {
+    if (!context || !volume) return nvrhi::FE_INVALID_ARGS;
+    *volume = MAKE_RC_OBJ(GVDBVolume, context);
     return *volume ? nvrhi::FS_OK : nvrhi::FE_OUT_OF_MEMORY;
 }
 

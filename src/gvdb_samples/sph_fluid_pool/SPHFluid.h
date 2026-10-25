@@ -1,7 +1,8 @@
 #ifndef SPH_FLUID_H
 #define SPH_FLUID_H
-// SPH fluid: port of fluids5.0 (Rama Hoetzlein, http://fluids3.com) to the gp
-// compute abstraction, following the conventions of the GVDB port.
+// SPH fluid: port of fluids5.0 (Rama Hoetzlein, http://fluids3.com) to the
+// nvrhi CUDA device and Slang kernels, following the conventions of the GVDB
+// port (a gvdb::IComputeContext records the work).
 //
 // The reference kept everything in one class (Particles). Here the data
 // structure and the algorithm are separate COM objects:
@@ -23,15 +24,14 @@
 // Scene integration is in SPHFluidScene.h: SPHFluidInstance is the scene-graph
 // leaf that places a particle set in the world, one scene may hold several.
 #include <nvrhi/nvrhi.h>
-#include <donut/core/vfs/VFS.h>
-#include <gvdb/GPDevice.h>
-#include <gvdb/GPDeviceNVRHI.h>
+#include <nvrhi/interop.h>
+#include <gvdb/GVDBCompute.h>
 #include "SPHFluidParams.h"
 
 namespace sph {
 
-// PTX module of the fluid kernels, relative to a file system that mounts the PTX directory as "ptx".
-#define SPH_PTX_KERNELS "ptx/SPHFluidKernels.ptx"
+// Shader container of the fluid kernels (kernels/SPHFluidKernels.slang), served by the compute context's file system.
+#define SPH_KERNELS "shaders/gvdb/kernels/SPHFluidKernels.nvsc"
 
 enum class ParticleBuffer : uint8_t {
     Position = SPH_FPOS,
@@ -75,14 +75,13 @@ void setupExampleParams(SPHFluidParams &params, SPHExample example);
 
 struct SPHParticlesDesc {
     uint32_t maxParticles = 0;
-    // When set, the Position, Color and Velocity buffers are created as nvrhi
-    // vertex buffers shared with the compute device (the reference's
-    // CUDA / OpenGL interop buffers), so a rasterizer can draw them without a
-    // copy. Where the graphics API cannot share a vertex buffer with the
-    // compute device they are separate nvrhi vertex buffers kept up to date by
-    // ISPHParticles::updateRenderBuffers(). Without an interop device every
-    // buffer is a plain gp buffer and there are no render buffers.
-    donut::IGPAndNVRHIInteropDevice *interop = nullptr;
+    // When set, the Position, Color and Velocity buffers are vertex buffers of
+    // the graphics device imported into the CUDA device (the reference's
+    // CUDA / OpenGL interop buffers), so a rasterizer draws them without a
+    // copy; configure() fails when the import is not possible (D3D12 and
+    // Vulkan only). Without an interop device every buffer is a plain buffer of
+    // the CUDA device and there are no render buffers.
+    nvrhi::IInteropDevice *interop = nullptr;
 };
 
 // ---------------------------------------------------------------------------
@@ -134,26 +133,16 @@ struct ISPHParticles : public nvrhi::IObject {
     // (Retrieve; debugging and tests). `dst` holds count * particleBufferStride() bytes.
     virtual nvrhi::FRESULT retrieve(ParticleBuffer buffer, uint32_t first, uint32_t count, void *dst) = 0;
 
-    // ---- device buffers ----
-    virtual donut::gp::IBuffer *getBuffer(ParticleBuffer buffer) = 0;
+    // ---- device buffers (CUDA device) ----
+    virtual nvrhi::IBuffer *getBuffer(ParticleBuffer buffer) = 0;
     // The scratch copy the counting sort reads from (m_PointsTemp).
-    virtual donut::gp::IBuffer *getTempBuffer(ParticleBuffer buffer) = 0;
-    virtual donut::gp::IBuffer *getGridBuffer(GridBuffer buffer) = 0;
-    // The nvrhi side of a shared buffer; nullptr when the particle set was
-    // configured without interop or the slot is not shared.
+    virtual nvrhi::IBuffer *getTempBuffer(ParticleBuffer buffer) = 0;
+    virtual nvrhi::IBuffer *getGridBuffer(GridBuffer buffer) = 0;
+    // The graphics device's vertex buffer behind a shared slot (Position /
+    // Color / Velocity); nullptr when the particle set was configured without
+    // interop or the slot is not shared. The rasterizer and the kernels share
+    // its memory: the caller orders their work (GVDBApp's frame does).
     virtual nvrhi::IBuffer *getRenderBuffer(ParticleBuffer buffer) = 0;
-    // True when the render buffers are the device buffers themselves (imported
-    // into the compute device, zero copy). False when the import is not
-    // available on the graphics API: the render buffers are then separate
-    // vertex buffers that updateRenderBuffers() refreshes, and no keyed
-    // mutexes are involved on D3D11.
-    virtual bool areRenderBuffersShared() const = 0;
-    // Brings the render buffers up to date with the device buffers before they
-    // are drawn. Nothing to do when they are shared. Otherwise the first
-    // getNumParticles() elements of Position / Color / Velocity are read back
-    // (this waits for the compute queue) and written to the vertex buffers on
-    // `commandList`, which must be open.
-    virtual nvrhi::FRESULT updateRenderBuffers(nvrhi::ICommandList *commandList) = 0;
     // Incremented whenever device buffers are reallocated; operation objects
     // compare it to know when to rebuild their pointer tables.
     virtual uint64_t getLayoutRevision() const = 0;
@@ -161,8 +150,8 @@ struct ISPHParticles : public nvrhi::IObject {
     // Domain bounds in world units (bound_min / bound_max).
     virtual dm::box3 getBounds() const = 0;
 
-    virtual donut::gp::IDevice *getDevice() = 0;
-    virtual donut::gp::IDeviceQueue *getQueue() = 0;
+    // The context the particle set records its uploads into; its solvers use it too.
+    virtual gvdb::IComputeContext *getContext() = 0;
 };
 
 // ---------------------------------------------------------------------------
@@ -174,8 +163,8 @@ struct ISPHSolver : public nvrhi::IObject {
 
     virtual ISPHParticles *getParticles() = 0;
 
-    // The stages of one step, in the order step() runs them. Each enqueues its
-    // kernels on the particle set's queue and returns without waiting.
+    // The stages of one step, in the order step() runs them. Each records its
+    // kernels into the particle set's context and returns without waiting.
     virtual void insertParticles() = 0;      // particles -> grid cells, per-cell counts
     virtual void prefixScanParticles() = 0;  // per-cell counts -> per-cell offsets
     virtual void countingSort() = 0;         // reorder every particle buffer by grid cell
@@ -184,7 +173,7 @@ struct ISPHSolver : public nvrhi::IObject {
     virtual void advance() = 0;              // boundaries, gravity, leapfrog integration
 
     // One simulation step: the six stages, then time += dt (Particles::Run).
-    // Does not wait for the queue; the caller synchronises (or lets the
+    // Does not wait for the GPU; the caller synchronises (or lets the
     // presentation path do it) before reading results on the host.
     virtual void step() = 0;
 
@@ -194,10 +183,10 @@ struct ISPHSolver : public nvrhi::IObject {
     virtual void reset() = 0;
 };
 
-// Creates an empty particle set on a compute queue.
-nvrhi::FRESULT createSPHParticles(donut::gp::IDeviceQueue *queue, ISPHParticles **outParticles);
-// Creates the solver of a particle set; loads SPH_PTX_KERNELS from `vfs`.
-nvrhi::FRESULT createSPHSolver(ISPHParticles *particles, donut::vfs::IFileSystem *vfs, ISPHSolver **outSolver);
+// Creates an empty particle set on a compute context.
+nvrhi::FRESULT createSPHParticles(gvdb::IComputeContext *context, ISPHParticles **outParticles);
+// Creates the solver of a particle set; its kernels are SPH_KERNELS of the particle set's context.
+nvrhi::FRESULT createSPHSolver(ISPHParticles *particles, ISPHSolver **outSolver);
 
 }  // namespace sph
 

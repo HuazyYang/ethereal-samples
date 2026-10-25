@@ -10,8 +10,8 @@ using namespace donut;
 
 // ---- VolumeTransferFunction -------------------------------------------------
 
-VolumeTransferFunction::VolumeTransferFunction(gp::IDevice *device)
-    : m_data(size_t(TRANSFER_FUNC_SIZE), dm::float4::zero()), m_device(device) {}
+VolumeTransferFunction::VolumeTransferFunction(IComputeContext *context)
+    : m_data(size_t(TRANSFER_FUNC_SIZE), dm::float4::zero()), m_context(context) {}
 
 void VolumeTransferFunction::setLinear(float t0, float t1, dm::float4 a, dm::float4 b) {
     const int n = int(m_data.size());
@@ -27,19 +27,19 @@ void VolumeTransferFunction::setLinear(float t0, float t1, dm::float4 a, dm::flo
     }
 }
 
-void VolumeTransferFunction::commit(gp::IDeviceQueue *queue) {
-    if (!queue || !m_device) return;
+void VolumeTransferFunction::commit() {
+    if (!m_context) return;
     const uint64_t bytes = uint64_t(m_data.size()) * sizeof(dm::float4);
     if (!m_gpu) {
-        gp::BufferDesc desc;
+        nvrhi::BufferDesc desc;
         desc.byteSize = bytes;
-        if (NVRHI_FAILED(m_device->createBuffer(desc, &m_gpu))) {
+        desc.debugName = "GVDB transfer function";
+        if (NVRHI_FAILED(m_context->getDevice()->createBuffer(desc, &m_gpu))) {
             log::error("GVDB: cannot create the transfer function buffer");
             return;
         }
     }
-    if (NVRHI_FAILED(queue->writeBuffer(m_gpu, m_data.data(), bytes, 0)))
-        log::error("GVDB: cannot upload the transfer function");
+    m_context->getCommandList()->writeBuffer(m_gpu, m_data.data(), bytes, 0);
 }
 
 // ---- GVDBVolumeInstance -----------------------------------------------------

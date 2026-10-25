@@ -3,11 +3,13 @@
 // Application base of the interactive GVDB samples (the role of NVPWindow +
 // nv_gui + the GVDB Scene in the reference), on Donut:
 //
-//   * devices: the nvrhi device of the DeviceManager, a gp CUDA device and
-//     queue, the nvrhi<->gp interop device, and (when available) the gp OptiX
-//     device
-//   * file system: "assets" -> GVDB_SAMPLES_ASSETS_DIR, "ptx" -> <exe>/ptx,
-//     "shaders" -> <exe>/shaders/<target>/<dxil|dxbc|spirv>
+//   * devices: the nvrhi device of the DeviceManager (D3D12 or Vulkan) and an
+//     nvrhi CUDA device paired with it (created through the DeviceManager's
+//     graphics factory; OptiX when available), its IInteropDevice, and the
+//     compute context GVDB records into
+//   * file system: "assets" -> GVDB_SAMPLES_ASSETS_DIR, "shaders/gvdb" ->
+//     <exe>/shaders/gvdb (the CUDA shader containers), "shaders" ->
+//     <exe>/shaders/<target>/<dxil|spirv>
 //   * scene: a GVDBSceneGraph with a PerspectiveCamera leaf and a point Light
 //     leaf, both driven by orbit controllers with the reference mouse mapping
 //     (left drag = orbit angles, middle = pan, right = distance; shift = light)
@@ -22,10 +24,9 @@
 #include <donut/engine/ShaderFactory.h>
 #include <donut/engine/SceneGraph.h>
 #include <nvrhi/core/autoptr.h>
-#include <gvdb/GPDevice.h>
-#include <gvdb/GPDeviceCUDA.h>
-#include <gvdb/GPDeviceNVRHI.h>
-#include <gvdb/GPDeviceOptiX.h>
+#include <nvrhi/cuda.h>
+#include <nvrhi/interop.h>
+#include <gvdb/GVDBCompute.h>
 #include <gvdb/GVDBScene.h>
 #include <sample-utils/SampleTypes.h>
 #include <sample-utils/VolRenderer.h>
@@ -66,14 +67,14 @@ class GVDBApp : public donut::app::IRenderPass {
     const std::string &getSampleName() const { return m_sampleName; }
 
     // Creates devices, file system, scene graph, camera and light, presenter;
-    // then calls OnInit(). Returns false on failure.
+    // then calls OnInit(). Returns false on failure (D3D11: no CUDA interop).
     bool Init(bool wantOptix = false);
 
     // ---- hooks ----
     virtual bool OnInit() = 0;
     virtual void OnUpdate(float elapsedSeconds) {}
-    // Produce the frame on the gp queue into getPresenter()->getRenderBuffer(0)
-    // (and any further targets); called between beginGPFrame / endGPFrame.
+    // Produce the frame through the compute context into getPresenter()->getRenderBuffer(0)
+    // (and any further targets); called between beginComputeFrame / endComputeFrame.
     virtual void OnRender(uint32_t width, uint32_t height) = 0;
     // Graphics-side additions inside the presented frame (extra blits, debug lines via getDebugDraw()).
     virtual void OnDrawOverlay(nvrhi::ICommandList *commandList, nvrhi::IFramebuffer *framebuffer) {}
@@ -87,10 +88,10 @@ class GVDBApp : public donut::app::IRenderPass {
     // ---- accessors ----
     donut::vfs::RootFileSystem *getVFS() const { return m_vfs.Get(); }
     donut::engine::ShaderFactory *getShaderFactory() const { return m_shaderFactory.Get(); }
-    donut::gp::IDevice *getGPDevice() const { return m_gpDevice.Get(); }
-    donut::gp::IDeviceQueue *getGPQueue() const { return m_gpQueue.Get(); }
-    donut::IGPAndNVRHIInteropDevice *getInteropDevice() const { return m_interopDevice.Get(); }
-    donut::gp::IRTDevice *getRTDevice() const { return m_rtDevice.Get(); }   // nullptr without OptiX
+    nvrhi::cuda::IDevice *getCudaDevice() const { return m_cudaDevice.Get(); }
+    gvdb::IComputeContext *getCompute() const { return m_compute.Get(); }
+    nvrhi::IInteropDevice *getInteropDevice() const { return m_interopDevice.Get(); }
+    bool isOptixAvailable() const { return m_cudaDevice && m_cudaDevice->isOptixAvailable(); }
     gvdb::GVDBSceneGraph *getSceneGraph() const { return m_sceneGraph.Get(); }
     donut::engine::PerspectiveCamera *getCamera() const { return m_camera.Get(); }
     donut::engine::SceneGraphNode *getCameraNode() const { return m_cameraNode.Get(); }
@@ -106,7 +107,7 @@ class GVDBApp : public donut::app::IRenderPass {
     dm::int2 getMousePos() const { return m_mousePos; }
     int getMouseButtonDown() const { return m_mouseDown; }   // -1 = none
     uint32_t getFrameCounter() const { return m_frameCounter; }
-    // Creates a volume with the app's queue / file system.
+    // Creates a volume on the app's compute context.
     nvrhi::AutoPtr<gvdb::IGVDBVolume> createVolume();
     // Attaches a volume instance under a new node (index -> world transform) of the root.
     nvrhi::AutoPtr<gvdb::GVDBVolumeInstance> addVolumeInstance(gvdb::IGVDBVolume *volume, const dm::affine3 &indexToWorld,
@@ -124,6 +125,9 @@ class GVDBApp : public donut::app::IRenderPass {
 
     // ---- IRenderPass ----
     void Render(nvrhi::IFramebuffer *framebuffer) override;
+    // Donut renders only while the window has the focus. A screenshot run keeps rendering without it: a window
+    // started from a script need not get the focus, and would stop after its first frame.
+    bool ShouldRenderUnfocused() override { return isScreenshotRun(); }
     void Animate(float elapsedTimeSeconds) override;
     void BackBufferResized(uint32_t width, uint32_t height, uint32_t sampleCount) override;
     bool KeyboardUpdate(int key, int scancode, int action, int mods) override;
@@ -136,10 +140,9 @@ class GVDBApp : public donut::app::IRenderPass {
  protected:
     nvrhi::AutoPtr<donut::vfs::RootFileSystem> m_vfs;
     nvrhi::AutoPtr<donut::engine::ShaderFactory> m_shaderFactory;
-    nvrhi::AutoPtr<donut::gp::IDevice> m_gpDevice;
-    nvrhi::AutoPtr<donut::gp::IDeviceQueue> m_gpQueue;
-    nvrhi::AutoPtr<donut::IGPAndNVRHIInteropDevice> m_interopDevice;
-    nvrhi::AutoPtr<donut::gp::IRTDevice> m_rtDevice;
+    nvrhi::cuda::DeviceHandle m_cudaDevice;
+    nvrhi::AutoPtr<gvdb::IComputeContext> m_compute;
+    nvrhi::InteropDeviceHandle m_interopDevice;
     nvrhi::AutoPtr<gvdb::GVDBSceneGraph> m_sceneGraph;
     nvrhi::AutoPtr<donut::engine::PerspectiveCamera> m_camera;
     nvrhi::AutoPtr<donut::engine::SceneGraphNode> m_cameraNode;
@@ -166,7 +169,7 @@ struct GVDBAppOptions {
     const char *sampleName = nullptr;   // GVDB_SAMPLE_NAME of the executable (per-sample shader mount)
     uint32_t width = 1024;
     uint32_t height = 768;
-    bool wantOptix = false;    // create the OptiX device (sample still runs without it)
+    bool wantOptix = false;    // enable OptiX on the CUDA device (the sample still runs without it)
     bool vsync = false;
 };
 

@@ -1,0 +1,352 @@
+//-----------------------------------------------------------------------------
+// NVIDIA(R) GVDB VOXELS
+// Copyright 2017 NVIDIA Corporation
+// SPDX-License-Identifier: Apache-2.0
+//
+// Version 1.0: Rama Hoetzlein, 5/1/2017
+//-----------------------------------------------------------------------------
+// The GVDB data structure on the GPU (port of cuda_gvdb_node.cuh / GVDB.cuh):
+// the node and atlas layouts, the VDBInfo block of a volume (same layout as
+// gvdb::VDBInfo in GVDB.h) and the traversal helpers of the kernels.
+//
+// CUDA target only: the node pools are reached through pointers, the atlas
+// channels through descriptor handles (a CUDA texture or surface object per
+// channel, see atlasRead / atlasWrite / atlasSample).
+#pragma once
+
+// Typed as in CUDA (unsigned), so that the comparisons with int and uint64_t ids convert as in the reference.
+#define ID_UNDEFI   0xFFFFu
+#define ID_UNDEFL   0xFFFFFFFFu
+#define ID_UNDEF64  0xFFFFFFFFFFFFFFFFull
+#define CHAN_UNDEF  255
+#define MAX_CHANNEL 32
+#define MAXLEV      10
+
+struct VDBNode
+{
+    uint8_t     mLev;           // Level        Max = 255            1 byte
+    uint8_t     mFlags;
+    uint8_t     mPriority;
+    uint8_t     pad;
+    int3        mPos;           // Pos          Max = +/- 4 mil (linear space/range)  12 bytes
+    int3        mValue;         // Value        Max = +8 mil         4 bytes
+    float3      mVRange;
+    uint64_t    mParent;        // Parent ID                         8 bytes
+    uint64_t    mChildList;     // Child List                        8 bytes
+    uint64_t    mMask;          // Bitmask starts - Must keep here, even if not USE_BITMASKS
+};
+
+struct VDBAtlasNode
+{
+    int3        mPos;
+    int         mLeafID;
+};
+
+struct VDBInfo
+{
+    int         dim[MAXLEV];        // Log base 2 of lateral resolution of each node per level
+    int         res[MAXLEV];        // Lateral resolution of each node per level
+    float3      vdel[MAXLEV];       // How many voxels on a side a child of each level covers
+    int3        noderange[MAXLEV];  // How many voxels on a side a node of each level covers
+    int         nodecnt[MAXLEV];    // Total number of allocated nodes per level
+    int         nodewid[MAXLEV];    // Size of a node at each level in bytes
+    int         childwid[MAXLEV];   // Size of the child list per node at each level in bytes
+    uint64_t    nodelist[MAXLEV];   // Pointer to each level's pool group 0 (nodes)
+    uint64_t    childlist[MAXLEV];  // Pointer to each level's pool group 1 (child lists)
+    VDBAtlasNode* atlas_map;        // Pointer to the atlas map (which maps from atlas to world space)
+    int3        atlas_cnt;          // Number of bricks on each axis of the atlas
+    int3        atlas_res;          // Total resolution in voxels of the atlas
+    int         atlas_apron;        // Apron size
+    int         brick_res;          // Resolution of a single brick
+    int         top_lev;            // Top level (i.e. tree spans from voxels to level 0 to level top_lev)
+    float3      bmin;               // Inclusive minimum of axis-aligned bounding box in voxels
+    float3      bmax;               // Inclusive maximum of axis-aligned bounding box in voxels
+    float3      atlas_rcp;          // 1 / atlas_res: the texture handles sample with normalized coordinates
+    uint64_t    volIn[MAX_CHANNEL]; // Texture handle (read plus interpolation) of the atlas per channel
+    uint64_t    volOut[MAX_CHANNEL]; // Surface handle (read and write) of the atlas per channel
+};
+
+//------- Atlas access (surf3Dread / surf3Dwrite / tex3D of the reference)
+
+// Element T of channel `chan` at atlas voxel p.
+T atlasRead<T : ITexelElement>(VDBInfo* gvdb, uint chan, uint3 p)
+{
+    RWTexture3D<T>.Handle surface = RWTexture3D<T>.Handle(gvdb->volOut[chan]);
+    return surface[p];
+}
+
+void atlasWrite<T : ITexelElement>(VDBInfo* gvdb, uint chan, uint3 p, T value)
+{
+    RWTexture3D<T>.Handle surface = RWTexture3D<T>.Handle(gvdb->volOut[chan]);
+    surface[p] = value;
+}
+
+// The channel filtered at atlas position p (voxel units, voxel centres at +0.5) with the sampler of the channel.
+T atlasSample<T : ITexelElement>(VDBInfo* gvdb, uint chan, float3 p)
+{
+    Sampler3D<T>.Handle texture = Sampler3D<T>.Handle(gvdb->volIn[chan]);
+    return texture.Sample(p * gvdb->atlas_rcp);
+}
+
+//------- Nodes
+
+int getChild(VDBInfo* gvdb, VDBNode* node, int b)
+{
+    uint64_t listid = node->mChildList;
+    if (listid == ID_UNDEFL) return int(ID_UNDEFL);
+    uint8_t clev = uint8_t((listid >> 8) & 0xFF);
+    int cndx = int(listid >> 16);
+    uint64_t* clist = (uint64_t*)(gvdb->childlist[clev] + uint64_t(cndx * gvdb->childwid[clev]));
+    int c = int(clist[b] >> 16);
+    return c;
+}
+
+bool isBitOn(VDBInfo* gvdb, VDBNode* node, int b)
+{
+    // A missing child (-1) sign-extends to ID_UNDEF64, as the int -> uint64 comparison of the reference does.
+    return uint64_t(int64_t(getChild(gvdb, node, b))) != ID_UNDEF64;
+}
+
+VDBAtlasNode* getAtlasNode(VDBInfo* gvdb, float3 brickpos)
+{
+    int3 i = int3(brickpos / float(gvdb->brick_res));     // brick index
+    int id = (i.z * gvdb->atlas_cnt.y + i.y) * gvdb->atlas_cnt.x + i.x;   // brick id
+    return gvdb->atlas_map + id;                          // brick node
+}
+
+VDBAtlasNode* getAtlasNodeFromIndex(VDBInfo* gvdb, int3 i)
+{
+    int id = (i.z * gvdb->atlas_cnt.y + i.y) * gvdb->atlas_cnt.x + i.x;   // brick id
+    return gvdb->atlas_map + id;                          // brick node
+}
+
+bool getAtlasToWorld(VDBInfo* gvdb, uint3 vox, out float3 wpos)
+{
+    wpos = float3(0, 0, 0);
+    int3 bndx = int3(vox / uint(gvdb->brick_res));
+    int brickid = (bndx.z * gvdb->atlas_cnt.y + bndx.y) * gvdb->atlas_cnt.x + bndx.x;    // brick id
+    if (gvdb->atlas_map[brickid].mLeafID == int(ID_UNDEFL)) return false;
+    int3 poffset = int3(vox % uint(gvdb->brick_res)) - int3(gvdb->atlas_apron);
+    wpos = float3(gvdb->atlas_map[brickid].mPos) + float3(poffset) + float3(0.5, 0.5, 0.5);
+    return true;
+}
+
+bool getAtlasToWorldID(VDBInfo* gvdb, uint3 vox, out float3 wpos, out int leafid)
+{
+    wpos = float3(0, 0, 0);
+    int3 bndx = int3(vox / uint(gvdb->brick_res));
+    int brickid = (bndx.z * gvdb->atlas_cnt.y + bndx.y) * gvdb->atlas_cnt.x + bndx.x;    // brick id
+    leafid = gvdb->atlas_map[brickid].mLeafID;
+    if (leafid == int(ID_UNDEFL)) return false;
+    int3 poffset = int3(vox % uint(gvdb->brick_res)) - int3(gvdb->atlas_apron);
+    wpos = float3(gvdb->atlas_map[brickid].mPos) + float3(poffset) + float3(0.5, 0.5, 0.5);
+    return true;
+}
+
+int3 getAtlasPos(VDBInfo* gvdb, uint64_t id)
+{
+    int3 ap;
+    int a2 = gvdb->atlas_cnt.x * gvdb->atlas_cnt.y;
+    // get block val (xyz)
+    ap.z = int(id / uint64_t(a2));              id -= uint64_t(ap.z) * uint64_t(a2);
+    ap.y = int(id / uint64_t(gvdb->atlas_cnt.x)); id -= uint64_t(ap.y) * uint64_t(gvdb->atlas_cnt.x);
+    ap.x = int(id);
+    // get corner voxel
+    ap *= gvdb->brick_res;
+    return ap;
+}
+
+int getBitPos(VDBInfo* gvdb, int lev, int3 pos)
+{
+    int res = gvdb->res[lev];
+    return (pos.z * res + pos.y) * res + pos.x;
+}
+
+// node at a specific level and pool index
+VDBNode* getNode(VDBInfo* gvdb, int lev, int n)
+{
+    return (VDBNode*)(gvdb->nodelist[lev] + uint64_t(int64_t(n) * gvdb->nodewid[lev]));
+}
+
+VDBNode* getNode(VDBInfo* gvdb, int lev, int n, out float3 vmin)
+{
+    VDBNode* node = getNode(gvdb, lev, n);
+    vmin = float3(node->mPos);
+    return node;
+}
+
+// iteratively find the leaf node at the given position
+VDBNode* getNode(VDBInfo* gvdb, int lev, int start_id, float3 pos, out uint64_t node_id)
+{
+    float3 vmin, vmax;
+    int3 p;
+    int b;
+    node_id = ID_UNDEFL;
+
+    VDBNode* node = getNode(gvdb, lev, start_id, vmin);      // get starting node
+    while (lev > 0 && node != nullptr) {
+        // is point inside node? if no, exit
+        vmax = vmin + float3(gvdb->noderange[lev]);
+        if (pos.x < vmin.x || pos.y < vmin.y || pos.z < vmin.z || pos.x >= vmax.x || pos.y >= vmax.y || pos.z >= vmax.z) {
+            node_id = ID_UNDEFL;
+            return nullptr;
+        }
+        p = int3((pos - vmin) / gvdb->vdel[lev]);              // check child bit
+        b = (((p.z << gvdb->dim[lev]) + p.y) << gvdb->dim[lev]) + p.x;
+        lev--;
+        if (isBitOn(gvdb, node, b)) {                          // child exists, recurse down tree
+            node_id = uint64_t(int64_t(getChild(gvdb, node, b)));   // get next node_id
+            node = getNode(gvdb, lev, int(node_id), vmin);
+        } else {
+            node_id = ID_UNDEFL;
+            return nullptr;                                    // no child, exit
+        }
+    }
+    return node;
+}
+
+VDBNode* getNodeIdAtPoint(VDBInfo* gvdb, float3 pos, out uint64_t node_id)
+{
+    // iteratively get node at world point
+    return getNode(gvdb, gvdb->top_lev, 0, pos, node_id);
+}
+
+// Gets the node pointer, atlas-space AABB minimum (not including apron) and index-space AABB minimum of the brick
+// (leaf node) containing the index-space position `pos`.
+VDBNode* getNodeAtPoint(VDBInfo* gvdb, float3 pos, out float3 offs, out float3 vmin, out uint64_t node_id)
+{
+    offs = float3(0, 0, 0);
+    vmin = float3(0, 0, 0);
+    // iteratively get node at world point
+    VDBNode* node = getNode(gvdb, gvdb->top_lev, 0, pos, node_id);
+    if (node == nullptr) return nullptr;
+
+    // compute node bounding box
+    vmin = float3(node->mPos);
+    offs = float3(node->mValue);
+    return node;
+}
+
+int getPosLeafParent(VDBInfo* gvdb, int3 pos)
+{
+    VDBNode* nd = (VDBNode*)(gvdb->nodelist[gvdb->top_lev]);   // get root
+
+    int l = nd->mLev;
+    if (l == 0) return 0;   // root id
+
+    int3 range, posInNode;
+    int bitMaskPos;
+    int childId;
+    while (true)
+    {
+        int res = gvdb->res[l];
+        range = gvdb->noderange[l];
+        posInNode = pos - nd->mPos;
+        posInNode *= res;
+        posInNode.x /= range.x;
+        posInNode.y /= range.y;
+        posInNode.z /= range.z;
+
+        if (posInNode.x > res || posInNode.y > res || posInNode.z > res) return int(ID_UNDEFL);
+
+        bitMaskPos = (posInNode.z * res + posInNode.y) * res + posInNode.x;
+
+        childId = getChild(gvdb, nd, bitMaskPos);
+
+        if (childId == int(ID_UNDEFL)) return int(ID_UNDEFL);
+
+        l--;
+        if (l == 0) return childId;
+
+        nd = getNode(gvdb, l, childId);
+    }
+    return int(ID_UNDEFL);
+}
+
+VDBNode* getleafNodeAtPoint(VDBInfo* gvdb, float3 pos, out float3 vmin, out float3 vdel)
+{
+    vmin = float3(0, 0, 0);
+    vdel = float3(0, 0, 0);
+    // iteratively get node at world point
+    int pnodeId = getPosLeafParent(gvdb, int3(pos));
+    if (pnodeId == int(ID_UNDEFL)) return nullptr;
+    VDBNode* node = getNode(gvdb, 0, pnodeId);
+
+    // compute node bounding box
+    vmin = float3(node->mPos);
+    vdel = gvdb->vdel[node->mLev];
+    return node;
+}
+
+uint64_t getPosParent(VDBInfo* gvdb, int3 pos, int stopLev)
+{
+    VDBNode* nd = (VDBNode*)(gvdb->nodelist[gvdb->top_lev]);   // get root
+
+    int l = nd->mLev;
+    if (l == 0) return 0;   // root id
+
+    int3 range, posInNode;
+    int bitMaskPos;
+    int childId;
+    while (l > 0)
+    {
+        int res = gvdb->res[l];
+        range = gvdb->noderange[l];
+        posInNode = pos - nd->mPos;
+        posInNode *= res;
+        posInNode.x /= range.x;
+        posInNode.y /= range.y;
+        posInNode.z /= range.z;
+        bitMaskPos = (posInNode.z * res + posInNode.y) * res + posInNode.x;
+
+        childId = getChild(gvdb, nd, bitMaskPos);
+
+        l--;
+
+        if (childId == int(ID_UNDEFL)) return ID_UNDEFL;
+
+        if (l == stopLev) return uint64_t(int64_t(childId));
+
+        nd = getNode(gvdb, l, childId);
+    }
+
+    return ID_UNDEFL;
+}
+
+uint64_t getParent(VDBInfo* gvdb, int stopLev, int3 pos)
+{
+    VDBNode* nd = getNode(gvdb, gvdb->top_lev, 0);   // get root
+
+    if (nd->mFlags == 0) return 0;
+
+    int l = nd->mLev;
+    if (l < 0) return 0;
+    if (l == stopLev) return 0;   // root id
+
+    int3 range, posInNode;
+    int bitMaskPos;
+    uint64_t childId;
+    while (l > stopLev)
+    {
+        int res = gvdb->res[l];
+        range = gvdb->noderange[l];
+        posInNode = pos - nd->mPos;
+        posInNode *= res;
+        posInNode.x /= range.x;
+        posInNode.y /= range.y;
+        posInNode.z /= range.z;
+        bitMaskPos = (posInNode.z * res + posInNode.y) * res + posInNode.x;
+
+        l--;
+
+        childId = uint64_t(int64_t(getChild(gvdb, nd, bitMaskPos)));
+
+        if (childId == ID_UNDEFL) return ID_UNDEFL;
+
+        if (l == stopLev) return childId;
+
+        nd = getNode(gvdb, l, int(childId));
+    }
+
+    return ID_UNDEFL;
+}

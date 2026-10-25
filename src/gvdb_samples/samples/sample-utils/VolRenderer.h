@@ -1,14 +1,15 @@
 #ifndef SAMPLE_UTILS_VOLRENDERER_H
 #define SAMPLE_UTILS_VOLRENDERER_H
 // CUDA raycaster for the volume instances of a GVDBSceneGraph (the Render /
-// RenderKernel / Raytrace paths of the reference VolumeGVDB). Kernel module:
-// kernels/GVDBRaycast.cu (served as "ptx/GVDBRaycast.ptx").
+// RenderKernel / Raytrace paths of the reference VolumeGVDB). Kernels:
+// kernels/GVDBRaycast.slang (GVDB_SHADERS_RAYCAST).
 #include <nvrhi/core/foundation.h>
 #include <nvrhi/core/autoptr.h>
 #include <donut/core/vfs/VFS.h>
 #include <donut/core/math/math.h>
 #include <donut/engine/SceneGraph.h>
 #include <gvdb/GVDBScene.h>
+#include <gvdb/GVDBCompute.h>
 #include <cmath>
 #include <memory>
 
@@ -76,12 +77,13 @@ struct GVDB_ALIGN(16) ScnRay {
     uint32_t pnode;
     uint32_t pndx;
 };
+static_assert(sizeof(ScnRay) == 64, "ScnRay layout differs from kernels/GVDBScene.slangh");
 constexpr float GVDB_NOHIT = 1.0e10f;
 
 class VolRenderer {
  public:
-    // vfs must serve "ptx/GVDBRaycast.ptx".
-    VolRenderer(donut::gp::IDevice *device, donut::gp::IDeviceQueue *queue, donut::vfs::IFileSystem *vfs);
+    // The file system of the context must serve GVDB_SHADERS_RAYCAST.
+    explicit VolRenderer(gvdb::IComputeContext *context);
     ~VolRenderer();
 
     VolumeViewParams &getViewParams() { return m_viewParams; }
@@ -89,7 +91,7 @@ class VolRenderer {
 
     // Optional depth buffer (one float per pixel, post-projection depth in
     // [0,1], width*height of the view) that terminates volume rays.
-    void setDepthBuffer(donut::gp::IBuffer *depthBuffer);
+    void setDepthBuffer(nvrhi::IBuffer *depthBuffer);
 
     // Renders every volume instance of the graph into outRGBA8 (width*height*4
     // bytes): the first instance clears to the background colour, further
@@ -102,27 +104,26 @@ class VolRenderer {
     // nothing), and the kernel gvdbCompositeOver adds it over the output
     // (dst = src + dst*(1 - src.a)). Section2D/Section3D/EmptySkip always write
     // alpha 255 and therefore replace what is below them.
-    void render(gvdb::GVDBSceneGraph *scene, const RenderView &view, donut::gp::IBuffer *outRGBA8);
+    void render(gvdb::GVDBSceneGraph *scene, const RenderView &view, nvrhi::IBuffer *outRGBA8);
     // Renders one instance (shading from its attributes unless overridden).
-    void renderInstance(gvdb::GVDBVolumeInstance *instance, const RenderView &view, donut::gp::IBuffer *outRGBA8,
+    void renderInstance(gvdb::GVDBVolumeInstance *instance, const RenderView &view, nvrhi::IBuffer *outRGBA8,
                         bool compositeOver, gvdb::VolumeShading overrideShading = gvdb::VolumeShading::Off);
-    // Renders one instance with a user kernel `k(VDBInfo*, uchar chan, uchar4* out)`
-    // from a module that includes GVDBScene.cuh (its `scn` constant is filled).
-    void renderCustom(donut::gp::IKernel *kernel, gvdb::GVDBVolumeInstance *instance, const RenderView &view,
-                      donut::gp::IBuffer *outRGBA8);
+    // Renders one instance with a user kernel `k(ScnInfo* scn, VDBInfo* gvdb, uint8_t chan, uint8_t4* out)`
+    // over the image (kernels/GVDBScene.slangh declares ScnInfo).
+    void renderCustom(gvdb::IComputeKernel *kernel, gvdb::GVDBVolumeInstance *instance, const RenderView &view,
+                      nvrhi::IBuffer *outRGBA8);
     // Traces numRays ScnRay records (orig/dir in index space of the instance),
     // filling hit and normal; hits are pulled back by bias along the ray.
-    void raytrace(gvdb::GVDBVolumeInstance *instance, donut::gp::IBuffer *rays, uint32_t numRays, float bias,
+    void raytrace(gvdb::GVDBVolumeInstance *instance, nvrhi::IBuffer *rays, uint32_t numRays, float bias,
                   const RenderView &view);
 
-    donut::gp::IDeviceQueue *getQueue() const { return m_queue.Get(); }
+    gvdb::IComputeContext *getContext() const { return m_context.Get(); }
 
  private:
     struct Impl;
     std::unique_ptr<Impl> m_impl;
-    nvrhi::AutoPtr<donut::gp::IDevice> m_device;
-    nvrhi::AutoPtr<donut::gp::IDeviceQueue> m_queue;
-    nvrhi::AutoPtr<donut::gp::IBuffer> m_depthBuffer;
+    nvrhi::AutoPtr<gvdb::IComputeContext> m_context;
+    nvrhi::BufferHandle m_depthBuffer;
     VolumeViewParams m_viewParams;
 };
 

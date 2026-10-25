@@ -22,7 +22,7 @@ class PrintApp : public GVDBApp {
         if (!m_mesh) return false;
         auto meshInstance = MAKE_RC_OBJ_PTR(engine::MeshInstance, m_mesh);
         getSceneGraph()->AttachLeafNode(getSceneGraph()->GetRootNode(), meshInstance)->SetName("lucy");
-        m_meshGP = uploadMeshGP(getGPDevice(), getGPQueue(), m_mesh);
+        m_meshCuda = uploadMeshCuda(getCompute(), m_mesh);
         m_pivot = {0.3f, 0.45f, 0.3f};   // centre of the polygon model
 
         log::info("Configure.");
@@ -42,14 +42,14 @@ class PrintApp : public GVDBApp {
         attrs.threshold = {0.25f, 0.f, 1.f};
         attrs.extinct = {-1.f, 1.1f, 0.f};
         attrs.cutoff = {0.005f, 0.005f, 0.f};
-        attrs.transferFunction = MAKE_RC_OBJ_PTR(gvdb::VolumeTransferFunction, getGPDevice());
+        attrs.transferFunction = MAKE_RC_OBJ_PTR(gvdb::VolumeTransferFunction, getCompute());
         attrs.transferFunction->setLinear(0.0f, 0.5f, {0, 0, 0, 0}, {1.f, 1.f, 1.f, 0.5f});
         attrs.transferFunction->setLinear(0.5f, 1.0f, {1.f, 1.f, 1.f, 0.5f}, {1.f, 1.f, 1.f, 0.8f});
-        attrs.transferFunction->commit(getGPQueue());
+        attrs.transferFunction->commit();
 
         revoxelize();
 
-        m_renderer = std::make_unique<VolRenderer>(getGPDevice(), getGPQueue(), getVFS());
+        m_renderer = std::make_unique<VolRenderer>(getCompute());
         m_renderer->getViewParams().backgroundColor = {0.1f, 0.2f, 0.4f, 1.f};
         m_renderer->getViewParams().shadowParams = {0.f, 0.f, 0.f};
 
@@ -83,8 +83,8 @@ class PrintApp : public GVDBApp {
         if (m_instance) setNodeTransform(m_instance->GetNode(), dm::scaling(dm::float3(m_voxelSize)));
 
         log::info("Voxelizing at %.1f mm.", m_voxelSize);
-        nvrhi::FRESULT fr = m_voxelizer->solidVoxelize(0, m_meshGP.positions, m_meshGP.numVertices, m_meshGP.indices,
-                                                       m_meshGP.numIndices, m_mesh->objectSpaceBounds, modelToIndex, 1.0f, 0.5f);
+        nvrhi::FRESULT fr = m_voxelizer->solidVoxelize(0, m_meshCuda.positions, m_meshCuda.numVertices, m_meshCuda.indices,
+                                                       m_meshCuda.numIndices, m_mesh->objectSpaceBounds, modelToIndex, 1.0f, 0.5f);
         if (NVRHI_FAILED(fr)) log::error("solidVoxelize failed (%d)", int(fr));
         m_ops->updateApron();
         m_volume->logMeasure();
@@ -97,7 +97,8 @@ class PrintApp : public GVDBApp {
         RenderView view = getRenderView(int(width), int(height));
 
         float h = float(height);
-        float mouseY = getFrameCounter() <= 1 ? h * 0.5f : float(getMousePos().y);
+        // (Mid height in unattended screenshot runs, so that they do not depend on where the cursor is.)
+        float mouseY = (getFrameCounter() <= 1 || isScreenshotRun()) ? h * 0.5f : float(getMousePos().y);
         float yslice = 100.f - mouseY * 100.f / h;
 
         static const gvdb::VolumeShading shadings[] = {gvdb::VolumeShading::Voxel, gvdb::VolumeShading::Trilinear,
@@ -146,7 +147,7 @@ class PrintApp : public GVDBApp {
 
  private:
     nvrhi::AutoPtr<engine::MeshInfo> m_mesh;
-    MeshGPBuffers m_meshGP;
+    MeshCudaBuffers m_meshCuda;
     nvrhi::AutoPtr<gvdb::IGVDBVolume> m_volume;
     nvrhi::AutoPtr<gvdb::IGVDBVoxelizer> m_voxelizer;
     nvrhi::AutoPtr<gvdb::IGVDBVoxelOps> m_ops;

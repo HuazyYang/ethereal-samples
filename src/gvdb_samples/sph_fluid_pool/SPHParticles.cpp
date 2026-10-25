@@ -2,6 +2,7 @@
 // (m_Points / m_PointsTemp / m_Accel / m_Params, ReallocateParticles,
 // RebuildAccelGrid, AddPointsInVolume, UpdateParams, CommitAll, Retrieve).
 #include "SPHFluid.h"
+#include <nvrhi/core/foundation.h>
 #include <sample-utils/SampleTypes.h>
 #include <donut/core/log.h>
 #include <nvrhi/utils.h>
@@ -15,14 +16,6 @@ namespace sph {
 
 using namespace donut;
 
-#define SPH_CHECK_GP(expr)                                                              \
-    do {                                                                                \
-        nvrhi::FRESULT rc_ = (expr);                                                    \
-        if (NVRHI_FAILED(rc_)) {                                                        \
-            donut::log::error("SPHParticles: %s failed with error %d", #expr, (int)rc_); \
-            return rc_;                                                                 \
-        }                                                                               \
-    } while (0)
 
 namespace {
 
@@ -39,7 +32,8 @@ void computeNumBlocks(int numPnts, int minThreads, int &numBlocks, int &numThrea
     numBlocks = (numThreads == 0) ? 1 : iDivUp(numPnts, numThreads);
 }
 
-// Slots the rasterizer reads: the CUDA / OpenGL interop buffers of the reference.
+// Slots the rasterizer reads: the CUDA / OpenGL interop buffers of the reference (vertex buffers of the graphics
+// device imported into the CUDA device).
 bool isSharedSlot(int slot) { return slot == SPH_FPOS || slot == SPH_FCLR || slot == SPH_FVEL; }
 
 // UpdateParams of the reference: everything derived from the primary values.
@@ -179,14 +173,13 @@ class SPHParticles : public nvrhi::ObjectImpl<ISPHParticles> {
     NVRHI_IMPLEMENTS_INTERFACE(ISPHParticles)
     NVRHI_END_INTERFACE_TABLE()
 
-    explicit SPHParticles(gp::IDeviceQueue *queue) : m_queue(queue), m_device(queue->getDevice()) {
+    explicit SPHParticles(gvdb::IComputeContext *context) : m_context(context), m_device(context->getDevice()) {
         setupDefaultParams(m_params);
         updateDerivedParams(m_params);
     }
 
     ~SPHParticles() {
-        waitForQueue();
-        if (m_desc.interop && m_desc.interop->getNVRHIDevice()) m_desc.interop->getNVRHIDevice()->waitForIdle();
+        waitForIdle();
         releaseParticleBuffers();
     }
 
@@ -229,79 +222,73 @@ class SPHParticles : public nvrhi::ObjectImpl<ISPHParticles> {
     nvrhi::FRESULT retrieve(ParticleBuffer buffer, uint32_t first, uint32_t count, void *dst) override;
 
     // ---- device buffers ----
-    gp::IBuffer *getBuffer(ParticleBuffer buffer) override {
+    nvrhi::IBuffer *getBuffer(ParticleBuffer buffer) override {
         return int(buffer) < kNumParticleBuffers ? m_points[int(buffer)].Get() : nullptr;
     }
-    gp::IBuffer *getTempBuffer(ParticleBuffer buffer) override {
+    nvrhi::IBuffer *getTempBuffer(ParticleBuffer buffer) override {
         return int(buffer) < kNumParticleBuffers ? m_pointsTemp[int(buffer)].Get() : nullptr;
     }
-    gp::IBuffer *getGridBuffer(GridBuffer buffer) override {
+    nvrhi::IBuffer *getGridBuffer(GridBuffer buffer) override {
         return int(buffer) < kNumGridBuffers ? m_accel[int(buffer)].Get() : nullptr;
     }
     nvrhi::IBuffer *getRenderBuffer(ParticleBuffer buffer) override {
         return int(buffer) < kNumParticleBuffers ? m_render[int(buffer)].Get() : nullptr;
     }
-    bool areRenderBuffersShared() const override { return m_renderShared; }
-    nvrhi::FRESULT updateRenderBuffers(nvrhi::ICommandList *commandList) override;
     uint64_t getLayoutRevision() const override { return m_layoutRevision; }
 
     dm::box3 getBounds() const override { return dm::box3(m_params.bound_min, m_params.bound_max); }
 
-    gp::IDevice *getDevice() override { return m_device; }
-    gp::IDeviceQueue *getQueue() override { return m_queue; }
+    gvdb::IComputeContext *getContext() override { return m_context; }
 
  private:
-    // Host-side wait for everything enqueued so far: buffers are freed
-    // immediately, kernels still in the queue must not touch them afterwards.
-    void waitForQueue() {
-        if (!m_device || !m_queue) return;
-        m_device->commitQueue(m_queue);
-        m_device->waitForQueue(m_queue);
+    // Host-side wait for everything recorded so far, on the CUDA device and on the graphics device (which draws
+    // from the shared buffers): the buffers are freed right after.
+    void waitForIdle() {
+        if (m_context) m_context->finish();
+        if (m_interop && m_interop->getGraphicsDevice()) m_interop->getGraphicsDevice()->waitForIdle();
     }
+    nvrhi::ICommandList *commandList() { return m_context->getCommandList(); }
     void applyParticleDims() {
         m_params.pnum = int(m_maxParticles);
         const int threadsPerBlock = 512;
         computeNumBlocks(m_params.pnum, threadsPerBlock, m_params.numBlocks, m_params.numThreads);
     }
-    nvrhi::FRESULT createPlainBuffer(nvrhi::AutoPtr<gp::IBuffer> &buffer, uint64_t bytes) {
-        gp::BufferDesc desc;
-        desc.byteSize = size_t(bytes);
-        buffer = nullptr;
-        nvrhi::FRESULT fr = m_device->createBuffer(desc, &buffer);
-        if (NVRHI_FAILED(fr) || !buffer || buffer->getNativeHandle() == 0) {
+    // A buffer of the CUDA device; null (and an error message) when it cannot be allocated.
+    nvrhi::BufferHandle createPlainBuffer(uint64_t bytes, const char *name) {
+        nvrhi::BufferDesc desc;
+        desc.byteSize = bytes;
+        desc.debugName = name;
+        nvrhi::BufferHandle buffer;
+        if (NVRHI_FAILED(m_device->createBuffer(desc, &buffer)) || !buffer) {
             log::error("SPHParticles: cannot allocate a device buffer of %llu bytes", (unsigned long long)bytes);
-            buffer = nullptr;
-            return NVRHI_FAILED(fr) ? fr : nvrhi::FE_OUT_OF_MEMORY;
+            return nullptr;
         }
-        return nvrhi::FS_OK;
+        return buffer;
     }
     void releaseParticleBuffers() {
         for (int n = 0; n < kNumParticleBuffers; ++n) {
-            m_points[n] = nullptr;       // the gp view before the nvrhi buffer it maps
+            m_points[n] = nullptr;       // the CUDA view before the graphics buffer it imports
             m_pointsTemp[n] = nullptr;
             m_render[n] = nullptr;
-            m_mirrorStaging[n] = nullptr;
         }
-        m_renderShared = false;
     }
-    nvrhi::BufferDesc makeRenderBufferDesc(int slot, nvrhi::SharedResourceFlags sharedFlags) const {
+    nvrhi::BufferDesc makeRenderBufferDesc(int slot) const {
         nvrhi::BufferDesc bufferDesc;
         bufferDesc.byteSize = uint64_t(m_maxParticles) * particleBufferStride(ParticleBuffer(slot));
         bufferDesc.isVertexBuffer = true;
         bufferDesc.initialState = nvrhi::ResourceStates::VertexBuffer;
         bufferDesc.keepInitialState = true;
-        bufferDesc.sharedResourceFlags = sharedFlags;
+        bufferDesc.sharedResourceFlags = SampleUtils::interopSharedFlags();
         bufferDesc.debugName = std::string("SPH ") + kParticleBufferNames[slot];
         return bufferDesc;
     }
-    // Position / Color / Velocity as nvrhi vertex buffers imported into the
-    // compute device. All three or none.
-    bool createSharedRenderBuffers(nvrhi::IDevice *nvrhiDevice);
+    // Position / Color / Velocity as vertex buffers of the graphics device imported into the CUDA device.
+    nvrhi::FRESULT createSharedRenderBuffers(nvrhi::IDevice *graphicsDevice);
 
-    nvrhi::AutoPtr<gp::IDeviceQueue> m_queue;
-    nvrhi::AutoPtr<gp::IDevice> m_device;
+    nvrhi::AutoPtr<gvdb::IComputeContext> m_context;
+    nvrhi::cuda::IDevice *m_device;   // the context's
     SPHParticlesDesc m_desc;
-    nvrhi::AutoPtr<IGPAndNVRHIInteropDevice> m_interop;   // keeps desc.interop alive
+    nvrhi::AutoPtr<nvrhi::IInteropDevice> m_interop;   // keeps desc.interop alive
     SPHFluidParams m_params;
     uint64_t m_paramsRevision = 1;
     uint64_t m_layoutRevision = 1;
@@ -317,85 +304,27 @@ class SPHParticles : public nvrhi::ObjectImpl<ISPHParticles> {
     std::vector<uint32_t> m_hostClr;
     std::mt19937 m_rng;
 
-    nvrhi::AutoPtr<gp::IBuffer> m_points[kNumParticleBuffers];
-    nvrhi::AutoPtr<gp::IBuffer> m_pointsTemp[kNumParticleBuffers];
-    nvrhi::AutoPtr<gp::IBuffer> m_accel[kNumGridBuffers];
-    nvrhi::BufferHandle m_render[kNumParticleBuffers];
-    bool m_renderShared = false;
-    nvrhi::AutoPtr<gp::IBuffer> m_mirrorStaging[kNumParticleBuffers];   // host-visible copies (mirror mode)
+    nvrhi::BufferHandle m_points[kNumParticleBuffers];       // CUDA device
+    nvrhi::BufferHandle m_pointsTemp[kNumParticleBuffers];
+    nvrhi::BufferHandle m_accel[kNumGridBuffers];
+    nvrhi::BufferHandle m_render[kNumParticleBuffers];       // graphics device (shared slots)
 };
 
-namespace {
-// Errors logged while a shared buffer is probed are not fatal: there is a
-// fallback. Donut's default log callback breaks into the debugger on every
-// error, so they are reported as warnings for the duration of the probe.
-class ScopedSoftErrors {
- public:
-    ScopedSoftErrors() : m_previous(log::GetCallback()) {
-        log::Callback previous = m_previous;
-        log::SetCallback([previous](log::Severity severity, const char *message) {
-            if (severity == log::Severity::Error) severity = log::Severity::Warning;
-            if (previous) previous(severity, message);
-        });
-    }
-    ~ScopedSoftErrors() { log::SetCallback(m_previous); }
-
- private:
-    log::Callback m_previous;
-};
-}  // namespace
-
-bool SPHParticles::createSharedRenderBuffers(nvrhi::IDevice *nvrhiDevice) {
-    ScopedSoftErrors softErrors;
-    bool ok = true;
-    for (int n = 0; n < kNumParticleBuffers && ok; ++n) {
-        if (!isSharedSlot(n)) continue;
-        const uint64_t bytes = uint64_t(m_maxParticles) * particleBufferStride(ParticleBuffer(n));
-        nvrhiDevice->createBuffer(makeRenderBufferDesc(n, SampleUtils::interopSharedFlags(nvrhiDevice)), &m_render[n]);
-        if (!m_render[n]) {
-            ok = false;
-            break;
-        }
-        nvrhi::FRESULT fr = m_desc.interop->createGPBuffer(m_render[n], &m_points[n]);
-        ok = !NVRHI_FAILED(fr) && m_points[n] && m_points[n]->getNativeHandle() != 0 &&
-             m_points[n]->getDesc()->byteSize >= bytes;
-    }
-    if (!ok) {
-        for (int n = 0; n < kNumParticleBuffers; ++n) {
-            if (!isSharedSlot(n)) continue;
-            m_points[n] = nullptr;
-            m_render[n] = nullptr;
-        }
-    }
-    return ok;
-}
-
-nvrhi::FRESULT SPHParticles::updateRenderBuffers(nvrhi::ICommandList *commandList) {
-    if (m_renderShared || !m_render[SPH_FPOS]) return nvrhi::FS_OK;   // zero copy, or nothing to draw from
-    if (!commandList) return nvrhi::FE_INVALID_ARGS;
-    if (m_numParticles == 0) return nvrhi::FS_OK;
-
+nvrhi::FRESULT SPHParticles::createSharedRenderBuffers(nvrhi::IDevice *graphicsDevice) {
     for (int n = 0; n < kNumParticleBuffers; ++n) {
         if (!isSharedSlot(n)) continue;
-        const uint64_t bytes = uint64_t(m_numParticles) * particleBufferStride(ParticleBuffer(n));
-        if (!m_mirrorStaging[n]) {
-            gp::BufferDesc desc;
-            desc.byteSize = size_t(uint64_t(m_maxParticles) * particleBufferStride(ParticleBuffer(n)));
-            desc.isStaging = true;
-            SPH_CHECK_GP(m_device->createBuffer(desc, &m_mirrorStaging[n]));
-            if (!m_mirrorStaging[n]) return nvrhi::FE_OUT_OF_MEMORY;
+        nvrhi::FRESULT fr = graphicsDevice->createBuffer(makeRenderBufferDesc(n), &m_render[n]);
+        if (NVRHI_FAILED(fr) || !m_render[n]) {
+            log::error("SPHParticles: cannot create the vertex buffer '%s'", kParticleBufferNames[n]);
+            return NVRHI_FAILED(fr) ? fr : nvrhi::FE_OUT_OF_MEMORY;
         }
-        SPH_CHECK_GP(m_queue->copyBufferRegion(m_mirrorStaging[n], 0, m_points[n], 0, bytes));
-    }
-    waitForQueue();
-    for (int n = 0; n < kNumParticleBuffers; ++n) {
-        if (!isSharedSlot(n)) continue;
-        const uint64_t bytes = uint64_t(m_numParticles) * particleBufferStride(ParticleBuffer(n));
-        void *data = nullptr;
-        SPH_CHECK_GP(m_device->mapBuffer(m_mirrorStaging[n], &data));
-        if (!data) return nvrhi::FE_GENERIC_ERROR;
-        commandList->writeBuffer(m_render[n], data, size_t(bytes));
-        m_device->unmapBuffer(m_mirrorStaging[n]);
+        fr = m_interop->importBuffer(m_render[n], &m_points[n]);
+        if (NVRHI_FAILED(fr) || !m_points[n]) {
+            log::error("SPHParticles: the %s vertex buffer '%s' cannot be imported into the CUDA device (error %d)",
+                       nvrhi::utils::GraphicsAPIToString(graphicsDevice->getGraphicsAPI()), kParticleBufferNames[n],
+                       int(fr));
+            return NVRHI_FAILED(fr) ? fr : nvrhi::FE_UNSUPPORTED;
+        }
     }
     return nvrhi::FS_OK;
 }
@@ -404,8 +333,7 @@ nvrhi::FRESULT SPHParticles::updateRenderBuffers(nvrhi::ICommandList *commandLis
 nvrhi::FRESULT SPHParticles::configure(const SPHParticlesDesc &desc) {
     if (desc.maxParticles == 0 || desc.maxParticles > 0x7fffffffu / 12u) return nvrhi::FE_INVALID_ARGS;
 
-    waitForQueue();
-    if (m_desc.interop && m_desc.interop->getNVRHIDevice()) m_desc.interop->getNVRHIDevice()->waitForIdle();
+    waitForIdle();
     releaseParticleBuffers();
     clear();
 
@@ -416,53 +344,38 @@ nvrhi::FRESULT SPHParticles::configure(const SPHParticlesDesc &desc) {
     m_paramsRevision++;
     m_layoutRevision++;
 
-    // The rasterizer's buffers: shared with the compute device when the import
-    // works (zero copy), otherwise separate vertex buffers that
-    // updateRenderBuffers() refreshes through the host.
-    nvrhi::IDevice *nvrhiDevice = desc.interop ? desc.interop->getNVRHIDevice() : nullptr;
-    m_renderShared = false;
-    if (nvrhiDevice) {
-        m_renderShared = createSharedRenderBuffers(nvrhiDevice);
-        if (!m_renderShared) {
-            log::warning("SPHParticles: %s vertex buffers cannot be imported into the compute device; the Position / "
-                         "Color / Velocity buffers are copied through the host every frame instead",
-                         nvrhi::utils::GraphicsAPIToString(nvrhiDevice->getGraphicsAPI()));
-            for (int n = 0; n < kNumParticleBuffers; ++n) {
-                if (!isSharedSlot(n)) continue;
-                nvrhiDevice->createBuffer(makeRenderBufferDesc(n, nvrhi::SharedResourceFlags::None), &m_render[n]);
-                if (!m_render[n]) {
-                    log::error("SPHParticles: cannot create the vertex buffer '%s'", kParticleBufferNames[n]);
-                    releaseParticleBuffers();
-                    return nvrhi::FE_OUT_OF_MEMORY;
-                }
-            }
-        }
-    }
-    for (int n = 0; n < kNumParticleBuffers; ++n) {
-        const uint64_t bytes = uint64_t(m_maxParticles) * particleBufferStride(ParticleBuffer(n));
-        if (!m_points[n]) {
-            nvrhi::FRESULT fr = createPlainBuffer(m_points[n], bytes);
-            if (NVRHI_FAILED(fr)) {
-                releaseParticleBuffers();
-                return fr;
-            }
-            // Entries past the particle count are still visited by the advance
-            // kernel (it runs over pnum as in the reference): keep them defined.
-            // (The shared buffers are cleared by commit(), under the caller's
-            // keyed mutexes on D3D11.)
-            SPH_CHECK_GP(m_queue->clearBufferUint(m_points[n], 0u));
-        }
-        // MatchAllBuffers: the copy the counting sort reads from
-        nvrhi::FRESULT fr = createPlainBuffer(m_pointsTemp[n], bytes);
+    // The rasterizer's buffers, shared with the CUDA device (zero copy).
+    nvrhi::IDevice *graphicsDevice = m_interop ? m_interop->getGraphicsDevice() : nullptr;
+    if (graphicsDevice) {
+        nvrhi::FRESULT fr = createSharedRenderBuffers(graphicsDevice);
         if (NVRHI_FAILED(fr)) {
             releaseParticleBuffers();
             return fr;
         }
-        SPH_CHECK_GP(m_queue->clearBufferUint(m_pointsTemp[n], 0u));
+    }
+    nvrhi::ICommandList *cmd = commandList();
+    for (int n = 0; n < kNumParticleBuffers; ++n) {
+        const uint64_t bytes = uint64_t(m_maxParticles) * particleBufferStride(ParticleBuffer(n));
+        if (!m_points[n]) {
+            m_points[n] = createPlainBuffer(bytes, kParticleBufferNames[n]);
+            if (!m_points[n]) {
+                releaseParticleBuffers();
+                return nvrhi::FE_OUT_OF_MEMORY;
+            }
+        }
+        // Entries past the particle count are still visited by the advance
+        // kernel (it runs over pnum as in the reference): keep them defined.
+        cmd->clearBufferUInt(m_points[n], 0u);
+        // MatchAllBuffers: the copy the counting sort reads from
+        m_pointsTemp[n] = createPlainBuffer(bytes, kParticleBufferNames[n]);
+        if (!m_pointsTemp[n]) {
+            releaseParticleBuffers();
+            return nvrhi::FE_OUT_OF_MEMORY;
+        }
+        cmd->clearBufferUInt(m_pointsTemp[n], 0u);
     }
     log::info("SPHParticles: %d particles max, t:%dx%d=%d%s", m_params.pnum, m_params.numBlocks, m_params.numThreads,
-              m_params.numBlocks * m_params.numThreads,
-              !nvrhiDevice ? "" : m_renderShared ? ", pos / clr / vel shared with nvrhi" : ", pos / clr / vel mirrored to nvrhi");
+              m_params.numBlocks * m_params.numThreads, graphicsDevice ? ", pos / clr / vel shared with nvrhi" : "");
     return nvrhi::FS_OK;
 }
 
@@ -533,8 +446,10 @@ nvrhi::FRESULT SPHParticles::rebuildAccelGrid() {
 
     // Allocate acceleration (kept when the sizes did not change)
     if (p.gridTotal != m_gridTotalAllocated || m_maxParticles != m_gridParticlesAllocated || !m_accel[SPH_AGRID]) {
-        waitForQueue();
-        for (auto &buffer : m_accel) buffer = nullptr;
+        for (auto &buffer : m_accel) {
+            m_context->releaseAfterUse(buffer.Get());   // recorded kernels may still use it
+            buffer = nullptr;
+        }
         m_gridTotalAllocated = 0;
         m_layoutRevision++;
 
@@ -546,12 +461,12 @@ nvrhi::FRESULT SPHParticles::rebuildAccelGrid() {
         const uint64_t sizes[kNumGridBuffers] = {u * m_maxParticles, u * numElem1, u * numElem1, u * numElem2,
                                                  u * numElem2,       u * numElem3, u * numElem3};
         for (int n = 0; n < kNumGridBuffers; ++n) {
-            nvrhi::FRESULT fr = createPlainBuffer(m_accel[n], sizes[n]);
-            if (NVRHI_FAILED(fr)) {
+            m_accel[n] = createPlainBuffer(sizes[n], "SPH grid");
+            if (!m_accel[n]) {
                 for (auto &buffer : m_accel) buffer = nullptr;
-                return fr;
+                return nvrhi::FE_OUT_OF_MEMORY;
             }
-            SPH_CHECK_GP(m_queue->clearBufferUint(m_accel[n], 0u));
+            commandList()->clearBufferUInt(m_accel[n], 0u);
         }
         m_gridTotalAllocated = p.gridTotal;
         m_gridParticlesAllocated = m_maxParticles;
@@ -642,17 +557,18 @@ nvrhi::FRESULT SPHParticles::commit() {
 
     // Everything past the particle count (and the buffers without a host
     // array) is zero, as in the freshly allocated buffers of the reference.
-    for (int n = 0; n < kNumParticleBuffers; ++n) SPH_CHECK_GP(m_queue->clearBufferUint(m_points[n], 0u));
+    nvrhi::ICommandList *cmd = commandList();
+    for (int n = 0; n < kNumParticleBuffers; ++n) cmd->clearBufferUInt(m_points[n], 0u);
     if (m_numParticles == 0) return nvrhi::FS_OK;
 
     const uint64_t n3 = uint64_t(m_numParticles) * sizeof(dm::float3);
     const uint64_t n1 = uint64_t(m_numParticles) * sizeof(uint32_t);
-    SPH_CHECK_GP(m_queue->writeBuffer(m_points[SPH_FPOS], m_hostPos.data(), n3, 0));
-    SPH_CHECK_GP(m_queue->writeBuffer(m_points[SPH_FVEL], m_hostVel.data(), n3, 0));
-    SPH_CHECK_GP(m_queue->writeBuffer(m_points[SPH_FCLR], m_hostClr.data(), n1, 0));
-    SPH_CHECK_GP(m_queue->writeBuffer(m_points[SPH_FVEVAL], m_hostVelEval.data(), n3, 0));
-    SPH_CHECK_GP(m_queue->writeBuffer(m_points[SPH_FFORCE], m_hostForce.data(), n3, 0));
-    SPH_CHECK_GP(m_queue->writeBuffer(m_points[SPH_FPRESS], m_hostPress.data(), n1, 0));
+    cmd->writeBuffer(m_points[SPH_FPOS], m_hostPos.data(), n3, 0);
+    cmd->writeBuffer(m_points[SPH_FVEL], m_hostVel.data(), n3, 0);
+    cmd->writeBuffer(m_points[SPH_FCLR], m_hostClr.data(), n1, 0);
+    cmd->writeBuffer(m_points[SPH_FVEVAL], m_hostVelEval.data(), n3, 0);
+    cmd->writeBuffer(m_points[SPH_FFORCE], m_hostForce.data(), n3, 0);
+    cmd->writeBuffer(m_points[SPH_FPRESS], m_hostPress.data(), n1, 0);
     return nvrhi::FS_OK;
 }
 
@@ -663,25 +579,13 @@ nvrhi::FRESULT SPHParticles::retrieve(ParticleBuffer buffer, uint32_t first, uin
     if (count == 0) return nvrhi::FS_OK;
 
     const uint64_t stride = particleBufferStride(buffer);
-    gp::BufferDesc desc;
-    desc.byteSize = size_t(stride * count);
-    desc.isStaging = true;
-    nvrhi::AutoPtr<gp::IBuffer> staging;
-    SPH_CHECK_GP(m_device->createBuffer(desc, &staging));
-    if (!staging) return nvrhi::FE_OUT_OF_MEMORY;
-    SPH_CHECK_GP(m_queue->copyBufferRegion(staging, 0, m_points[int(buffer)], stride * first, stride * count));
-    waitForQueue();
-    void *data = nullptr;
-    SPH_CHECK_GP(m_device->mapBuffer(staging, &data));
-    if (!data) return nvrhi::FE_GENERIC_ERROR;
-    memcpy(dst, data, size_t(stride * count));
-    m_device->unmapBuffer(staging);
+    m_context->readBuffer(m_points[int(buffer)], stride * first, dst, stride * count);
     return nvrhi::FS_OK;
 }
 
-nvrhi::FRESULT createSPHParticles(gp::IDeviceQueue *queue, ISPHParticles **outParticles) {
-    if (queue == nullptr || outParticles == nullptr) return nvrhi::FE_INVALID_ARGS;
-    *outParticles = MAKE_RC_OBJ(SPHParticles, queue);
+nvrhi::FRESULT createSPHParticles(gvdb::IComputeContext *context, ISPHParticles **outParticles) {
+    if (context == nullptr || outParticles == nullptr) return nvrhi::FE_INVALID_ARGS;
+    *outParticles = MAKE_RC_OBJ(SPHParticles, context);
     return *outParticles ? nvrhi::FS_OK : nvrhi::FE_OUT_OF_MEMORY;
 }
 

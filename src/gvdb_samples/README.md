@@ -2,21 +2,23 @@
 
 Port of [NVIDIA GVDB Voxels 1.1.1](https://github.com/NVIDIA/gvdb-voxels) (reference checkout:
 `D:\ps\repo\gvdb-voxels\source`) to the Donut / nvrhi stack of this repository. The GL, Jetson and
-NanoVDB samples are not ported; OpenGL is replaced by nvrhi (D3D11 / D3D12 / Vulkan through
-Donut's `DeviceManager`), OptiX 6 by OptiX 9 behind a COM-style interface.
+NanoVDB samples are not ported; OpenGL is replaced by nvrhi (D3D12 / Vulkan through Donut's
+`DeviceManager`), CUDA C++ and OptiX 6 by Slang kernels and OptiX programs on the CUDA backend of nvrhi
+(ethereal-nvrhi ADR 0011 - 0013; samples ADR 0002).
 
 ```
 gvdb/                      the library
-  GPDevice*.h/.cpp         gp: COM-style compute abstraction. CUDA driver-API backend
-                           (GPDeviceCUDAImpl), nvrhi interop (GPDeviceNVRHI), Thrust helpers
-                           (GPDeviceCUDAUtils.cu), OptiX 9 backend (GPDeviceOptiX*, optional)
+  GVDBCompute.h/.cpp       the compute layer: IComputeContext (the nvrhi CUDA device, the command list
+                           GVDB work is recorded into, kernels of shader containers) and IComputeKernel
   GVDB.h                   the data structure and its operations as interfaces (see below)
   GVDBScene.h              GVDB volumes in Donut's scene graph
-  GVDB.cuh, GVDBDDA.cuh    device headers shared by every kernel (node traversal, DDA)
-  kernels/*.cu             library PTX modules: GVDBOperators (apron, fill, smooth, resample ...),
-                           GVDBParticles (prefix sum, points, GPU topology, voxelization)
+  GVDBPrimitives.h/.cpp    device-wide primitives (prefix sum, radix sort, min / max, block copy; internal)
+  shaders/GVDB.slangh      VDBInfo, node traversal, atlas access, shared by every kernel
+  shaders/*.slang          library kernels: GVDBOperators (apron, fill, smooth, resample ...),
+                           GVDBParticles (points, GPU topology, voxelization), GVDBPrimitives
 samples/
   sample-utils/            renderers (CUDA raycaster, OptiX), the app framework, OBJ meshes
+    kernels/               GVDBRaycast.slang(h) (raycaster), optix/OptixPrograms.slang
   <sample>/                one directory per sample (kebab-case)
   assets/                  the shared assets of the reference (lucy.obj, explosion.vbx, ...)
 sph_fluid_pool/            port of the SPH fluid simulator fluids5.0 (see "SPH fluid pool" below)
@@ -36,10 +38,10 @@ declared in `gvdb/GVDB.h`:
 | `IGVDBVoxelizer` | triangle mesh to topology and voxels | `SolidVoxelize` |
 | `IGVDBSerializer` | VBX file I/O | `LoadVBX`, `SaveVBX` |
 
-Operation objects are created for one volume (`createGVDBVoxelOps(volume, &ops)`, ...) and use only
-the public `IGVDBVolume` interface, so operations can be added without touching the data structure.
-They share the library kernels through `IGVDBVolume::getKernel(name)`, which loads the two PTX
-modules once.
+A volume is created on a compute context (`createGVDBVolume(context, &volume)`). Operation objects are
+created for one volume (`createGVDBVoxelOps(volume, &ops)`, ...) and use only the public
+`IGVDBVolume` interface, so operations can be added without touching the data structure. They share
+the library kernels through `IGVDBVolume::getKernel(name)`.
 
 ### Scene graph
 
@@ -59,37 +61,45 @@ The samples build their scene as a `GVDBSceneGraph`: volume instances, OBJ model
 leaf. The renderers consume the graph:
 
 - `SampleUtils::VolRenderer` (CUDA): renders each volume instance with the GVDB raycast kernels
-  (`sample-utils/kernels/GVDBRaycast.cu`), compositing instances in order; also custom render
+  (`sample-utils/kernels/GVDBRaycast.slang`), compositing instances in order; also custom render
   kernels and `raytrace()` of ray bundles.
 - `SampleUtils::OptixRenderer` (OptiX 9): one custom AABB primitive per volume instance, one
-  triangle GAS per mesh, all instanced in one IAS so the node transforms apply directly.
+  triangle BLAS per mesh, all instanced in one TLAS so the node transforms apply directly.
 
-### gp and the OptiX layer
+### Compute layer and kernels
 
-`gp` (`gvdb/GPDevice.h`) is the compute abstraction the port was built on: `IDevice`, `IDeviceQueue`,
-`IBuffer`, `ITexture`, `IModule` / `IKernel`, interop with nvrhi resources through shared handles and
-keyed mutexes / timeline semaphores (`GPDeviceNVRHI.h`). Native handles are exposed where other
-libraries need them (`IBuffer::getNativeHandle()` = `CUdeviceptr`, `IDeviceQueue::getNativeHandle()`
-= `CUstream`, `IDevice::getNativeHandle()` = `CUcontext`).
+Everything runs on the CUDA device of nvrhi (`nvrhi::cuda::IDevice`, created by the graphics
+factory with the graphics device as `DeviceDesc::graphicsDevice`, so both are on the same adapter).
+`gvdb::IComputeContext` owns one open command list on it: GVDB records its work there, `flush()`
+submits, `finish()` waits, `readBuffer()` reads back. A volume, its operation objects and the
+renderers that draw it share one context, so their work is ordered on one CUDA stream. Kernels reach
+buffers through device addresses and textures through descriptor handles, which command lists do not
+track: `releaseAfterUse()` keeps a replaced resource alive until the recorded work is done.
 
-`gvdb/GPDeviceOptiX.h` encapsulates the OptiX 7+/9 host API the same way: `IRTDevice` (a child of
-the CUDA device) creates `IRTModule` (PTX / OptiX-IR), `IRTProgramGroup`, `IRTPipeline`,
-`IRTAccelStruct` (triangles, AABBs, instances; built on a gp queue) and `IRTShaderBindingTable`,
-and launches on a gp queue. The backend (`GPDeviceOptiXImpl.cpp`) is compiled when the SDK is found
-(`ETHEREAL_WITH_OPTIX`, default ON; `OptiX_INSTALL_DIR` or the default install location).
+Kernels are Slang, compiled offline by ShaderTool into NVRHI shader containers (PTX plus reflection;
+`ethereal_compile_shader_containers`, `TARGETS ptx` / `optix`) in `bin/shaders/gvdb`, which the
+samples mount as `shaders/gvdb`. A kernel's arguments are its entry point's uniform parameters:
+`gvdb::launchKernel(commandList, kernel, groups, args...)` places them where the reflection says and
+checks their sizes. Pointers are passed as `deviceAddress()` values; `VDBInfo` carries the texture and
+surface handles of the atlas channels (`nvrhi::cuda::IDevice::getTextureHandle` / `getSurfaceHandle`),
+which `shaders/GVDB.slangh` turns into `Sampler3D` / `RWTexture3D` with `Handle()`. `GVDBVolume`
+checks the host `VDBInfo` against the reflection of the kernels. The library containers, the
+raycaster and the samples' kernels are compiled with `-fp-mode fast` (NVRTC `--use_fast_math`), as the
+reference's nvcc builds were.
 
-Device code is shared between CUDA and OptiX: the kernels include `gvdb/GVDB.cuh` and
-`sample-utils/kernels/GVDBScene.cuh`; `CUDA_PATHWAY` (plain kernels, `scn` is a `__constant__`) or
-`OPTIX_PATHWAY` (programs, `scn` comes from the launch parameters) is defined by the CMake helper
-`gvdb_add_ptx()`. `ScnInfo` and the launch parameters are defined once in
-`sample-utils/kernels/optix/OptixLaunchParams.h` (host and device). On the OptiX path the per-volume
-raycast settings (`SCN_THRESH`, steps, extinction, transfer function, colour channel) resolve to the
-`OptixVolumeInstance` of the hit record being intersected, so one launch renders several volumes with
-their own attributes; `rayCast()` takes the brick function as a template parameter so that OptiX calls
-are direct. The OptiX renderer keeps the materials in a device table; the SBT holds, per scene
-instance (volumes first, then mesh instances), one hit group record per ray type (radiance, shadow)
-whose program group is chosen by the instance's intersection mode, so the instance's `sbtOffset` is
-`2 * instanceIndex`.
+The OptiX programs (`kernels/optix/OptixPrograms.slang`) run on nvrhi's ray tracing interfaces
+(`rt::IPipeline`, `rt::IShaderTable`, `rt::IAccelStruct` of the CUDA device). They read everything
+from a `[[vk::push_constant]]` launch parameter block (the TLAS, the tables of volumes, materials and
+TLAS instances, camera, output); a hit finds its scene instance by `InstanceID()`, so the shader
+records only select the hit groups: two per instance (radiance, shadow), a volume's by its
+intersection mode, so the instance's hit group offset is `2 * instanceIndex`. The volume intersection
+programs run the raycaster's `rayCast()`, generic over the brick function.
+
+Interop with the graphics device goes through `nvrhi::IInteropDevice` (queried from the CUDA
+device): `ScreenPresenter` imports its textures (`importTexture`) and orders the queues with
+`computeQueueWaitForGraphicsQueue` / `graphicsQueueWaitForComputeQueue` around each frame's CUDA
+work; `sph_fluid_pool` imports its vertex buffers (`importBuffer`). D3D12 and Vulkan only: the
+samples refuse `-d3d11`.
 
 ## Conventions for code in this tree
 
@@ -101,35 +111,40 @@ whose program group is chosen by the instance's intersection mode, so the instan
   No `std::shared_ptr`, no `new` for these objects.
 - Interfaces: `NVRHI_IID(IName, "uuid")` before the struct, `NVRHI_DECLARE_UUID_TRAITS(IName)` inside,
   factory functions return `nvrhi::FRESULT` and an out pointer (`FS_OK`, `FE_*`).
-- Errors from gp calls: check with `NVRHI_FAILED()`; the samples use `UT_V_GP(expr)`
+- Errors: check `nvrhi::FRESULT` with `NVRHI_FAILED()`; the samples use `UT_CHECK(expr)`
   (`sample-utils/SampleTypes.h`) which logs and asserts.
 - Math: Donut's `dm::` types (`float3`, `int3`, `affine3`, `float4x4`, `box3`). Row-vector convention:
   `p' = p * M`, `affine3::transformPoint()`. Angles in degrees where the reference used degrees.
+- Structs shared with Slang code have host mirrors with `static_assert`s on their layout (CUDA layouts:
+  `float3` is 12 bytes aligned to 4); structs used in arrays carry the padding of the reference's
+  `__align__(16)` explicitly.
+- Slang loops: read loop invariants behind pointers (bounds, texture handles, scales) into locals before
+  the loop, keep reads out of `&&` loop conditions, and do a lookup once rather than test it and then
+  repeat it. In the CUDA that Slang emits, such reads stay inside the loop; the raycaster ran up to 48%
+  slower until `GVDBRaycast.slangh` did this. Details: `ethereal-nvrhi/doc/cuda-slang-performance.md`.
 - File names: PascalCase in `gvdb/` and `sample-utils/`; directories kebab-case
   (`docs/conventions/naming.md`). Macros `UPPER_SNAKE_CASE`.
-- Logging: `donut::log::info/warning/error` (console samples also print to stdout).
-- Runtime layout: executables in `build/bin`, PTX in `build/bin/ptx` (file systems mount it as
-  `ptx`), shaders in `build/bin/shaders/<target>/<dxil|dxbc|spirv>`; assets are read in place from
+- Logging: `donut::log::info/warning/error` (console samples also print to stdout). Donut's error log
+  breaks into the debugger: expected refusals are warnings.
+- Runtime layout: executables in `build/bin`, shader containers in `build/bin/shaders/gvdb`, HLSL
+  shaders in `build/bin/shaders/<target>/<dxil|spirv>`; assets are read in place from
   `GVDB_SAMPLES_ASSETS_DIR` (compile definition).
-- Building: from the repository root, `.\build.ps1 -CMakeArgs '-DETHEREAL_BUILD_GVDB=ON','-DETHEREAL_WITH_OPTIX=ON'`
-  (needs the CUDA toolkit; `build.ps1` sets up the Visual Studio environment). Single targets:
-  `.\build.ps1 -Target <name>`. The Thrust helpers (`GPDeviceCUDAUtils.cu`) are compiled by nvcc
-  without any nvrhi header (nvcc's host pass rejects the `NVRHI_IID` constexpr GUIDs); the gp-facing
-  wrappers are in `GPDeviceCUDAUtils.cpp`.
+- Building: from the repository root,
+  `.\build.ps1 -CMakeArgs '-DETHEREAL_WITH_CUDA=ON','-DETHEREAL_BUILD_GVDB=ON'` (needs the CUDA 12
+  headers; OptiX with `NVRHI_WITH_OPTIX`, default ON, from the OptiX SDK 9.0 headers; `build.ps1` sets
+  up the Visual Studio environment). Single targets: `.\build.ps1 -Target <name>`. The OptiX samples
+  are skipped without OptiX.
 - `IGVDBVolume::updateAtlas()` assigns atlas slots but does not initialise their voxels (the reference
   pre-filled a fixed atlas with `FillChannel`). Samples that accumulate into new bricks (point-fusion)
   fill them first (`IGVDBVoxelOps::fillChannel` after a full rebuild, or `copyAtlasBlock` per new brick).
-- Interop textures take `SampleUtils::interopSharedFlags(device)`: D3D11 needs the NT handle + keyed
-  mutex flags, D3D12 and Vulkan exactly `Shared` (nvrhi's Vulkan backend exports memory only then);
-  the Vulkan device is created with `VK_KHR_external_memory_win32` / `VK_KHR_external_semaphore_win32`.
-- Host read-backs: `IDevice::waitForQueue()` waits for the last `commitQueue()` sync point, so use
-  `SampleUtils::syncQueue(device, queue)` (commit + wait) before mapping a staging buffer.
+- Interop resources take `SampleUtils::interopSharedFlags()` (`SharedResourceFlags::Shared`).
+- Host read-backs: `IComputeContext::readBuffer()` (it finishes the context), or
+  `SampleUtils::syncCompute(context)` before reading results some other way.
 - Unattended runs: every GUI sample accepts `--screenshot <file.png> [--frames N]` (handled by
   `GVDBApp`: after N presented frames the back buffer is saved without the ImGui overlay and the
   window closes); `interactive-optix` also takes `--samples N` for the progressive accumulation.
   The console samples (`render-to-file`, `render-kernel`) write their PNG next to the executable.
-  `--debug` enables the graphics debug runtime and nvrhi validation; `-d3d11`, `-d3d12`, `-vk`
-  select the API.
+  `--debug` enables the graphics debug runtime and nvrhi validation; `-d3d12`, `-vk` select the API.
 
 ## Samples
 
@@ -143,27 +158,33 @@ whose program group is chosen by the instance's intersection mode, so the instan
 | `spray-deposit` | gSprayDeposit | ray bundles deposit material (points to voxels), smoothing |
 | `point-cloud` | gPointCloud | point time series to level set, OptiX rendering, scene files |
 | `point-fusion` | gPointFusion | simulated depth scans fused incrementally (accumulateTopology) |
-| `fluid-surface` | gFluidSurface | SPH fluid (CUDA) surfaced through GVDB, OptiX rendering |
+| `fluid-surface` | gFluidSurface | SPH fluid (Slang kernels) surfaced through GVDB, OptiX rendering |
 | `interactive-optix` | gInteractiveOptix | volume + polygons path traced with OptiX |
 
 Not ported: gInteractiveGL (OpenGL), gJetsonTX (Jetson), gNanoVDB (NanoVDB), gImportVDB (needs the
 OpenVDB library; `bunny.vdb` cannot be read without it).
 
+Defects of the earlier CUDA C++ port fixed by the Slang port: the raycaster's hierarchical DDA read a
+node's child list for the cell on the node's far face (`p == res`), past the list (another node's
+children, or past the end of the pool; it crashed fluid-surface after a few dozen frames); and colour
+channels were read with `tex3D<uchar4>` through texture objects created for linear filtering, which
+returned float bit patterns instead of the colours (fluid-surface shows its particle colours now).
+
 ## SPH fluid pool
 
 `sph_fluid_pool/` is a port of the SPH simulator fluids5.0 (Rama Hoetzlein, reference checkout
 `D:\ps\repo\fluid-dev\fluids3\fluids5.0`), migrated with the same strategy as the GVDB samples. It
-does not use GVDB; it uses gp, the sample framework (`GVDBApp`) and the scene graph. Target and
-executable: `sph_fluid_pool`.
+does not use GVDB; it uses the compute layer, the sample framework (`GVDBApp`) and the scene graph.
+Target and executable: `sph_fluid_pool`.
 
 | Reference | Port |
 |---|---|
 | class `Particles` (buffers, grid, parameters) | `sph::ISPHParticles` (data), `SPHFluid.h` / `SPHParticles.cpp` |
 | `Particles::Run` and its stages | `sph::ISPHSolver` (operations), `SPHSolver.cpp` |
-| `fluid.h`, device half of `datax.h` | `SPHFluidParams.h`, shared by host and kernels |
-| `particles.cu` | `kernels/SPHFluidKernels.cu` (same kernels and physics) |
-| CUDA driver API calls | gp (`IModule` / `IKernel`, constant uploads, buffer copies) |
-| CUDA / OpenGL interop VBOs | nvrhi vertex buffers imported into gp (`SPHParticlesDesc::interop`) |
+| `fluid.h`, device half of `datax.h` | `SPHFluidParams.h` (the kernel arguments; the kernels declare the same layouts) |
+| `particles.cu` | `kernels/SPHFluidKernels.slang` (same kernels and physics; the parameter block and the buffer tables are kernel arguments instead of `__constant__` data) |
+| CUDA driver API calls | the compute context (`gvdb::IComputeContext`, `gvdb::launchKernel`) |
+| CUDA / OpenGL interop VBOs | vertex buffers of the graphics device imported into the CUDA device (`SPHParticlesDesc::interop`, `IInteropDevice::importBuffer`) |
 | `Particles::Draw`, point shader of nv_gui | `sph::SPHPointRenderer`, `shaders/Points.hlsl` |
 | the application's single fluid | `sph::SPHFluidInstance`, a scene-graph leaf (`SPHFluidScene.h`) |
 | `Camera3D`, nv_gui text, keys | camera leaf + orbit controller, ImGui Inspector, same keys |
@@ -172,13 +193,12 @@ The default scene is the reference's wave pool (example 2, "large beach front": 
 domain with a sloped floor and a wave-making wall) with 4,000,000 particles. Options:
 `--particles N`, `--example 0..3`, `--paused`, `--check N` (reads the particles back after step N
 and logs a sanity report), plus the framework's `--screenshot <png> [--frames N]`, `--debug` and
-`-d3d11` / `-d3d12` / `-vk`. Keys: Space pauses, R resets; right drag (or Alt + left drag) orbits,
+`-d3d12` / `-vk`. Keys: Space pauses, R resets; right drag (or Alt + left drag) orbits,
 middle drag pans, the wheel zooms.
 
 Notes:
-- On D3D12 and Vulkan the position, colour and velocity buffers are shared between the simulation
-  and the rasterizer without a copy. D3D11 cannot create shareable vertex buffers through nvrhi,
-  so there the three buffers are copied through the host every frame (`areRenderBuffersShared()`).
+- The position, colour and velocity buffers are shared between the simulation and the rasterizer
+  without a copy; `GVDBApp`'s frame orders the CUDA and graphics queues around them.
 - The camera uses the reference's nominal setting literally: an 80 degree horizontal field of view
   at the window's aspect ratio. The reference executable shows a narrower view (45.5 degrees
   horizontally, 34.9 vertically, stretched) because its projection halves the angle and keeps a

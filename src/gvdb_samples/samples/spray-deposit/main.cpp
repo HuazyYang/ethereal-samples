@@ -26,7 +26,7 @@ class SprayApp : public GVDBApp {
         if (!m_mesh) return false;
         auto meshInstance = MAKE_RC_OBJ_PTR(engine::MeshInstance, m_mesh);
         getSceneGraph()->AttachLeafNode(getSceneGraph()->GetRootNode(), meshInstance)->SetName("metal");
-        m_meshGP = uploadMeshGP(getGPDevice(), getGPQueue(), m_mesh);
+        m_meshCuda = uploadMeshCuda(getCompute(), m_mesh);
 
         m_volume = createVolume();
         if (!m_volume) return false;
@@ -50,13 +50,13 @@ class SprayApp : public GVDBApp {
         attrs.threshold = {0.3f, 0.f, 1.f};
         attrs.cutoff = {0.005f, 0.01f, 0.f};
         attrs.epsilon = 0.01f;
-        attrs.transferFunction = MAKE_RC_OBJ_PTR(gvdb::VolumeTransferFunction, getGPDevice());
+        attrs.transferFunction = MAKE_RC_OBJ_PTR(gvdb::VolumeTransferFunction, getCompute());
         attrs.transferFunction->setLinear(0.0f, 0.2f, {0, 0, 0, 0}, {1, 1, 1, 0.1f});
         attrs.transferFunction->setLinear(0.2f, 0.3f, {1, 1, 1, 0.05f}, {1, 1, 1, 0.05f});
         attrs.transferFunction->setLinear(0.3f, 1.0f, {1, 1, 1, 0.05f}, {0, 0, 0, 0});
-        attrs.transferFunction->commit(getGPQueue());
+        attrs.transferFunction->commit();
 
-        m_renderer = std::make_unique<VolRenderer>(getGPDevice(), getGPQueue(), getVFS());
+        m_renderer = std::make_unique<VolRenderer>(getCompute());
         m_renderer->getViewParams().backgroundColor = {0.1f, 0.2f, 0.4f, 1.f};
 
         getCameraOrbit().setOrbit({45.f, 40.f, 0.f}, {200.f, 200.f, 200.f}, 1000.f);
@@ -64,18 +64,18 @@ class SprayApp : public GVDBApp {
 
         // Ray bundle: host copy + device buffer (+ staging buffer for drawing).
         m_rays.resize(m_numRays);
-        gp::BufferDesc desc;
+        nvrhi::BufferDesc desc;
         desc.byteSize = m_numRays * sizeof(ScnRay);
-        UT_V_GP(getGPDevice()->createBuffer(desc, &m_raysGP));
-        desc.isStaging = true;
-        UT_V_GP(getGPDevice()->createBuffer(desc, &m_raysStaging));
+        UT_CHECK(getCudaDevice()->createBuffer(desc, &m_raysGP));
+        desc.cpuAccess = nvrhi::CpuAccessMode::Read;
+        UT_CHECK(getCudaDevice()->createBuffer(desc, &m_raysStaging));
 
         // Part: 200 mm, placed at (200, 200, 200) in voxels.
         float partSize = 200.f;
         dm::affine3 modelToIndex = dm::scaling(dm::float3(partSize)) * dm::translation(dm::float3(200.f));
         log::info("Voxelizing.");
-        nvrhi::FRESULT fr = m_voxelizer->solidVoxelize(0, m_meshGP.positions, m_meshGP.numVertices, m_meshGP.indices,
-                                                       m_meshGP.numIndices, m_mesh->objectSpaceBounds, modelToIndex, 1.f, 1.f);
+        nvrhi::FRESULT fr = m_voxelizer->solidVoxelize(0, m_meshCuda.positions, m_meshCuda.numVertices, m_meshCuda.indices,
+                                                       m_meshCuda.numIndices, m_mesh->objectSpaceBounds, modelToIndex, 1.f, 1.f);
         if (NVRHI_FAILED(fr)) log::error("solidVoxelize failed (%d)", int(fr));
         m_ops->fillChannel(1, {0.7f, 0.7f, 0.7f, 1.f});
         m_ops->compute(gvdb::ComputeOp::Smooth, 0, 2, {4.f, 0.f, 0.f}, true, true);
@@ -96,7 +96,7 @@ class SprayApp : public GVDBApp {
             tf->setLinear(0.25f, 0.5f, {1, 1, 1, 0.8f}, {0, 0, 0, 0});
             tf->setLinear(0.5f, 1.0f, {0, 0, 0, 0}, {0, 0, 0, 0});
         }
-        tf->commit(getGPQueue());
+        tf->commit();
     }
 
     void simulate(const RenderView &view) {
@@ -140,7 +140,7 @@ class SprayApp : public GVDBApp {
             ray.clr = packColorA(clr.x, clr.y, clr.z, 0.2f);
             ray.pnode = ray.pndx = 0;
         }
-        UT_V_GP(getGPQueue()->writeBuffer(m_raysGP, m_rays.data(), m_numRays * sizeof(ScnRay), 0));
+        getCompute()->getCommandList()->writeBuffer(m_raysGP, m_rays.data(), m_numRays * sizeof(ScnRay), 0);
 
         m_renderer->raytrace(m_instance, m_raysGP, uint32_t(m_numRays), -0.0001f, view);
 
@@ -164,10 +164,10 @@ class SprayApp : public GVDBApp {
     }
 
     void drawRays() {
-        UT_V_GP(getGPQueue()->copyBufferRegion(m_raysStaging, 0, m_raysGP, 0, m_numRays * sizeof(ScnRay)));
-        syncQueue(getGPDevice(), getGPQueue());
+        getCompute()->getCommandList()->copyBuffer(m_raysStaging, 0, m_raysGP, 0, m_numRays * sizeof(ScnRay));
+        syncCompute(getCompute());
         void *data = nullptr;
-        UT_V_GP(getGPDevice()->mapBuffer(m_raysStaging, &data));
+        data = getCudaDevice()->mapBuffer(m_raysStaging, nvrhi::CpuAccessMode::Read);
         if (!data) return;
         const ScnRay *rays = static_cast<const ScnRay *>(data);
         dm::affine3 toWorld = m_instance->GetIndexToWorld();
@@ -178,7 +178,7 @@ class SprayApp : public GVDBApp {
                          float((ray.clr >> 16) & 255) / 255.f, float((ray.clr >> 24) & 255) / 255.f);
             getDebugDraw()->line(toWorld.transformPoint(ray.orig), toWorld.transformPoint(ray.hit), c);
         }
-        getGPDevice()->unmapBuffer(m_raysStaging);
+        getCudaDevice()->unmapBuffer(m_raysStaging);
     }
 
     void OnRender(uint32_t width, uint32_t height) override {
@@ -223,7 +223,7 @@ class SprayApp : public GVDBApp {
 
  private:
     nvrhi::AutoPtr<engine::MeshInfo> m_mesh;
-    MeshGPBuffers m_meshGP;
+    MeshCudaBuffers m_meshCuda;
     nvrhi::AutoPtr<gvdb::IGVDBVolume> m_volume;
     nvrhi::AutoPtr<gvdb::IGVDBVoxelizer> m_voxelizer;
     nvrhi::AutoPtr<gvdb::IGVDBVoxelOps> m_ops;
@@ -231,8 +231,8 @@ class SprayApp : public GVDBApp {
     nvrhi::AutoPtr<gvdb::GVDBVolumeInstance> m_instance;
     std::unique_ptr<VolRenderer> m_renderer;
     std::vector<ScnRay> m_rays;
-    nvrhi::AutoPtr<gp::IBuffer> m_raysGP;
-    nvrhi::AutoPtr<gp::IBuffer> m_raysStaging;
+    nvrhi::BufferHandle m_raysGP;
+    nvrhi::BufferHandle m_raysStaging;
     std::mt19937 m_rng{6572};
     int m_numRays = 1000;
     float m_time = 0.f;

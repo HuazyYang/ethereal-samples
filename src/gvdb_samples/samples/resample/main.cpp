@@ -30,10 +30,10 @@ class ResampleApp : public GVDBApp {
         m_dataRes = res;
 
         log::info("Transfer data to GPU.");
-        gp::BufferDesc desc;
+        nvrhi::BufferDesc desc;
         desc.byteSize = count * sizeof(float);
-        UT_V_GP(getGPDevice()->createBuffer(desc, &m_data));
-        UT_V_GP(getGPQueue()->writeBuffer(m_data, values.data(), desc.byteSize, 0));
+        UT_CHECK(getCudaDevice()->createBuffer(desc, &m_data));
+        getCompute()->getCommandList()->writeBuffer(m_data, values.data(), desc.byteSize, 0);
         return true;
     }
 
@@ -57,15 +57,15 @@ class ResampleApp : public GVDBApp {
         attrs.threshold = {0.05f, 0.f, 1.f};
         attrs.cutoff = {0.001f, 0.001f, 0.f};
         attrs.epsilon = 0.01f;   // larger than the default to avoid artifacts between bricks
-        attrs.transferFunction = MAKE_RC_OBJ_PTR(gvdb::VolumeTransferFunction, getGPDevice());
+        attrs.transferFunction = MAKE_RC_OBJ_PTR(gvdb::VolumeTransferFunction, getCompute());
         attrs.transferFunction->setLinear(0.00f, 0.15f, {0, 0, 0, 0}, {0, 0, 0, 0});
         attrs.transferFunction->setLinear(0.15f, 0.25f, {0, 0, 0, 0}, {0, 0, 1, 0.01f});            // skin, blue
         attrs.transferFunction->setLinear(0.25f, 0.50f, {0, 0, 1, 0.01f}, {1, 0, 0, 0.02f});        // bone, red
         attrs.transferFunction->setLinear(0.50f, 0.75f, {1, 0, 0, 0.02f}, {0.2f, 0.2f, 0.2f, 0.02f});
         attrs.transferFunction->setLinear(0.75f, 1.00f, {0.2f, 0.2f, 0.2f, 0.02f}, {0.1f, 0.1f, 0.1f, 0.1f});
-        attrs.transferFunction->commit(getGPQueue());
+        attrs.transferFunction->commit();
 
-        m_renderer = std::make_unique<VolRenderer>(getGPDevice(), getGPQueue(), getVFS());
+        m_renderer = std::make_unique<VolRenderer>(getCompute());
         m_renderer->getViewParams().backgroundColor = {0.1f, 0.2f, 0.4f, 1.f};
 
         getCamera()->zNear = 0.1f;
@@ -147,7 +147,7 @@ class ResampleApp : public GVDBApp {
     }
 
  private:
-    nvrhi::AutoPtr<gp::IBuffer> m_data;
+    nvrhi::BufferHandle m_data;
     dm::int3 m_dataRes = dm::int3::zero();
     dm::float3 m_volMax = dm::float3::zero();
     nvrhi::AutoPtr<gvdb::IGVDBVolume> m_volume;

@@ -1,22 +1,17 @@
 #ifndef SPH_FLUID_PARAMS_H
 #define SPH_FLUID_PARAMS_H
-// Layouts shared by the host code and the CUDA kernels (kernels/SPHFluidKernels.cu)
-// of the SPH fluid. Port of fluids5.0 src/fluid.h and the device half of
+// The kernel arguments of the SPH fluid (kernels/SPHFluidKernels.slang declares
+// the same layouts). Port of fluids5.0 src/fluid.h and the device half of
 // src/datax.h: buffer slots, the simulation parameter block and the table of
 // device pointers the kernels index.
 //
-// Host: dm:: vector types. Device (SPH_KERNEL defined by the .cu): CUDA
-// float3 / int3. Both are 12 bytes with 4-byte alignment, so the structs have
-// the same layout on both sides (checked by the static_asserts below).
-#ifdef SPH_KERNEL
-typedef float3 sph_f3;
-typedef int3 sph_i3;
-#else
+// dm:: vector types: 12 bytes with 4-byte alignment, as float3 / int3 in the
+// kernels (checked by the static_asserts below and by the size checks of
+// gvdb::launchKernel).
 #include <donut/core/math/math.h>
 #include <cstdint>
 typedef dm::float3 sph_f3;
 typedef dm::int3 sph_i3;
-#endif
 
 #define SPH_GRID_UNDEF 2147483647   // particle outside the acceleration grid (max int)
 #define SPH_SCAN_BLOCKSIZE 512      // threads per block of the prefix-sum kernels
@@ -44,16 +39,11 @@ typedef dm::int3 sph_i3;
 #define SPH_AAUXSCAN2 6
 #define SPH_GRID_BUFFERS 7
 
-// Table of device pointers, one per buffer slot (cuDataX of the reference).
-// Lives in a __constant__ of the kernel module; the solver uploads it.
+// Table of device pointers, one per buffer slot (cuDataX of the reference, which
+// kept it in __constant__ memory): a kernel argument, SPHParticleBuffers /
+// SPHGridBuffers in the kernels.
 struct SPHBufferTable {
-    unsigned long long buf[SPH_MAX_BUFFERS];
-#ifdef SPH_KERNEL
-    inline __device__ float *bufF(int n) { return (float *)buf[n]; }
-    inline __device__ float3 *bufF3(int n) { return (float3 *)buf[n]; }
-    inline __device__ int *bufI(int n) { return (int *)buf[n]; }
-    inline __device__ unsigned int *bufUI(int n) { return (unsigned int *)buf[n]; }
-#endif
+    uint64_t buf[SPH_MAX_BUFFERS];
 };
 
 // Simulation parameters (FParams_t of the reference; unused members removed,
@@ -88,7 +78,7 @@ struct SPHFluidParams {
     float grav_amt;
 };
 
-// 294 four-byte members, no padding. Evaluated by both the host compiler and nvcc.
+// 294 four-byte members, no padding.
 static_assert(sizeof(sph_f3) == 12 && sizeof(sph_i3) == 12, "SPH: vector types must be 12 bytes");
 static_assert(sizeof(SPHBufferTable) == 8 * SPH_MAX_BUFFERS, "SPH: buffer table layout");
 static_assert(sizeof(SPHFluidParams) == 1176, "SPH: parameter block layout differs between host and device");

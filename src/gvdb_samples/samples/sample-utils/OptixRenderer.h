@@ -1,19 +1,16 @@
 #ifndef SAMPLE_UTILS_OPTIXRENDERER_H
 #define SAMPLE_UTILS_OPTIXRENDERER_H
-// OptiX renderer for a GVDBSceneGraph (port of the reference OptixScene onto
-// the gp OptiX interfaces, GPDeviceOptiX.h). Volume instances become custom
-// AABB primitives whose intersection programs run the GVDB raycaster; mesh
-// instances become triangle geometry; everything is instanced in one IAS so
-// the node transforms of the scene graph apply directly. Device programs:
-// kernels/optix/OptixPrograms.cu ("ptx/OptixPrograms.ptx").
-#include <nvrhi/core/foundation.h>
-#include <nvrhi/core/autoptr.h>
-#include <donut/core/vfs/VFS.h>
+// OptiX renderer for a GVDBSceneGraph (port of the reference OptixScene onto the ray tracing interfaces of the
+// nvrhi CUDA device). Volume instances become custom AABB primitives whose intersection programs run the GVDB
+// raycaster; mesh instances become triangle geometry; everything is instanced in one IAS so the node transforms of
+// the scene graph apply directly. Device programs: kernels/optix/OptixPrograms.slang (GVDB_SHADERS_OPTIX).
+#include <nvrhi/nvrhi.h>
 #include <donut/core/math/math.h>
-#include <gvdb/GPDeviceOptiX.h>
+#include <gvdb/GVDBCompute.h>
 #include <gvdb/GVDBScene.h>
 #include <sample-utils/VolRenderer.h>
 #include <memory>
+#include <vector>
 
 namespace SampleUtils {
 
@@ -38,26 +35,25 @@ struct OptixMaterialParams {
     float refrBias = 0.f;
 };
 
-// How a volume instance is intersected ('S', 'D', 'L', 'E' of the reference).
-enum class OptixVolumeIsect : uint8_t { Surface, Deep, LevelSet, EmptySkip };
-
 class OptixRenderer {
  public:
-    // vfs must serve "ptx/OptixPrograms.ptx".
-    OptixRenderer(donut::gp::IDevice *cudaDevice, donut::gp::IRTDevice *rtDevice, donut::gp::IDeviceQueue *queue,
-                  donut::vfs::IFileSystem *vfs);
+    // Records into the context's command list. The context's device must have OptiX (isOptixAvailable()) and its
+    // file system must serve GVDB_SHADERS_OPTIX; isValid() is false otherwise.
+    explicit OptixRenderer(gvdb::IComputeContext *context);
     ~OptixRenderer();
+
+    bool isValid() const;
 
     // Output: RGBA8 (width*height*4) for presentation plus an internal float
     // accumulation buffer for progressive sampling.
     void resizeOutput(uint32_t width, uint32_t height);
-    donut::gp::IBuffer *getOutputBuffer() const;
+    nvrhi::IBuffer *getOutputBuffer() const;
     uint32_t getWidth() const;
     uint32_t getHeight() const;
-    // Reads the RGBA8 output back to the host.
+    // Reads the RGBA8 output back to the host (finishes the context).
     void readOutput(std::vector<uint8_t> &rgba8);
 
-    // Materials, referenced by VolumeRenderAttributes::materialId and by addMesh / mesh instances.
+    // Materials, referenced by VolumeRenderAttributes::materialId and by setMeshMaterial.
     int addMaterial(const OptixMaterialParams &params);
     void setMaterialParams(int id, const OptixMaterialParams &params);
     int getNumMaterials() const;
@@ -68,21 +64,20 @@ class OptixRenderer {
     VolumeViewParams &getViewParams();
     void setViewParams(const VolumeViewParams &params);
 
-    // Builds the acceleration structures, SBT and per-instance tables from the
-    // scene graph: one AABB primitive per volume instance (bounds from the
-    // volume, isect from the shading of its attributes: LevelSet / Volume /
-    // EmptySkip / else Surface) and one triangle GAS per mesh (MeshInfo CPU
-    // buffers), instanced per MeshInstance with the material from
-    // getMeshMaterial(). Call again after instances were added / removed.
+    // Builds the acceleration structures, shader table and per-instance tables from the scene graph: one AABB
+    // primitive per volume instance (bounds from the volume, intersection from the shading of its attributes:
+    // LevelSet / Volume / EmptySkip / else Surface) and one triangle BLAS per mesh (MeshInfo CPU buffers),
+    // instanced per MeshInstance with the material of setMeshMaterial(). Call again after instances were added or
+    // removed.
     void buildScene(gvdb::GVDBSceneGraph *scene);
-    // Material used for mesh instances (default 0); per-instance override by name.
+    // Material used for mesh instances (default 0); per-instance override.
     void setMeshMaterial(int materialId);
     void setMeshMaterial(const donut::engine::MeshInstance *instance, int materialId);
-    // After a volume's topology or data changed (re-prepares VDBInfo, refits the AABBs).
+    // After a volume's topology or data changed (re-prepares VDBInfo, rebuilds the AABBs).
     void updateVolumes(gvdb::GVDBSceneGraph *scene);
     // After node transforms changed (rebuilds the IAS).
     void updateTransforms(gvdb::GVDBSceneGraph *scene);
-    // After mesh vertex data changed (rebuilds the mesh GAS).
+    // After mesh vertex data changed (rebuilds the mesh BLAS).
     void updateMeshes(gvdb::GVDBSceneGraph *scene);
 
     // Progressive sampling: sample 0 restarts the accumulation.
@@ -91,8 +86,6 @@ class OptixRenderer {
     // attributes (overrideShading != Off applies to every volume).
     void render(gvdb::GVDBSceneGraph *scene, const RenderView &view,
                 gvdb::VolumeShading overrideShading = gvdb::VolumeShading::Off);
-
-    donut::gp::IDeviceQueue *getQueue() const;
 
  private:
     struct Impl;

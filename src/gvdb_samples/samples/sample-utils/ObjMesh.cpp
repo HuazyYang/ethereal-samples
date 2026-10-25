@@ -92,9 +92,9 @@ std::vector<dm::float3> decodeNormals(const engine::BufferGroup *buffers, size_t
 }
 }  // namespace
 
-MeshGPBuffers uploadMeshGP(gp::IDevice *device, gp::IDeviceQueue *queue, const engine::MeshInfo *mesh) {
-    MeshGPBuffers out;
-    if (!device || !queue || !mesh || !mesh->buffers) return out;
+MeshCudaBuffers uploadMeshCuda(gvdb::IComputeContext *context, const engine::MeshInfo *mesh) {
+    MeshCudaBuffers out;
+    if (!context || !mesh || !mesh->buffers) return out;
     const engine::BufferGroup *buffers = mesh->buffers;
     const size_t numVertices = mesh->totalVertices;
     const size_t numIndices = mesh->totalIndices;
@@ -104,15 +104,20 @@ MeshGPBuffers uploadMeshGP(gp::IDevice *device, gp::IDeviceQueue *queue, const e
     const uint32_t *indices = buffers->indexData.data() + mesh->indexOffset;
     std::vector<dm::float3> normals = decodeNormals(buffers, numVertices);
 
-    gp::BufferDesc desc;
-    desc.byteSize = numVertices * sizeof(dm::float3);
-    UT_V_GP(device->createBuffer(desc, &out.positions));
-    UT_V_GP(queue->writeBuffer(out.positions, positions, desc.byteSize, 0));
-    UT_V_GP(device->createBuffer(desc, &out.normals));
-    UT_V_GP(queue->writeBuffer(out.normals, normals.data(), desc.byteSize, 0));
-    desc.byteSize = numIndices * sizeof(uint32_t);
-    UT_V_GP(device->createBuffer(desc, &out.indices));
-    UT_V_GP(queue->writeBuffer(out.indices, indices, desc.byteSize, 0));
+    nvrhi::IDevice *device = context->getDevice();
+    nvrhi::ICommandList *commandList = context->getCommandList();
+    auto upload = [&](const void *data, size_t bytes, const char *name) {
+        nvrhi::BufferDesc desc;
+        desc.byteSize = bytes;
+        desc.debugName = name;
+        nvrhi::BufferHandle handle;
+        UT_CHECK(device->createBuffer(desc, &handle));
+        if (handle) commandList->writeBuffer(handle, data, bytes, 0);
+        return handle;
+    };
+    out.positions = upload(positions, numVertices * sizeof(dm::float3), "mesh positions (CUDA)");
+    out.normals = upload(normals.data(), numVertices * sizeof(dm::float3), "mesh normals (CUDA)");
+    out.indices = upload(indices, numIndices * sizeof(uint32_t), "mesh indices (CUDA)");
     out.numVertices = uint32_t(numVertices);
     out.numIndices = uint32_t(numIndices);
     return out;

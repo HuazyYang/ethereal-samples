@@ -1,33 +1,33 @@
-// OptiX renderer for a GVDBSceneGraph (OptixRenderer.h). Port of the reference
-// OptixScene (optix_scene.cpp) onto the gp OptiX interfaces.
+// OptiX renderer for a GVDBSceneGraph (OptixRenderer.h). Port of the reference OptixScene (optix_scene.cpp) onto
+// the ray tracing interfaces of the nvrhi CUDA device.
 //
 // Scene organisation
-//   * one custom-primitive GAS (a single AABB = the voxel bounds in index
-//     space) per volume instance, built with allowUpdate so updateVolumes()
-//     can refit it;
-//   * one triangle GAS per distinct MeshInfo, from the CPU buffers of the
-//     mesh (positions, decoded normals, indices) uploaded to gp buffers;
-//   * one IAS holding one instance per volume instance and per mesh instance,
-//     with the node's local-to-world transform (index -> world for volumes),
-//     rebuilt by updateTransforms().
+//   * one custom-primitive BLAS (a single AABB = the voxel bounds in index space) per volume instance, rebuilt by
+//     updateVolumes();
+//   * one triangle BLAS per distinct MeshInfo, from the CPU buffers of the mesh (positions, decoded normals,
+//     indices) uploaded to device buffers;
+//   * one TLAS holding one instance per volume instance and per mesh instance, with the node's local-to-world
+//     transform (index -> world for volumes), rebuilt by updateTransforms().
 //
-// Materials and SBT
-//   Materials live in a device table (params.materials); every hit group
-//   record carries an OptixHitRecordData with the material id (and, for
-//   volumes, the index into the per-instance table params.volumes; for
-//   meshes, the vertex / index pointers). Hit group records are laid out per
-//   instance in IAS order, GVDB_RT_RAY_TYPE_COUNT (2: radiance, shadow)
-//   records each: the instance's sbtOffset is 2 * instanceIndex. The program
-//   group of a volume's records is chosen by its intersection mode (surface /
-//   deep / level set / empty skip), so a change of the shading override
-//   repacks the SBT; changes of material parameters only re-upload the table.
+// Launch parameters, tables and shader table
+//   The programs read everything from the launch parameters (a push-constant block): the TLAS, the device tables
+//   of the volumes, the materials and the TLAS instances (OptixInstanceData: kind, volume, material, mesh
+//   buffers; a hit finds its entry by InstanceID()). The shader records carry no data, so the shader table only
+//   picks the hit groups: GVDB_RT_RAY_TYPE_COUNT (2: radiance, shadow) per instance in TLAS order (the instance's
+//   hit group offset is 2 * instance index), a volume's by its intersection mode (surface / deep / level set /
+//   empty skip). render() refills the tables and the hit groups, so shading and material changes apply at once.
+//
+//   The TLAS handle in the launch parameters is the one of its last build, which the CUDA device knows once the
+//   build is submitted: render() flushes the context after a TLAS build before it reads the handle.
 #include "OptixRenderer.h"
 #include "SampleTypes.h"
-#include <sample-utils/kernels/optix/OptixLaunchParams.h>
+#include <sample-utils/kernels/optix/OptixConstants.h>
 #include <donut/core/log.h>
+#include <donut/core/vfs/VFS.h>
 #include <donut/engine/SceneTypes.h>
 #include <nvrhi/core/datablob.h>
 #include <algorithm>
+#include <cstddef>
 #include <cstdlib>
 #include <cstring>
 #include <map>
@@ -36,49 +36,106 @@
 namespace SampleUtils {
 
 using namespace donut;
-using namespace donut::gp;
 using namespace donut::engine;
 
 namespace {
 
 constexpr uint32_t c_NumRayTypes = GVDB_RT_RAY_TYPE_COUNT;
-constexpr uint32_t c_SeedsDim = GVDB_RT_SEEDS_DIM;
-constexpr uint32_t c_NumSeeds = c_SeedsDim * c_SeedsDim;
+constexpr uint32_t c_NumSeeds = GVDB_RT_SEEDS_DIM * GVDB_RT_SEEDS_DIM;
+constexpr nvrhi::rt::AccelStructBuildFlags c_BuildFlags = nvrhi::rt::AccelStructBuildFlags::PreferFastTrace;
 
-inline gvdb_lp::float3 lp3(const dm::float3 &v) {
-    gvdb_lp::float3 r;
-    r.x = v.x;
-    r.y = v.y;
-    r.z = v.z;
-    return r;
-}
+// ---- host mirrors of the structs of OptixPrograms.slang (CUDA layouts) ----
 
-inline gvdb_lp::float4 lp4(const dm::float4 &v) {
-    gvdb_lp::float4 r;
-    r.x = v.x;
-    r.y = v.y;
-    r.z = v.z;
-    r.w = v.w;
-    return r;
-}
+struct OptixVolumeInstance {
+    uint64_t gvdb;        // VDBInfo*
+    uint64_t transfer;    // float4*
+    dm::float3 thresh;
+    int32_t channel;
+    dm::float3 steps;
+    int32_t colorChannel;
+    dm::float3 extinct;
+    float epsilon;
+    dm::float3 cutoff;
+    int32_t pad;
+};
+static_assert(sizeof(OptixVolumeInstance) == 80 && offsetof(OptixVolumeInstance, cutoff) == 64,
+              "OptixVolumeInstance differs from OptixPrograms.slang");
 
-// Donut affine (row vectors, p' = p * M) -> OptiX row-major 3x4 (column vectors).
-void affineToOptix(const dm::affine3 &m, float out[12]) {
+struct OptixMaterial {
+    dm::float3 ambColor;
+    float lightWidth;
+    dm::float3 envColor;
+    float specPower;
+    dm::float3 diffColor;
+    float shadowWidth;
+    dm::float3 specColor;
+    float shadowBias;
+    dm::float3 reflColor;
+    float reflWidth;
+    dm::float3 refrColor;
+    float reflBias;
+    float refrWidth;
+    float refrIor;
+    float refrAmount;
+    float refrOffset;
+    float refrBias;
+    float pad[3];
+};
+static_assert(sizeof(OptixMaterial) == 128, "OptixMaterial differs from OptixPrograms.slang");
+
+struct OptixInstanceData {
+    uint32_t kind;
+    uint32_t volumeIndex;
+    int32_t materialId;
+    uint32_t numTriangles;
+    uint64_t positions;   // float3*
+    uint64_t normals;     // float3* or 0
+    uint64_t indices;     // uint3*
+};
+static_assert(sizeof(OptixInstanceData) == 40, "OptixInstanceData differs from OptixPrograms.slang");
+
+struct OptixLaunchParams {
+    uint64_t scene;       // OptixTraversableHandle
+    uint64_t volumes;
+    uint64_t materials;
+    uint64_t instances;
+    uint64_t accum;
+    uint64_t output;
+    uint64_t seeds;
+    uint64_t envmap;
+    alignas(16) dm::float4 backclr;
+    dm::float3 eye;
+    uint32_t numMaterials;
+    dm::float3 rayTL;
+    uint32_t width;
+    dm::float3 rayU;
+    uint32_t height;
+    dm::float3 rayV;
+    uint32_t sample;
+    dm::float3 lightPos;
+    uint32_t envWidth;
+    uint32_t envHeight;
+    uint32_t pad[3];
+};
+static_assert(sizeof(OptixLaunchParams) == 176 && offsetof(OptixLaunchParams, backclr) == 64 &&
+                  offsetof(OptixLaunchParams, lightPos) == 144,
+              "OptixLaunchParams differs from OptixPrograms.slang");
+
+// Hit group export names: per intersection mode (GVDB_RT_ISECT_*) for volumes, radiance and shadow.
+const char *const c_VolumeRadianceGroups[GVDB_RT_ISECT_COUNT] = {"volumeSurface", "volumeDeep", "volumeLevelSet",
+                                                                   "volumeEmptySkip"};
+const char *const c_VolumeShadowGroups[GVDB_RT_ISECT_COUNT] = {"volumeSurfaceShadow", "volumeDeepShadow",
+                                                                 "volumeLevelSetShadow", "volumeEmptySkipShadow"};
+const char *const c_IntersectionPrograms[GVDB_RT_ISECT_COUNT] = {"intersectSurface", "intersectDeep",
+                                                                   "intersectLevelSet", "intersectEmptySkip"};
+
+// Donut affine (row vectors, p' = p * M) -> instance transform (row-major 3x4, column vectors).
+void affineToInstance(const dm::affine3 &m, float out[12]) {
     const float t[3] = {m.m_translation.x, m.m_translation.y, m.m_translation.z};
     for (int j = 0; j < 3; ++j) {
         for (int i = 0; i < 3; ++i) out[j * 4 + i] = m.m_linear.m_data[i * 3 + j];
         out[j * 4 + 3] = t[j];
     }
-}
-
-void identityToOptix(float out[12]) {
-    const float id[12] = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0};
-    memcpy(out, id, sizeof(id));
-}
-
-void setIdentity(float m[16]) {
-    memset(m, 0, sizeof(float) * 16);
-    m[0] = m[5] = m[10] = m[15] = 1.f;
 }
 
 // Donut packs vertex normals as 8-bit snorm (vectorToSnorm8).
@@ -92,17 +149,17 @@ dm::float3 decodeSnorm8(uint32_t v) {
 
 OptixMaterial toDevice(const OptixMaterialParams &p) {
     OptixMaterial m = {};
-    m.ambColor = lp3(p.ambColor);
+    m.ambColor = p.ambColor;
     m.lightWidth = p.lightWidth;
-    m.envColor = lp3(p.envColor);
+    m.envColor = p.envColor;
     m.specPower = p.specPower;
-    m.diffColor = lp3(p.diffColor);
+    m.diffColor = p.diffColor;
     m.shadowWidth = p.shadowWidth;
-    m.specColor = lp3(p.specColor);
+    m.specColor = p.specColor;
     m.shadowBias = p.shadowBias;
-    m.reflColor = lp3(p.reflColor);
+    m.reflColor = p.reflColor;
     m.reflWidth = p.reflWidth;
-    m.refrColor = lp3(p.refrColor);
+    m.refrColor = p.refrColor;
     m.reflBias = p.reflBias;
     m.refrWidth = p.refrWidth;
     m.refrIor = p.refrIor;
@@ -128,60 +185,46 @@ int shadingToIsect(gvdb::VolumeShading shading) {
 }  // namespace
 
 struct OptixRenderer::Impl {
-    // ---- devices ----
-    nvrhi::AutoPtr<IDevice> device;
-    nvrhi::AutoPtr<IRTDevice> rtDevice;
-    nvrhi::AutoPtr<IDeviceQueue> queue;
-    nvrhi::AutoPtr<vfs::IFileSystem> vfs;
+    nvrhi::AutoPtr<gvdb::IComputeContext> context;
+    nvrhi::cuda::IDevice *device = nullptr;   // the context's
 
     // ---- pipeline ----
-    RTPipelineCompileOptions compileOptions;
-    nvrhi::AutoPtr<IRTModule> module;
-    nvrhi::AutoPtr<IRTProgramGroup> pgRaygen;
-    nvrhi::AutoPtr<IRTProgramGroup> pgException;
-    nvrhi::AutoPtr<IRTProgramGroup> pgMissRadiance;
-    nvrhi::AutoPtr<IRTProgramGroup> pgMissShadow;
-    nvrhi::AutoPtr<IRTProgramGroup> pgVolumeRadiance[GVDB_RT_ISECT_COUNT];
-    nvrhi::AutoPtr<IRTProgramGroup> pgVolumeShadow[GVDB_RT_ISECT_COUNT];
-    nvrhi::AutoPtr<IRTProgramGroup> pgMeshRadiance;
-    nvrhi::AutoPtr<IRTProgramGroup> pgMeshShadow;
-    nvrhi::AutoPtr<IRTPipeline> pipeline;
+    nvrhi::ShaderLibraryHandle library;
+    nvrhi::rt::PipelineHandle pipeline;
+    nvrhi::rt::ShaderTableHandle shaderTable;
     bool pipelineOk = false;
 
     // ---- output ----
     uint32_t width = 0, height = 0;
-    nvrhi::AutoPtr<IBuffer> accumBuffer;    // float4
-    nvrhi::AutoPtr<IBuffer> outputBuffer;   // RGBA8
+    nvrhi::BufferHandle accumBuffer;    // float4
+    nvrhi::BufferHandle outputBuffer;   // RGBA8
 
     // ---- scene-wide ----
     VolumeViewParams viewParams;
     std::vector<OptixMaterialParams> materials;
-    nvrhi::AutoPtr<IBuffer> materialBuffer;
+    nvrhi::BufferHandle materialBuffer;
     bool materialsDirty = true;
-    nvrhi::AutoPtr<IBuffer> envmap;   // float4 texels (see OptixLaunchParams::envmap)
+    nvrhi::BufferHandle envmap;   // float4 texels, sampled bilinearly by the programs
     uint32_t envWidth = 0, envHeight = 0;
-    nvrhi::AutoPtr<IBuffer> seedBuffer;
-    nvrhi::AutoPtr<IBuffer> defaultTransfer;
-    nvrhi::AutoPtr<IBuffer> paramsBuffer;
+    nvrhi::BufferHandle seedBuffer;
+    nvrhi::AutoPtr<gvdb::VolumeTransferFunction> defaultTransfer;
     int meshMaterial = 0;
     std::map<const MeshInstance *, int> meshMaterialOverrides;
 
     // ---- scene ----
     struct VolumeEntry {
         nvrhi::AutoPtr<gvdb::GVDBVolumeInstance> instance;
-        nvrhi::AutoPtr<IBuffer> aabbBuffer;
-        nvrhi::AutoPtr<IRTAccelStruct> gas;
-        int isect = GVDB_RT_ISECT_SURFACE;   // intersection mode of the SBT records
-        int materialId = 0;                  // material of the SBT records
+        nvrhi::BufferHandle aabbBuffer;
+        nvrhi::rt::AccelStructHandle blas;
     };
     struct MeshEntry {
         nvrhi::AutoPtr<MeshInfo> mesh;
-        nvrhi::AutoPtr<IBuffer> positions;
-        nvrhi::AutoPtr<IBuffer> normals;
-        nvrhi::AutoPtr<IBuffer> indices;
+        nvrhi::BufferHandle positions;
+        nvrhi::BufferHandle normals;
+        nvrhi::BufferHandle indices;
         uint32_t numVertices = 0;
         uint32_t numTriangles = 0;
-        nvrhi::AutoPtr<IRTAccelStruct> gas;
+        nvrhi::rt::AccelStructHandle blas;
     };
     enum class InstanceKind { Volume, Mesh };
     struct InstanceEntry {
@@ -193,41 +236,48 @@ struct OptixRenderer::Impl {
     std::vector<MeshEntry> meshes;
     std::vector<InstanceEntry> instances;
     std::vector<OptixVolumeInstance> volumeTable;
-    nvrhi::AutoPtr<IBuffer> volumeTableBuffer;
-    nvrhi::AutoPtr<IRTAccelStruct> ias;
-    nvrhi::AutoPtr<IRTShaderBindingTable> sbt;
-    gvdb::VolumeShading builtOverride = gvdb::VolumeShading::Off;
-    bool sbtDirty = false;   // mesh materials changed
+    std::vector<OptixInstanceData> instanceTable;
+    nvrhi::BufferHandle volumeTableBuffer;
+    nvrhi::BufferHandle instanceTableBuffer;
+    nvrhi::rt::AccelStructHandle tlas;
+    uint64_t traversable = 0;
+    bool traversablePending = false;   // a TLAS build was recorded since the handle was read
 
-    // ---- helpers ----
-    nvrhi::AutoPtr<IBuffer> createBuffer(size_t bytes) {
-        nvrhi::AutoPtr<IBuffer> buffer;
-        BufferDesc desc;
-        desc.byteSize = std::max<size_t>(bytes, 1);
-        UT_V_GP(device->createBuffer(desc, &buffer));
+    nvrhi::ICommandList *commandList() { return context->getCommandList(); }
+
+    nvrhi::BufferHandle createBuffer(size_t bytes, const char *name, bool buildInput = false) {
+        nvrhi::BufferDesc desc;
+        desc.byteSize = std::max<size_t>(bytes, 4);
+        desc.debugName = name;
+        desc.isAccelStructBuildInput = buildInput;
+        nvrhi::BufferHandle buffer;
+        UT_CHECK(device->createBuffer(desc, &buffer));
         return buffer;
     }
 
-    nvrhi::AutoPtr<IRTProgramGroup> createProgramGroup(const RTProgramGroupDesc &desc) {
-        nvrhi::AutoPtr<IRTProgramGroup> group;
-        UT_V_GP(rtDevice->createProgramGroup(desc, &group));
-        return group;
+    // Before an object is dropped or replaced: the programs reach buffers through device addresses and the TLAS
+    // through its handle, so it lives until the recorded work is done.
+    void retire(nvrhi::IObject *object) { context->releaseAfterUse(object); }
+
+    // `buffer` when it holds at least `bytes`, else a new buffer (the old one retired).
+    nvrhi::BufferHandle grow(nvrhi::IBuffer *buffer, size_t bytes, const char *name) {
+        if (buffer && buffer->getDesc().byteSize >= bytes) return buffer;
+        retire(buffer);
+        return createBuffer(bytes, name);
     }
 
-    RTProgramEntry entry(const char *name) { return RTProgramEntry{module.Get(), name}; }
-
     bool createPipeline();
-    void createDefaults();
     void uploadMaterials();
-    void uploadVolumeTable();
     int effectiveIsect(const VolumeEntry &e, gvdb::VolumeShading overrideShading) const;
+    uint64_t transferOf(const gvdb::VolumeRenderAttributes &a);
+    void fillTables(gvdb::VolumeShading overrideShading);
     void writeVolumeAabb(VolumeEntry &e);
+    nvrhi::rt::GeometryDesc volumeGeometry(const VolumeEntry &e) const;
     bool uploadMesh(MeshEntry &e, bool recreate);
-    RTAccelStructDesc meshGasDesc(const MeshEntry &e, RTTrianglesInput &input) const;
-    void buildInstances(bool rebuildOnly);
-    void buildSBT(gvdb::VolumeShading overrideShading);
+    nvrhi::rt::GeometryDesc meshGeometry(const MeshEntry &e) const;
+    nvrhi::rt::AccelStructHandle buildBlas(const nvrhi::rt::GeometryDesc &geometry, const char *name);
+    void buildInstances();
     int meshMaterialOf(const MeshInstance *instance) const;
-    void fillVolumeTable(gvdb::VolumeShading overrideShading);
 };
 
 // ---------------------------------------------------------------------------
@@ -235,126 +285,76 @@ struct OptixRenderer::Impl {
 // ---------------------------------------------------------------------------
 
 bool OptixRenderer::Impl::createPipeline() {
-    // PTX of the programs
+    if (!device->isOptixAvailable()) {
+        log::error("OptixRenderer: the CUDA device has no OptiX");
+        return false;
+    }
     nvrhi::AutoPtr<nvrhi::IDataBlob> blob;
-    if (NVRHI_FAILED(vfs->readFile("ptx/OptixPrograms.ptx", &blob)) || !blob) {
-        log::error("OptixRenderer: cannot read ptx/OptixPrograms.ptx");
+    vfs::IFileSystem *fs = context->getFileSystem();
+    if (!fs || NVRHI_FAILED(fs->readFile(GVDB_SHADERS_OPTIX, &blob)) || !blob) {
+        log::error("OptixRenderer: cannot read %s", GVDB_SHADERS_OPTIX);
         return false;
     }
-    const size_t len = blob->GetSize();
-    blob->Resize(len + 1);
-    static_cast<char *>(blob->GetDataPtr())[len] = 0;
-
-    compileOptions = RTPipelineCompileOptions();
-    compileOptions.usesMotionBlur = false;
-    compileOptions.traversableGraphFlags = RT_TRAVERSABLE_GRAPH_SINGLE_LEVEL_INSTANCING;
-    compileOptions.numPayloadValues = GVDB_RT_NUM_PAYLOAD_VALUES;
-    compileOptions.numAttributeValues = GVDB_RT_NUM_ATTRIBUTES;
-    compileOptions.exceptionFlags = RT_EXCEPTION_NONE;
-    compileOptions.launchParamsVariableName = "params";
-    compileOptions.primitiveTypeFlags = RT_PRIMITIVE_TYPE_CUSTOM | RT_PRIMITIVE_TYPE_TRIANGLE;
-
-    RTModuleDesc moduleDesc;
-    moduleDesc.pipelineOptions = compileOptions;
-    moduleDesc.optLevel = RTCompileOptLevel::Default;
-    moduleDesc.debugLevel = RTCompileDebugLevel::Default;
-    if (NVRHI_FAILED(rtDevice->createModule(moduleDesc, blob->GetDataPtr(), len + 1, &module))) {
-        log::error("OptixRenderer: OptiX module creation failed");
+    if (NVRHI_FAILED(device->createShaderLibrary(blob->GetDataPtr(), blob->GetSize(), &library)) || !library) {
+        log::error("OptixRenderer: cannot load %s", GVDB_SHADERS_OPTIX);
         return false;
     }
 
-    // program groups
-    {
-        RTProgramGroupDesc d;
-        d.kind = RTProgramGroupKind::RayGen;
-        d.raygen = entry("__raygen__main");
-        pgRaygen = createProgramGroup(d);
-    }
-    {
-        RTProgramGroupDesc d;
-        d.kind = RTProgramGroupKind::Exception;
-        d.exception = entry("__exception__main");
-        pgException = createProgramGroup(d);
-    }
-    {
-        RTProgramGroupDesc d;
-        d.kind = RTProgramGroupKind::Miss;
-        d.miss = entry("__miss__radiance");
-        pgMissRadiance = createProgramGroup(d);
-        d.miss = entry("__miss__shadow");
-        pgMissShadow = createProgramGroup(d);
-    }
-    const char *isectNames[GVDB_RT_ISECT_COUNT] = {};
-    isectNames[GVDB_RT_ISECT_SURFACE] = "__intersection__volume_surface";
-    isectNames[GVDB_RT_ISECT_DEEP] = "__intersection__volume_deep";
-    isectNames[GVDB_RT_ISECT_LEVELSET] = "__intersection__volume_levelset";
-    isectNames[GVDB_RT_ISECT_EMPTYSKIP] = "__intersection__volume_emptyskip";
-    for (int i = 0; i < GVDB_RT_ISECT_COUNT; ++i) {
-        RTProgramGroupDesc d;
-        d.kind = RTProgramGroupKind::HitGroup;
-        d.hitgroup.intersection = entry(isectNames[i]);
-        d.hitgroup.closestHit = entry(i == GVDB_RT_ISECT_DEEP ? "__closesthit__deep" : "__closesthit__surface");
-        pgVolumeRadiance[i] = createProgramGroup(d);
-
-        RTProgramGroupDesc s;
-        s.kind = RTProgramGroupKind::HitGroup;
-        s.hitgroup.intersection = entry(isectNames[i]);
-        s.hitgroup.anyHit = entry("__anyhit__shadow");
-        pgVolumeShadow[i] = createProgramGroup(s);
-    }
-    {
-        RTProgramGroupDesc d;
-        d.kind = RTProgramGroupKind::HitGroup;
-        d.hitgroup.closestHit = entry("__closesthit__mesh");
-        pgMeshRadiance = createProgramGroup(d);
-
-        RTProgramGroupDesc s;
-        s.kind = RTProgramGroupKind::HitGroup;
-        s.hitgroup.anyHit = entry("__anyhit__shadow");
-        pgMeshShadow = createProgramGroup(s);
-    }
-
-    std::vector<IRTProgramGroup *> groups = {pgRaygen.Get(), pgException.Get(), pgMissRadiance.Get(),
-                                             pgMissShadow.Get(), pgMeshRadiance.Get(), pgMeshShadow.Get()};
-    for (int i = 0; i < GVDB_RT_ISECT_COUNT; ++i) {
-        groups.push_back(pgVolumeRadiance[i].Get());
-        groups.push_back(pgVolumeShadow[i].Get());
-    }
-    for (IRTProgramGroup *g : groups) {
-        if (!g) {
-            log::error("OptixRenderer: OptiX program group creation failed");
-            return false;
+    bool ok = true;
+    auto program = [&](const char *name, nvrhi::ShaderType type) {
+        nvrhi::ShaderHandle shader;
+        if (NVRHI_FAILED(library->getShader(name, type, &shader)) || !shader) {
+            log::error("OptixRenderer: %s has no program %s", GVDB_SHADERS_OPTIX, name);
+            ok = false;
         }
-    }
+        return shader;
+    };
+    nvrhi::ShaderHandle rayGeneration = program("rayGeneration", nvrhi::ShaderType::RayGeneration);
+    nvrhi::ShaderHandle missRadiance = program("missRadiance", nvrhi::ShaderType::Miss);
+    nvrhi::ShaderHandle missShadow = program("missShadow", nvrhi::ShaderType::Miss);
+    nvrhi::ShaderHandle surfaceHit = program("surfaceHit", nvrhi::ShaderType::ClosestHit);
+    nvrhi::ShaderHandle deepHit = program("deepHit", nvrhi::ShaderType::ClosestHit);
+    nvrhi::ShaderHandle meshHit = program("meshHit", nvrhi::ShaderType::ClosestHit);
+    nvrhi::ShaderHandle shadowHit = program("shadowHit", nvrhi::ShaderType::AnyHit);
+    nvrhi::ShaderHandle intersection[GVDB_RT_ISECT_COUNT];
+    for (int i = 0; i < GVDB_RT_ISECT_COUNT; ++i)
+        intersection[i] = program(c_IntersectionPrograms[i], nvrhi::ShaderType::Intersection);
+    if (!ok) return false;
 
-    RTPipelineDesc pipelineDesc;
-    pipelineDesc.compileOptions = compileOptions;
-    // primary -> deep (mesh ray) -> surface (reflection) -> deep (mesh ray) ->
-    // surface (refraction) -> deep (mesh ray) -> surface (shadow)
-    pipelineDesc.maxTraceDepth = 8;
-    pipelineDesc.maxTraversableGraphDepth = 2;   // IAS -> GAS
-    pipelineDesc.programGroups = groups.data();
-    pipelineDesc.numProgramGroups = (uint32_t)groups.size();
-    if (NVRHI_FAILED(rtDevice->createPipeline(pipelineDesc, &pipeline))) {
+    using namespace nvrhi::rt;
+    PipelineDesc desc;
+    desc.addShader(PipelineShaderDesc().setExportName("rayGeneration").setShader(rayGeneration))
+        .addShader(PipelineShaderDesc().setExportName("missRadiance").setShader(missRadiance))
+        .addShader(PipelineShaderDesc().setExportName("missShadow").setShader(missShadow));
+    for (int i = 0; i < GVDB_RT_ISECT_COUNT; ++i) {
+        desc.addHitGroup(PipelineHitGroupDesc()
+                             .setExportName(c_VolumeRadianceGroups[i])
+                             .setIntersectionShader(intersection[i])
+                             .setClosestHitShader(i == GVDB_RT_ISECT_DEEP ? deepHit : surfaceHit)
+                             .setIsProceduralPrimitive(true));
+        desc.addHitGroup(PipelineHitGroupDesc()
+                             .setExportName(c_VolumeShadowGroups[i])
+                             .setIntersectionShader(intersection[i])
+                             .setAnyHitShader(shadowHit)
+                             .setIsProceduralPrimitive(true));
+    }
+    desc.addHitGroup(PipelineHitGroupDesc().setExportName("mesh").setClosestHitShader(meshHit))
+        .addHitGroup(PipelineHitGroupDesc().setExportName("meshShadow").setAnyHitShader(shadowHit))
+        .setMaxPayloadSize(GVDB_RT_PAYLOAD_SIZE)
+        .setMaxAttributeSize(GVDB_RT_ATTRIBUTE_SIZE)
+        .setMaxRecursionDepth(GVDB_RT_MAX_TRACE_DEPTH);
+    if (NVRHI_FAILED(device->createRayTracingPipeline(desc, &pipeline)) || !pipeline) {
         log::error("OptixRenderer: OptiX pipeline creation failed");
         return false;
     }
-    return true;
-}
-
-void OptixRenderer::Impl::createDefaults() {
-    // random seeds
-    seedBuffer = createBuffer(c_NumSeeds * sizeof(uint32_t));
-    // launch parameters
-    paramsBuffer = createBuffer(sizeof(OptixLaunchParams));
-    // default transfer function: white, opacity ramp 0..1 over the value range
-    {
-        std::vector<dm::float4> tf(gvdb::TRANSFER_FUNC_SIZE);
-        for (int i = 0; i < gvdb::TRANSFER_FUNC_SIZE; ++i)
-            tf[i] = dm::float4(1.f, 1.f, 1.f, float(i) / float(gvdb::TRANSFER_FUNC_SIZE - 1));
-        defaultTransfer = createBuffer(tf.size() * sizeof(dm::float4));
-        UT_V_GP(queue->writeBuffer(defaultTransfer, tf.data(), tf.size() * sizeof(dm::float4), 0));
+    if (NVRHI_FAILED(pipeline->createShaderTable(ShaderTableDesc(), &shaderTable)) || !shaderTable) {
+        log::error("OptixRenderer: shader table creation failed");
+        return false;
     }
+    shaderTable->setRayGenerationShader("rayGeneration");
+    shaderTable->addMissShader("missRadiance");   // GVDB_RT_RAY_RADIANCE
+    shaderTable->addMissShader("missShadow");     // GVDB_RT_RAY_SHADOW
+    return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -369,8 +369,8 @@ void OptixRenderer::Impl::uploadMaterials() {
         for (const auto &m : materials) table.push_back(toDevice(m));
 
     const size_t bytes = table.size() * sizeof(OptixMaterial);
-    if (!materialBuffer || materialBuffer->getDesc()->byteSize < bytes) materialBuffer = createBuffer(bytes);
-    UT_V_GP(queue->writeBuffer(materialBuffer, table.data(), bytes, 0));
+    materialBuffer = grow(materialBuffer, bytes, "OptixRenderer materials");
+    commandList()->writeBuffer(materialBuffer, table.data(), bytes, 0);
     materialsDirty = false;
 }
 
@@ -380,40 +380,75 @@ int OptixRenderer::Impl::effectiveIsect(const VolumeEntry &e, gvdb::VolumeShadin
     return shadingToIsect(shading);
 }
 
-void OptixRenderer::Impl::fillVolumeTable(gvdb::VolumeShading overrideShading) {
-    volumeTable.resize(volumes.size());
-    for (size_t i = 0; i < volumes.size(); ++i) {
-        VolumeEntry &e = volumes[i];
-        const gvdb::VolumeRenderAttributes &a = e.instance->GetRenderAttributes();
-        gvdb::IGVDBVolume *vol = e.instance->GetVolume();
-        OptixVolumeInstance &v = volumeTable[i];
-        memset(&v, 0, sizeof(v));
-        IBuffer *info = vol->getVDBInfoGPU();
-        v.gvdb = info ? (unsigned long long)info->getNativeHandle() : 0;
-        IBuffer *tf = a.transferFunction ? a.transferFunction->getGPU() : nullptr;
-        v.transfer = (unsigned long long)((tf ? tf : defaultTransfer.Get())->getNativeHandle());
-        v.thresh = lp3(a.threshold);
-        v.channel = a.channel;
-        v.steps = lp3(a.steps);
-        v.colorChannel = a.colorChannel;
-        v.extinct = lp3(a.extinct);
-        v.shading = int(overrideShading != gvdb::VolumeShading::Off ? overrideShading : a.shading);
-        v.cutoff = lp3(a.cutoff);
-        e.isect = effectiveIsect(e, overrideShading);
-        v.isect = e.isect;
-        v.epsilon = a.epsilon;
-        v.materialId = a.materialId;
-        const dm::affine3 indexToWorld = e.instance->GetIndexToWorld();
-        affineToOptix(indexToWorld, v.indexToWorld);
-        affineToOptix(dm::inverse(indexToWorld), v.worldToIndex);
+uint64_t OptixRenderer::Impl::transferOf(const gvdb::VolumeRenderAttributes &a) {
+    gvdb::VolumeTransferFunction *tf = a.transferFunction.Get();
+    if (!tf) {
+        if (!defaultTransfer) {
+            // white, opacity ramp 0..1 over the value range
+            defaultTransfer = MAKE_RC_OBJ_PTR(gvdb::VolumeTransferFunction, context.Get());
+            defaultTransfer->setLinear(0.f, 1.f, dm::float4(1.f, 1.f, 1.f, 0.f), dm::float4(1.f, 1.f, 1.f, 1.f));
+            defaultTransfer->commit();
+        }
+        tf = defaultTransfer.Get();
     }
+    if (!tf->getGPU()) tf->commit();
+    return gvdb::deviceAddress(tf->getGPU());
 }
 
-void OptixRenderer::Impl::uploadVolumeTable() {
-    const size_t bytes = std::max<size_t>(1, volumeTable.size()) * sizeof(OptixVolumeInstance);
-    if (!volumeTableBuffer || volumeTableBuffer->getDesc()->byteSize < bytes) volumeTableBuffer = createBuffer(bytes);
+// The volume and instance tables of the programs and the hit groups of the shader table, from the current
+// attributes of the instances.
+void OptixRenderer::Impl::fillTables(gvdb::VolumeShading overrideShading) {
+    volumeTable.assign(volumes.size(), OptixVolumeInstance{});
+    for (size_t i = 0; i < volumes.size(); ++i) {
+        const gvdb::VolumeRenderAttributes &a = volumes[i].instance->GetRenderAttributes();
+        OptixVolumeInstance &v = volumeTable[i];
+        v.gvdb = gvdb::deviceAddress(volumes[i].instance->GetVolume()->getVDBInfoGPU());
+        v.transfer = transferOf(a);
+        v.thresh = a.threshold;
+        v.channel = a.channel;
+        v.steps = a.steps;
+        v.colorChannel = a.colorChannel;
+        v.extinct = a.extinct;
+        v.epsilon = a.epsilon;
+        v.cutoff = a.cutoff;
+    }
+
+    instanceTable.assign(instances.size(), OptixInstanceData{});
+    shaderTable->clearHitShaders();
+    for (size_t i = 0; i < instances.size(); ++i) {
+        const InstanceEntry &inst = instances[i];
+        OptixInstanceData &rec = instanceTable[i];
+        if (inst.kind == InstanceKind::Volume) {
+            const VolumeEntry &e = volumes[inst.index];
+            const int isect = effectiveIsect(e, overrideShading);
+            rec.kind = GVDB_RT_HIT_VOLUME;
+            rec.volumeIndex = uint32_t(inst.index);
+            rec.materialId = e.instance->GetRenderAttributes().materialId;
+            shaderTable->addHitGroup(c_VolumeRadianceGroups[isect]);   // GVDB_RT_RAY_RADIANCE
+            shaderTable->addHitGroup(c_VolumeShadowGroups[isect]);     // GVDB_RT_RAY_SHADOW
+        } else {
+            const MeshEntry &e = meshes[inst.index];
+            rec.kind = GVDB_RT_HIT_MESH;
+            rec.materialId = meshMaterialOf(inst.meshInstance.Get());
+            rec.numTriangles = e.numTriangles;
+            rec.positions = gvdb::deviceAddress(e.positions);
+            rec.normals = gvdb::deviceAddress(e.normals);
+            rec.indices = gvdb::deviceAddress(e.indices);
+            shaderTable->addHitGroup("mesh");
+            shaderTable->addHitGroup("meshShadow");
+        }
+    }
+
+    nvrhi::ICommandList *cmd = commandList();
+    volumeTableBuffer = grow(volumeTableBuffer, std::max<size_t>(1, volumeTable.size()) * sizeof(OptixVolumeInstance),
+                             "OptixRenderer volumes");
     if (!volumeTable.empty())
-        UT_V_GP(queue->writeBuffer(volumeTableBuffer, volumeTable.data(), volumeTable.size() * sizeof(OptixVolumeInstance), 0));
+        cmd->writeBuffer(volumeTableBuffer, volumeTable.data(), volumeTable.size() * sizeof(OptixVolumeInstance), 0);
+    instanceTableBuffer = grow(instanceTableBuffer, std::max<size_t>(1, instanceTable.size()) * sizeof(OptixInstanceData),
+                               "OptixRenderer instances");
+    if (!instanceTable.empty())
+        cmd->writeBuffer(instanceTableBuffer, instanceTable.data(), instanceTable.size() * sizeof(OptixInstanceData),
+                         0);
 }
 
 // ---------------------------------------------------------------------------
@@ -422,13 +457,22 @@ void OptixRenderer::Impl::uploadVolumeTable() {
 
 void OptixRenderer::Impl::writeVolumeAabb(VolumeEntry &e) {
     const dm::box3 bounds = e.instance->GetLocalBoundingBox();
-    float aabb[6] = {bounds.m_mins.x, bounds.m_mins.y, bounds.m_mins.z,
-                     bounds.m_maxs.x, bounds.m_maxs.y, bounds.m_maxs.z};
+    nvrhi::rt::GeometryAABB aabb = {bounds.m_mins.x, bounds.m_mins.y, bounds.m_mins.z,
+                                    bounds.m_maxs.x, bounds.m_maxs.y, bounds.m_maxs.z};
     // an empty volume gets a degenerate but valid box
-    for (int i = 0; i < 3; ++i)
-        if (!(aabb[i + 3] > aabb[i])) aabb[i + 3] = aabb[i] + 1e-3f;
-    if (!e.aabbBuffer) e.aabbBuffer = createBuffer(sizeof(aabb));
-    UT_V_GP(queue->writeBuffer(e.aabbBuffer, aabb, sizeof(aabb), 0));
+    if (!(aabb.maxX > aabb.minX)) aabb.maxX = aabb.minX + 1e-3f;
+    if (!(aabb.maxY > aabb.minY)) aabb.maxY = aabb.minY + 1e-3f;
+    if (!(aabb.maxZ > aabb.minZ)) aabb.maxZ = aabb.minZ + 1e-3f;
+    if (!e.aabbBuffer) e.aabbBuffer = createBuffer(sizeof(aabb), "OptixRenderer volume AABB", true);
+    commandList()->writeBuffer(e.aabbBuffer, &aabb, sizeof(aabb), 0);
+}
+
+nvrhi::rt::GeometryDesc OptixRenderer::Impl::volumeGeometry(const VolumeEntry &e) const {
+    nvrhi::rt::GeometryDesc geometry;
+    geometry.setAABBs(nvrhi::rt::GeometryAABBs().setBuffer(e.aabbBuffer).setCount(1).setStride(
+        sizeof(nvrhi::rt::GeometryAABB)));
+    geometry.flags = nvrhi::rt::GeometryFlags::None;   // the shadow rays run the any-hit program
+    return geometry;
 }
 
 bool OptixRenderer::Impl::uploadMesh(MeshEntry &e, bool recreate) {
@@ -444,44 +488,51 @@ bool OptixRenderer::Impl::uploadMesh(MeshEntry &e, bool recreate) {
 
     const uint32_t numTriangles = ni / 3;
     if (recreate || e.numVertices != nv || e.numTriangles != numTriangles) {
-        e.positions = createBuffer(size_t(nv) * sizeof(dm::float3));
+        for (nvrhi::IBuffer *old : {e.positions.Get(), e.normals.Get(), e.indices.Get()}) retire(old);
+        e.positions = createBuffer(size_t(nv) * sizeof(dm::float3), "OptixRenderer positions", true);
         e.normals = nullptr;
-        e.indices = createBuffer(size_t(numTriangles) * 3 * sizeof(uint32_t));
+        e.indices = createBuffer(size_t(numTriangles) * 3 * sizeof(uint32_t), "OptixRenderer indices", true);
         e.numVertices = nv;
         e.numTriangles = numTriangles;
     }
 
-    UT_V_GP(queue->writeBuffer(e.positions, b.positionData.data() + v0, size_t(nv) * sizeof(dm::float3), 0));
-    UT_V_GP(queue->writeBuffer(e.indices, b.indexData.data() + i0, size_t(numTriangles) * 3 * sizeof(uint32_t), 0));
+    nvrhi::ICommandList *cmd = commandList();
+    cmd->writeBuffer(e.positions, b.positionData.data() + v0, size_t(nv) * sizeof(dm::float3), 0);
+    cmd->writeBuffer(e.indices, b.indexData.data() + i0, size_t(numTriangles) * 3 * sizeof(uint32_t), 0);
     if (b.normalData.size() >= size_t(v0) + nv) {
         std::vector<dm::float3> normals(nv);
         for (uint32_t i = 0; i < nv; ++i) normals[i] = decodeSnorm8(b.normalData[v0 + i]);
-        if (!e.normals) e.normals = createBuffer(size_t(nv) * sizeof(dm::float3));
-        UT_V_GP(queue->writeBuffer(e.normals, normals.data(), normals.size() * sizeof(dm::float3), 0));
+        if (!e.normals) e.normals = createBuffer(size_t(nv) * sizeof(dm::float3), "OptixRenderer normals");
+        cmd->writeBuffer(e.normals, normals.data(), normals.size() * sizeof(dm::float3), 0);
     } else {
+        retire(e.normals);
         e.normals = nullptr;
     }
     return true;
 }
 
-RTAccelStructDesc OptixRenderer::Impl::meshGasDesc(const MeshEntry &e, RTTrianglesInput &input) const {
-    input = RTTrianglesInput();
-    input.vertexBuffer = e.positions.Get();
-    input.numVertices = e.numVertices;
-    input.vertexStride = sizeof(float) * 3;
-    input.indexBuffer = e.indices.Get();
-    input.numTriangles = e.numTriangles;
-    input.indexFormat = RTIndexFormat::UInt32x3;
-    input.geometryFlags = RT_GEOMETRY_FLAG_NONE;
-    input.numSbtRecords = 1;
-    RTAccelStructDesc desc;
-    desc.type = RTGeometryType::Triangles;
-    desc.triangles = &input;
-    desc.numTriangleInputs = 1;
-    desc.allowUpdate = false;
-    desc.allowCompaction = true;
-    desc.preferFastTrace = true;
-    return desc;
+nvrhi::rt::GeometryDesc OptixRenderer::Impl::meshGeometry(const MeshEntry &e) const {
+    nvrhi::rt::GeometryDesc geometry;
+    geometry.setTriangles(nvrhi::rt::GeometryTriangles()
+                              .setVertexBuffer(e.positions)
+                              .setVertexFormat(nvrhi::Format::RGB32_FLOAT)
+                              .setVertexCount(e.numVertices)
+                              .setVertexStride(sizeof(dm::float3))
+                              .setIndexBuffer(e.indices)
+                              .setIndexFormat(nvrhi::Format::R32_UINT)
+                              .setIndexCount(e.numTriangles * 3));
+    geometry.flags = nvrhi::rt::GeometryFlags::None;
+    return geometry;
+}
+
+// Creates a BLAS for the geometry and records its build.
+nvrhi::rt::AccelStructHandle OptixRenderer::Impl::buildBlas(const nvrhi::rt::GeometryDesc &geometry, const char *name) {
+    nvrhi::rt::AccelStructHandle blas;
+    UT_CHECK(device->createAccelStruct(
+        nvrhi::rt::AccelStructDesc().addBottomLevelGeometry(geometry).setBuildFlags(c_BuildFlags).setDebugName(name),
+        &blas));
+    if (blas) commandList()->buildBottomLevelAccelStruct(blas, &geometry, 1, c_BuildFlags);
+    return blas;
 }
 
 int OptixRenderer::Impl::meshMaterialOf(const MeshInstance *instance) const {
@@ -489,123 +540,61 @@ int OptixRenderer::Impl::meshMaterialOf(const MeshInstance *instance) const {
     return it != meshMaterialOverrides.end() ? it->second : meshMaterial;
 }
 
-void OptixRenderer::Impl::buildInstances(bool rebuildOnly) {
-    std::vector<RTInstance> rtInstances(instances.size());
+void OptixRenderer::Impl::buildInstances() {
+    std::vector<nvrhi::rt::InstanceDesc> descs(instances.size());
     for (size_t i = 0; i < instances.size(); ++i) {
         const InstanceEntry &inst = instances[i];
-        RTInstance &r = rtInstances[i];
-        r.instanceId = (uint32_t)i;
-        r.sbtOffset = (uint32_t)i * c_NumRayTypes;
-        r.visibilityMask = 255;
+        nvrhi::rt::InstanceDesc &d = descs[i];
+        d.setInstanceID(uint32_t(i)).setInstanceContributionToHitGroupIndex(uint32_t(i) * c_NumRayTypes).setInstanceMask(0xFF);
         if (inst.kind == InstanceKind::Volume) {
             const VolumeEntry &e = volumes[inst.index];
-            affineToOptix(e.instance->GetIndexToWorld(), r.transform);
-            r.flags = RT_INSTANCE_FLAG_NONE;
-            r.accel = e.gas.Get();
+            affineToInstance(e.instance->GetIndexToWorld(), d.transform);
+            d.setBLAS(e.blas);
         } else {
             const MeshEntry &e = meshes[inst.index];
-            SceneGraphNode *node = inst.meshInstance->GetNode();
-            if (node)
-                affineToOptix(node->GetLocalToWorldTransformFloat(), r.transform);
-            else
-                identityToOptix(r.transform);
-            r.flags = RT_INSTANCE_FLAG_DISABLE_TRIANGLE_FACE_CULLING;
-            r.accel = e.gas.Get();
+            if (SceneGraphNode *node = inst.meshInstance->GetNode())
+                affineToInstance(node->GetLocalToWorldTransformFloat(), d.transform);
+            d.setFlags(nvrhi::rt::InstanceFlags::TriangleCullDisable);
+            d.setBLAS(e.blas);
         }
     }
 
-    RTAccelStructDesc desc;
-    desc.type = RTGeometryType::Instances;
-    desc.instances = rtInstances.empty() ? nullptr : rtInstances.data();
-    desc.numInstances = (uint32_t)rtInstances.size();
-    desc.allowUpdate = false;
-    desc.allowCompaction = false;
-    desc.preferFastTrace = true;
-    if (rebuildOnly && ias) {
-        UT_V_GP(ias->rebuild(queue, desc, false));
-    } else {
-        ias = nullptr;
-        UT_V_GP(rtDevice->createAccelStruct(queue, desc, &ias));
+    if (!tlas || tlas->getDesc().topLevelMaxInstances < std::max<size_t>(1, descs.size())) {
+        nvrhi::rt::AccelStructHandle created;
+        UT_CHECK(device->createAccelStruct(nvrhi::rt::AccelStructDesc()
+                                               .setIsTopLevel(true)
+                                               .setTopLevelMaxInstances(std::max<size_t>(1, descs.size()))
+                                               .setBuildFlags(c_BuildFlags)
+                                               .setDebugName("OptixRenderer TLAS"),
+                                           &created));
+        retire(tlas);
+        tlas = std::move(created);
+        if (!tlas) return;
     }
-}
-
-void OptixRenderer::Impl::buildSBT(gvdb::VolumeShading overrideShading) {
-    const size_t numRecords = instances.size() * c_NumRayTypes;
-    std::vector<OptixHitRecordData> data(numRecords);
-    std::vector<RTSbtRecordDesc> hitgroups(numRecords);
-    for (size_t i = 0; i < instances.size(); ++i) {
-        const InstanceEntry &inst = instances[i];
-        OptixHitRecordData rec = {};
-        IRTProgramGroup *radiance = nullptr;
-        IRTProgramGroup *shadow = nullptr;
-        if (inst.kind == InstanceKind::Volume) {
-            VolumeEntry &e = volumes[inst.index];
-            e.isect = effectiveIsect(e, overrideShading);
-            e.materialId = e.instance->GetRenderAttributes().materialId;
-            rec.kind = GVDB_RT_HIT_VOLUME;
-            rec.volumeIndex = (uint32_t)inst.index;
-            rec.materialId = e.materialId;
-            radiance = pgVolumeRadiance[e.isect].Get();
-            shadow = pgVolumeShadow[e.isect].Get();
-        } else {
-            const MeshEntry &e = meshes[inst.index];
-            rec.kind = GVDB_RT_HIT_MESH;
-            rec.volumeIndex = 0;
-            rec.materialId = meshMaterialOf(inst.meshInstance.Get());
-            rec.numTriangles = e.numTriangles;
-            rec.positions = (unsigned long long)e.positions->getNativeHandle();
-            rec.normals = e.normals ? (unsigned long long)e.normals->getNativeHandle() : 0;
-            rec.indices = (unsigned long long)e.indices->getNativeHandle();
-            radiance = pgMeshRadiance.Get();
-            shadow = pgMeshShadow.Get();
-        }
-        for (uint32_t r = 0; r < c_NumRayTypes; ++r) {
-            const size_t k = i * c_NumRayTypes + r;
-            data[k] = rec;
-            hitgroups[k].programGroup = (r == GVDB_RT_RAY_SHADOW) ? shadow : radiance;
-            hitgroups[k].data = &data[k];
-            hitgroups[k].dataSize = sizeof(OptixHitRecordData);
-        }
-    }
-
-    RTSbtRecordDesc miss[c_NumRayTypes] = {};
-    miss[GVDB_RT_RAY_RADIANCE].programGroup = pgMissRadiance.Get();
-    miss[GVDB_RT_RAY_SHADOW].programGroup = pgMissShadow.Get();
-
-    RTShaderBindingTableDesc desc;
-    desc.raygen.programGroup = pgRaygen.Get();
-    desc.exception.programGroup = pgException.Get();
-    desc.miss = miss;
-    desc.numMiss = c_NumRayTypes;
-    desc.hitgroups = hitgroups.empty() ? nullptr : hitgroups.data();
-    desc.numHitgroups = (uint32_t)hitgroups.size();
-    sbt = nullptr;
-    UT_V_GP(rtDevice->createShaderBindingTable(queue, desc, &sbt));
-    builtOverride = overrideShading;
-    sbtDirty = false;
+    commandList()->buildTopLevelAccelStruct(tlas, descs.data(), descs.size(), c_BuildFlags);
+    traversablePending = true;
 }
 
 // ---------------------------------------------------------------------------
 // OptixRenderer
 // ---------------------------------------------------------------------------
 
-OptixRenderer::OptixRenderer(IDevice *cudaDevice, IRTDevice *rtDevice, IDeviceQueue *queue, vfs::IFileSystem *vfs)
-    : m_impl(std::make_unique<Impl>()) {
-    m_impl->device = cudaDevice;
-    m_impl->rtDevice = rtDevice;
-    m_impl->queue = queue;
-    m_impl->vfs = vfs;
-    NVRHI_ASSERT(cudaDevice && rtDevice && queue && vfs);
-
-    m_impl->createDefaults();
+OptixRenderer::OptixRenderer(gvdb::IComputeContext *context) : m_impl(std::make_unique<Impl>()) {
+    NVRHI_ASSERT(context);
+    m_impl->context = context;
+    m_impl->device = context->getDevice();
+    m_impl->seedBuffer = m_impl->createBuffer(c_NumSeeds * sizeof(uint32_t), "OptixRenderer seeds");
     m_impl->pipelineOk = m_impl->createPipeline();
     setEnvmap(nullptr, 0, 0);
     setSample(0, 0);
 }
 
 OptixRenderer::~OptixRenderer() {
-    if (m_impl && m_impl->device && m_impl->queue) m_impl->device->waitForQueue(m_impl->queue);
+    // The programs reach every buffer and the TLAS through addresses and handles.
+    if (m_impl && m_impl->context) m_impl->context->finish();
 }
+
+bool OptixRenderer::isValid() const { return m_impl->pipelineOk; }
 
 void OptixRenderer::resizeOutput(uint32_t width, uint32_t height) {
     Impl &im = *m_impl;
@@ -613,13 +602,15 @@ void OptixRenderer::resizeOutput(uint32_t width, uint32_t height) {
     if (im.width == width && im.height == height && im.outputBuffer) return;
     im.width = width;
     im.height = height;
-    im.accumBuffer = im.createBuffer(size_t(width) * height * sizeof(float) * 4);
-    im.outputBuffer = im.createBuffer(size_t(width) * height * 4);
-    UT_V_GP(im.queue->clearBufferUint(im.accumBuffer, 0));
-    UT_V_GP(im.queue->clearBufferUint(im.outputBuffer, 0xFF000000u));
+    im.retire(im.accumBuffer);
+    im.retire(im.outputBuffer);
+    im.accumBuffer = im.createBuffer(size_t(width) * height * sizeof(float) * 4, "OptixRenderer accumulation");
+    im.outputBuffer = im.createBuffer(size_t(width) * height * 4, "OptixRenderer output");
+    im.commandList()->clearBufferUInt(im.accumBuffer, 0);
+    im.commandList()->clearBufferUInt(im.outputBuffer, 0xFF000000u);
 }
 
-IBuffer *OptixRenderer::getOutputBuffer() const { return m_impl->outputBuffer.Get(); }
+nvrhi::IBuffer *OptixRenderer::getOutputBuffer() const { return m_impl->outputBuffer.Get(); }
 uint32_t OptixRenderer::getWidth() const { return m_impl->width; }
 uint32_t OptixRenderer::getHeight() const { return m_impl->height; }
 
@@ -628,18 +619,7 @@ void OptixRenderer::readOutput(std::vector<uint8_t> &rgba8) {
     const size_t bytes = size_t(im.width) * im.height * 4;
     rgba8.assign(bytes, 0);
     if (bytes == 0 || !im.outputBuffer) return;
-
-    nvrhi::AutoPtr<IBuffer> staging;
-    BufferDesc desc;
-    desc.byteSize = bytes;
-    desc.isStaging = true;
-    UT_V_GP(im.device->createBuffer(desc, &staging));
-    UT_V_GP(im.queue->copyBufferRegion(staging, 0, im.outputBuffer, 0, bytes));
-    UT_V_GP(im.device->waitForQueue(im.queue));
-    void *mapped = nullptr;
-    UT_V_GP(im.device->mapBuffer(staging, &mapped));
-    if (mapped) memcpy(rgba8.data(), mapped, bytes);
-    im.device->unmapBuffer(staging);
+    im.context->readBuffer(im.outputBuffer, 0, rgba8.data(), bytes);
 }
 
 int OptixRenderer::addMaterial(const OptixMaterialParams &params) {
@@ -671,8 +651,8 @@ void OptixRenderer::setEnvmap(const uint8_t *rgba8, uint32_t width, uint32_t hei
             texels[i] = dm::float4(rgba8[i * 4 + 0], rgba8[i * 4 + 1], rgba8[i * 4 + 2], rgba8[i * 4 + 3]) / 255.f;
     }
     const size_t bytes = texels.size() * sizeof(dm::float4);
-    if (!im.envmap || im.envmap->getDesc()->byteSize < bytes) im.envmap = im.createBuffer(bytes);
-    UT_V_GP(im.queue->writeBuffer(im.envmap, texels.data(), bytes, 0));
+    im.envmap = im.grow(im.envmap, bytes, "OptixRenderer environment");
+    im.commandList()->writeBuffer(im.envmap, texels.data(), bytes, 0);
     im.envWidth = width;
     im.envHeight = height;
 }
@@ -682,11 +662,18 @@ void OptixRenderer::setViewParams(const VolumeViewParams &params) { m_impl->view
 
 void OptixRenderer::buildScene(gvdb::GVDBSceneGraph *scene) {
     Impl &im = *m_impl;
+    // (the previous scene's objects may still be in use by recorded launches)
+    for (Impl::VolumeEntry &e : im.volumes) {
+        im.retire(e.aabbBuffer);
+        im.retire(e.blas);
+    }
+    for (Impl::MeshEntry &e : im.meshes) {
+        for (nvrhi::IBuffer *b : {e.positions.Get(), e.normals.Get(), e.indices.Get()}) im.retire(b);
+        im.retire(e.blas);
+    }
     im.volumes.clear();
     im.meshes.clear();
     im.instances.clear();
-    im.ias = nullptr;
-    im.sbt = nullptr;
     if (!scene || !im.pipelineOk) return;
 
     // volumes: one AABB primitive per instance
@@ -696,21 +683,7 @@ void OptixRenderer::buildScene(gvdb::GVDBSceneGraph *scene) {
         e.instance = inst;
         inst->GetVolume()->prepareVDB();
         im.writeVolumeAabb(e);
-
-        RTAabbsInput input;
-        input.aabbBuffer = e.aabbBuffer.Get();
-        input.numPrimitives = 1;
-        input.stride = 0;
-        input.geometryFlags = RT_GEOMETRY_FLAG_NONE;
-        input.numSbtRecords = 1;
-        RTAccelStructDesc desc;
-        desc.type = RTGeometryType::CustomPrimitives;
-        desc.aabbs = &input;
-        desc.numAabbInputs = 1;
-        desc.allowUpdate = true;   // refit in updateVolumes()
-        desc.allowCompaction = false;
-        desc.preferFastTrace = true;
-        UT_V_GP(im.rtDevice->createAccelStruct(im.queue, desc, &e.gas));
+        e.blas = im.buildBlas(im.volumeGeometry(e), "OptixRenderer volume BLAS");
 
         Impl::InstanceEntry ie;
         ie.kind = Impl::InstanceKind::Volume;
@@ -719,7 +692,7 @@ void OptixRenderer::buildScene(gvdb::GVDBSceneGraph *scene) {
         im.instances.push_back(std::move(ie));
     }
 
-    // meshes: one triangle GAS per distinct MeshInfo
+    // meshes: one triangle BLAS per distinct MeshInfo
     std::map<const MeshInfo *, int> meshIndex;
     for (const auto &mi : scene->GetMeshInstances()) {
         if (!mi) continue;
@@ -733,9 +706,7 @@ void OptixRenderer::buildScene(gvdb::GVDBSceneGraph *scene) {
                 log::warning("OptixRenderer: mesh '%s' has no usable CPU buffers, skipped", mesh->name.c_str());
                 continue;
             }
-            RTTrianglesInput input;
-            const RTAccelStructDesc desc = im.meshGasDesc(e, input);
-            UT_V_GP(im.rtDevice->createAccelStruct(im.queue, desc, &e.gas));
+            e.blas = im.buildBlas(im.meshGeometry(e), "OptixRenderer mesh BLAS");
             it = meshIndex.emplace(mesh, int(im.meshes.size())).first;
             im.meshes.push_back(std::move(e));
         }
@@ -746,21 +717,13 @@ void OptixRenderer::buildScene(gvdb::GVDBSceneGraph *scene) {
         im.instances.push_back(std::move(ie));
     }
 
-    im.buildInstances(false);
-    im.fillVolumeTable(im.builtOverride);
-    im.uploadVolumeTable();
-    im.buildSBT(im.builtOverride);
+    im.buildInstances();
 }
 
-void OptixRenderer::setMeshMaterial(int materialId) {
-    m_impl->meshMaterial = materialId;
-    m_impl->sbtDirty = true;
-}
+void OptixRenderer::setMeshMaterial(int materialId) { m_impl->meshMaterial = materialId; }
 
 void OptixRenderer::setMeshMaterial(const MeshInstance *instance, int materialId) {
-    if (!instance) return;
-    m_impl->meshMaterialOverrides[instance] = materialId;
-    m_impl->sbtDirty = true;
+    if (instance) m_impl->meshMaterialOverrides[instance] = materialId;
 }
 
 void OptixRenderer::updateVolumes(gvdb::GVDBSceneGraph *scene) {
@@ -773,59 +736,41 @@ void OptixRenderer::updateVolumes(gvdb::GVDBSceneGraph *scene) {
     for (Impl::VolumeEntry &e : im.volumes) {
         e.instance->GetVolume()->prepareVDB();
         im.writeVolumeAabb(e);
-        RTAabbsInput input;
-        input.aabbBuffer = e.aabbBuffer.Get();
-        input.numPrimitives = 1;
-        input.numSbtRecords = 1;
-        RTAccelStructDesc desc;
-        desc.type = RTGeometryType::CustomPrimitives;
-        desc.aabbs = &input;
-        desc.numAabbInputs = 1;
-        desc.allowUpdate = true;
-        desc.allowCompaction = false;
-        // Full rebuild, not a refit: a volume that was empty (degenerate AABB)
-        // when the scene was built, or whose bounds grew a lot, must get a new
-        // BVH. A one-primitive GAS is cheap to build.
-        UT_V_GP(e.gas->rebuild(im.queue, desc, false));
+        // A full build, not a refit: a volume that was empty (degenerate AABB) when the scene was built, or whose
+        // bounds grew a lot, needs a new BVH. A one-primitive BLAS is cheap to build.
+        const nvrhi::rt::GeometryDesc geometry = im.volumeGeometry(e);
+        im.commandList()->buildBottomLevelAccelStruct(e.blas, &geometry, 1, c_BuildFlags);
     }
-    // The IAS caches the bounds (and handles) of its children.
-    if (!im.volumes.empty()) im.buildInstances(true);
-    im.fillVolumeTable(im.builtOverride);
-    im.uploadVolumeTable();
+    // The TLAS caches the bounds of its children.
+    if (!im.volumes.empty()) im.buildInstances();
 }
 
 void OptixRenderer::updateTransforms(gvdb::GVDBSceneGraph *scene) {
     Impl &im = *m_impl;
-    if (!im.pipelineOk || !im.ias) return;
+    if (!im.pipelineOk || !im.tlas) return;
     if (scene && (scene->GetVolumeInstances().size() != im.volumes.size() ||
                   scene->GetMeshInstances().size() + im.volumes.size() < im.instances.size())) {
         buildScene(scene);
         return;
     }
-    im.buildInstances(true);
-    im.fillVolumeTable(im.builtOverride);
-    im.uploadVolumeTable();
+    im.buildInstances();
 }
 
 void OptixRenderer::updateMeshes(gvdb::GVDBSceneGraph *scene) {
     Impl &im = *m_impl;
     if (!im.pipelineOk) return;
-    bool topologyChanged = false;
     for (Impl::MeshEntry &e : im.meshes) {
         const uint32_t nv = e.numVertices, nt = e.numTriangles;
         if (!im.uploadMesh(e, false)) continue;
-        RTTrianglesInput input;
-        const RTAccelStructDesc desc = im.meshGasDesc(e, input);
-        if (nv != e.numVertices || nt != e.numTriangles) topologyChanged = true;
-        UT_V_GP(e.gas->rebuild(im.queue, desc, false));
+        const nvrhi::rt::GeometryDesc geometry = im.meshGeometry(e);
+        if (nv != e.numVertices || nt != e.numTriangles) {
+            im.retire(e.blas);   // the BLAS size changes
+            e.blas = im.buildBlas(geometry, "OptixRenderer mesh BLAS");
+        } else {
+            im.commandList()->buildBottomLevelAccelStruct(e.blas, &geometry, 1, c_BuildFlags);
+        }
     }
-    if (topologyChanged) {
-        // buffer addresses changed: hit records and the IAS refer to them
-        im.buildInstances(true);
-        im.buildSBT(im.builtOverride);
-    } else if (im.ias) {
-        im.buildInstances(true);   // the IAS references the rebuilt GAS handles
-    }
+    if (im.tlas) im.buildInstances();   // the TLAS references the rebuilt BLAS
     (void)scene;
 }
 
@@ -838,111 +783,54 @@ void OptixRenderer::setSample(int frame, int sample) {
     std::vector<uint32_t> seeds(c_NumSeeds);
     srand(unsigned(sample * 17 + 4732 + frame));
     for (uint32_t i = 0; i < c_NumSeeds; ++i) seeds[i] = uint32_t((long(rand()) * 0xffffL) / RAND_MAX);
-    UT_V_GP(im.queue->writeBuffer(im.seedBuffer, seeds.data(), seeds.size() * sizeof(uint32_t), 0));
+    im.commandList()->writeBuffer(im.seedBuffer, seeds.data(), seeds.size() * sizeof(uint32_t), 0);
 }
 
 void OptixRenderer::render(gvdb::GVDBSceneGraph *scene, const RenderView &view, gvdb::VolumeShading overrideShading) {
     Impl &im = *m_impl;
     if (!im.pipelineOk || !im.outputBuffer || im.width == 0 || im.height == 0) return;
-    if (!im.ias || !im.sbt) {
+    if (!im.tlas) {
         if (scene) buildScene(scene);
-        if (!im.ias || !im.sbt) return;
+        if (!im.tlas) return;
     }
 
-    // The hit records bind the intersection program (by shading) and the
-    // material: repack the SBT when the override, an instance's shading or a
-    // material assignment changed.
-    bool repack = im.sbtDirty || overrideShading != im.builtOverride;
-    for (const Impl::VolumeEntry &e : im.volumes) {
-        if (im.effectiveIsect(e, overrideShading) != e.isect ||
-            e.instance->GetRenderAttributes().materialId != e.materialId)
-            repack = true;
-    }
-    if (repack) im.buildSBT(overrideShading);
-    // per-instance values may change every frame (cheap: a few records)
-    im.fillVolumeTable(overrideShading);
-    im.uploadVolumeTable();
+    // per-instance values and intersection modes may change every frame (cheap: a few records)
+    im.fillTables(overrideShading);
     if (im.materialsDirty) im.uploadMaterials();
+    if (im.traversablePending) {
+        // the handle of the TLAS build: known once the build is submitted
+        im.context->flush();
+        im.traversable = uint64_t(uintptr_t(im.tlas->getNativeObject(nvrhi::ObjectTypes::OptiX_TraversableHandle)));
+        im.traversablePending = false;
+    }
 
     // ---- launch parameters ----
-    OptixLaunchParams p;
-    memset(&p, 0, sizeof(p));
-    const VolumeViewParams &vp = im.viewParams;
-
-    // ScnInfo as the CUDA VolRenderer fills it (PrepareRender of the reference):
-    // scene-wide values; the per-volume values default to the first instance
-    // (the programs read them from the instance table).
-    ScnInfo &s = p.scn;
-    s.width = int(im.width);
-    s.height = int(im.height);
-    s.camnear = view.zNear;
-    s.camfar = view.zFar;
-    s.campos = lp3(view.eye);
-    s.cams = lp3(view.rayTopLeft);
-    s.camu = lp3(view.rayU);
-    s.camv = lp3(view.rayV);
-    s.light_pos = lp3(view.lightPos);
-    s.slice_pnt = lp3(vp.sectionPoint);
-    s.slice_norm = lp3(vp.sectionNormal);
-    s.shadow_params = lp3(vp.shadowParams);
-    s.backclr = lp4(vp.backgroundColor);
-    setIdentity(s.xform);
-    setIdentity(s.invxform);
-    setIdentity(s.invxrot);
-    s.bias = vp.rayNormalBias;
-    s.filtering = char(vp.filterMode);
-    s.frame = vp.frame;
-    s.samples = vp.sample;
-    if (!im.volumes.empty()) {
-        const gvdb::VolumeRenderAttributes &a = im.volumes[0].instance->GetRenderAttributes();
-        s.shading = char(overrideShading != gvdb::VolumeShading::Off ? overrideShading : a.shading);
-        s.extinct = lp3(a.extinct);
-        s.steps = lp3(a.steps);
-        s.cutoff = lp3(a.cutoff);
-        s.thresh = lp3(a.threshold);
-        s.epsilon = a.epsilon;
-        s.gvdb_channel = a.colorChannel;
-        s.transfer = reinterpret_cast<gvdb_lp::float4 *>(im.volumeTable[0].transfer);
-    } else {
-        const gvdb::VolumeRenderAttributes a;
-        s.shading = char(a.shading);
-        s.extinct = lp3(a.extinct);
-        s.steps = lp3(a.steps);
-        s.cutoff = lp3(a.cutoff);
-        s.thresh = lp3(a.threshold);
-        s.epsilon = a.epsilon;
-        s.gvdb_channel = a.colorChannel;
-        s.transfer = reinterpret_cast<gvdb_lp::float4 *>(im.defaultTransfer->getNativeHandle());
-    }
-    s.outbuf = nullptr;
-    s.dbuf = nullptr;
-
-    p.volumes = reinterpret_cast<const OptixVolumeInstance *>(im.volumeTableBuffer->getNativeHandle());
-    p.numVolumes = (unsigned int)im.volumeTable.size();
-    p.materials = reinterpret_cast<const OptixMaterial *>(im.materialBuffer->getNativeHandle());
-    p.numMaterials = (unsigned int)std::max<size_t>(1, im.materials.size());
-    p.eye = lp3(view.eye);
-    p.rayTL = lp3(view.rayTopLeft);
-    p.rayU = lp3(view.rayU);
-    p.rayV = lp3(view.rayV);
-    p.lightPos = lp3(view.lightPos);
-    p.accum = reinterpret_cast<gvdb_lp::float4 *>(im.accumBuffer->getNativeHandle());
-    p.output = reinterpret_cast<gvdb_lp::uchar4 *>(im.outputBuffer->getNativeHandle());
+    OptixLaunchParams p = {};
+    p.scene = im.traversable;
+    p.volumes = gvdb::deviceAddress(im.volumeTableBuffer);
+    p.materials = gvdb::deviceAddress(im.materialBuffer);
+    p.instances = gvdb::deviceAddress(im.instanceTableBuffer);
+    p.accum = gvdb::deviceAddress(im.accumBuffer);
+    p.output = gvdb::deviceAddress(im.outputBuffer);
+    p.seeds = gvdb::deviceAddress(im.seedBuffer);
+    p.envmap = gvdb::deviceAddress(im.envmap);
+    p.backclr = im.viewParams.backgroundColor;
+    p.eye = view.eye;
+    p.numMaterials = uint32_t(std::max<size_t>(1, im.materials.size()));
+    p.rayTL = view.rayTopLeft;
     p.width = im.width;
+    p.rayU = view.rayU;
     p.height = im.height;
-    p.seeds = reinterpret_cast<unsigned int *>(im.seedBuffer->getNativeHandle());
-    p.frame = (unsigned int)std::max(0, vp.frame);
-    p.sample = (unsigned int)std::max(0, vp.sample);
-    p.envmap = reinterpret_cast<const gvdb_lp::float4 *>(im.envmap->getNativeHandle());
+    p.rayV = view.rayV;
+    p.sample = uint32_t(std::max(0, im.viewParams.sample));
+    p.lightPos = view.lightPos;
     p.envWidth = im.envWidth;
     p.envHeight = im.envHeight;
-    p.traversable = im.ias->getTraversableHandle();
-    p.sceneEpsilon = 1.0e-6f;
 
-    UT_V_GP(im.queue->writeBuffer(im.paramsBuffer, &p, sizeof(p), 0));
-    UT_V_GP(im.rtDevice->launch(im.queue, im.pipeline, im.sbt, im.paramsBuffer, 0, sizeof(p), im.width, im.height, 1));
+    nvrhi::ICommandList *cmd = im.commandList();
+    cmd->setRayTracingState(nvrhi::rt::State().setShaderTable(im.shaderTable));
+    cmd->setPushConstants(&p, sizeof(p));
+    cmd->dispatchRays(nvrhi::rt::DispatchRaysArguments().setWidth(im.width).setHeight(im.height));
 }
-
-IDeviceQueue *OptixRenderer::getQueue() const { return m_impl->queue.Get(); }
 
 }  // namespace SampleUtils

@@ -14,8 +14,8 @@ uint32_t atlasFormatBytes(AtlasFormat format) {
     return 0;
 }
 
-donut::gp::Format atlasFormatToGP(AtlasFormat format) {
-    using donut::gp::Format;
+nvrhi::Format atlasFormatToNVRHI(AtlasFormat format) {
+    using nvrhi::Format;
     switch (format) {
         case ATLAS_FORMAT_R8_UINT: return Format::R8_UINT;
         case ATLAS_FORMAT_RGBA8_UINT: return Format::RGBA8_UINT;

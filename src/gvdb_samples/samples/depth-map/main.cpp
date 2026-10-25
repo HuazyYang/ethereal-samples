@@ -1,6 +1,7 @@
 // depth-map (gDepthMap): lucy.obj is rasterized with Simple.hlsl into a colour
 // target and an R32_FLOAT post-projection depth target; the depth target is
-// shared with CUDA, copied into a gp buffer and given to VolRenderer as the
+// shared with the CUDA device (IInteropDevice), copied into a buffer of it by
+// gvdbCopyFromSurfaceF and given to VolRenderer as the
 // depth buffer that terminates the volume rays of explosion.vbx. The volume
 // image is then composited over the polygons with FullScreen.hlsl (HAS_TEXTURE_2).
 #include <sample-utils/GVDBApp.h>
@@ -75,14 +76,14 @@ class DepthMapApp : public GVDBApp {
         attrs.extinct = {-1.f, 1.f, 0.f};
         attrs.threshold = {0.1f, 0.f, 0.5f};
         attrs.cutoff = {0.005f, 0.005f, 0.f};
-        attrs.transferFunction = MAKE_RC_OBJ_PTR(gvdb::VolumeTransferFunction, getGPDevice());
+        attrs.transferFunction = MAKE_RC_OBJ_PTR(gvdb::VolumeTransferFunction, getCompute());
         attrs.transferFunction->setLinear(0.00f, 0.10f, {0, 0, 0, 0}, {0, 0, 0, 0});
         attrs.transferFunction->setLinear(0.10f, 0.50f, {1, 1, 0, 0.1f}, {1, 0, 0, 0.3f});
         attrs.transferFunction->setLinear(0.50f, 0.75f, {1, 0, 0, 0.3f}, {0.2f, 0.2f, 0.2f, 0.1f});
         attrs.transferFunction->setLinear(0.75f, 1.00f, {0.2f, 0.2f, 0.2f, 0.1f}, {0.1f, 0.1f, 0.1f, 0.3f});
-        attrs.transferFunction->commit(getGPQueue());
+        attrs.transferFunction->commit();
 
-        m_renderer = std::make_unique<VolRenderer>(getGPDevice(), getGPQueue(), getVFS());
+        m_renderer = std::make_unique<VolRenderer>(getCompute());
         m_renderer->getViewParams().backgroundColor = {0.1f, 0.2f, 0.4f, 1.f};
 
         getCamera()->zNear = 0.1f;
@@ -175,11 +176,11 @@ class DepthMapApp : public GVDBApp {
     }
 
     void createRasterTargets(uint32_t width, uint32_t height) {
-        syncQueue(getGPDevice(), getGPQueue());
+        syncCompute(getCompute());
         GetDevice()->waitForIdle();
         m_compositeSet = nullptr;
-        m_depthGP = nullptr;
-        m_depthBufferGP = nullptr;
+        m_depthCuda = nullptr;
+        m_depthBuffer = nullptr;
         m_rasterFramebuffer = nullptr;
 
         nvrhi::TextureDesc texDesc;
@@ -196,7 +197,8 @@ class DepthMapApp : public GVDBApp {
 
         texDesc.format = nvrhi::Format::R32_FLOAT;
         texDesc.debugName = "raster depth (shared)";
-        texDesc.sharedResourceFlags = interopSharedFlags(GetDevice());
+        texDesc.isUAV = true;   // CUDA reads the imported texture through a surface
+        texDesc.sharedResourceFlags = interopSharedFlags();
         GetDevice()->createTexture(texDesc, &m_depthColorTexture);
 
         texDesc = nvrhi::TextureDesc();
@@ -204,7 +206,6 @@ class DepthMapApp : public GVDBApp {
         texDesc.width = width;
         texDesc.height = height;
         texDesc.format = nvrhi::Format::D24S8;
-        texDesc.isTypeless = true;   // D3D11 needs a typeless depth resource for the SRV
         texDesc.isRenderTarget = true;
         texDesc.initialState = nvrhi::ResourceStates::DepthWrite;
         texDesc.keepInitialState = true;
@@ -217,11 +218,12 @@ class DepthMapApp : public GVDBApp {
         fbDesc.setDepthAttachment(m_depthStencilTexture);
         GetDevice()->createFramebuffer(fbDesc, &m_rasterFramebuffer);
 
-        UT_V_GP(getInteropDevice()->createGPTexture(m_depthColorTexture, &m_depthGP));
-        gp::BufferDesc bufDesc;
+        UT_CHECK(getInteropDevice()->importTexture(m_depthColorTexture, &m_depthCuda));
+        m_depthSurface = m_depthCuda ? getCudaDevice()->getSurfaceHandle(m_depthCuda, 0) : 0;
+        nvrhi::BufferDesc bufDesc;
         bufDesc.byteSize = size_t(width) * height * 4;
-        UT_V_GP(getGPDevice()->createBuffer(bufDesc, &m_depthBufferGP));
-        m_depthKey = 0;
+        bufDesc.debugName = "raycaster depth buffer";
+        UT_CHECK(getCudaDevice()->createBuffer(bufDesc, &m_depthBuffer));
 
         nvrhi::BindingSetDesc setDesc;
         setDesc.bindings = {nvrhi::BindingSetItem::PushConstants(0, sizeof(dm::float4)),
@@ -242,10 +244,9 @@ class DepthMapApp : public GVDBApp {
         RenderView view = getRenderView(int(width), int(height));
         auto *interop = getInteropDevice();
 
-        // ---- raster pass (graphics queue), before the gp work of this frame ----
+        // ---- raster pass (graphics queue), before the CUDA work of this frame ----
         {
             m_rasterList->open();
-            UT_V_GP(interop->acquireNVRHITextureKeyedMutex(m_depthColorTexture, m_depthKey, ~0u));
             const dm::float4 &bg = m_renderer->getViewParams().backgroundColor;
             m_rasterList->clearTextureFloat(m_colorTexture, nvrhi::AllSubresources, nvrhi::Color(bg.x, bg.y, bg.z, 1.f));
             m_rasterList->clearTextureFloat(m_depthColorTexture, nvrhi::AllSubresources, nvrhi::Color(1.f));
@@ -274,38 +275,20 @@ class DepthMapApp : public GVDBApp {
             args.vertexCount = m_meshBuffers.numIndices;
             m_rasterList->drawIndexed(args);
 
-            UT_V_GP(interop->releaseNVRHITextureKeyedMutex(m_depthColorTexture, m_depthKey + 1));
             m_rasterList->close();
             GetDevice()->executeCommandList(m_rasterList);
-            UT_V_GP(interop->commitNVRHIQueueSignal(nvrhi::CommandQueue::Graphics));
         }
 
-        // ---- gp: depth texture -> buffer, volume render with the depth buffer ----
-        UT_V_GP(interop->commitGPQueueWait(getGPQueue(), nvrhi::CommandQueue::Graphics));
+        // ---- CUDA: depth texture -> buffer, volume render with the depth buffer ----
+        // The CUDA queue waits for the raster pass just executed.
+        UT_CHECK(interop->computeQueueWaitForGraphicsQueue(nvrhi::CommandQueue::Graphics, nvrhi::CommandQueue::Graphics));
         {
-            gp::GraphicsInteropKeyedMutexWaitParams wait = {m_depthGP.Get(), m_depthKey + 1, ~0u};
-            UT_V_GP(interop->acquireGPResourceKeyedMutexes(getGPQueue(), &wait, 1));
-
-            gp::TextureCopyLocation src = {};
-            src.type = gp::TextureCopyType::SubresourceIndex;
-            src.resource = m_depthGP;
-            src.subresourceIndex = 0;
-            gp::TextureCopyLocation dst = {};
-            dst.type = gp::TextureCopyType::PlacedFootprint;
-            dst.resource = m_depthBufferGP;
-            dst.placeFootprint.format = gp::Format::R32_FLOAT;
-            dst.placeFootprint.width = width;
-            dst.placeFootprint.height = height;
-            dst.placeFootprint.depth = 1;
-            dst.placeFootprint.rowPitch = width * 4;
-            UT_V_GP(getGPQueue()->copyTextureRegion(dst, 0, 0, 0, src, nullptr));
-
-            gp::GraphicsInteropKeyedMutexSignalParams signal = {m_depthGP.Get(), m_depthKey + 2};
-            UT_V_GP(interop->releaseGPResourceKeyedMutexes(getGPQueue(), &signal, 1));
-            m_depthKey += 2;
+            gvdb::IComputeKernel *copy = getCompute()->getKernel(GVDB_SHADERS_RAYCAST, "gvdbCopyFromSurfaceF");
+            gvdb::launchKernel(getCompute()->getCommandList(), copy, gvdb::groupsFor(copy, dm::uint3(width, height, 1u)),
+                               m_depthSurface, dm::uint2(width, height), gvdb::deviceAddress(m_depthBuffer));
         }
         m_renderer->getViewParams().rayNormalBias = m_bias;
-        m_renderer->setDepthBuffer(m_depthBufferGP);
+        m_renderer->setDepthBuffer(m_depthBuffer);
         m_renderer->render(getSceneGraph(), view, getPresenter()->getRenderBuffer(0));
     }
 
@@ -354,9 +337,9 @@ class DepthMapApp : public GVDBApp {
     nvrhi::TextureHandle m_depthColorTexture;
     nvrhi::TextureHandle m_depthStencilTexture;
     nvrhi::FramebufferHandle m_rasterFramebuffer;
-    nvrhi::AutoPtr<gp::ITexture> m_depthGP;
-    nvrhi::AutoPtr<gp::IBuffer> m_depthBufferGP;
-    uint32_t m_depthKey = 0;
+    nvrhi::TextureHandle m_depthCuda;      // m_depthColorTexture on the CUDA device
+    uint64_t m_depthSurface = 0;
+    nvrhi::BufferHandle m_depthBuffer;     // CUDA device
 
     nvrhi::GraphicsPipelineHandle m_compositePipeline;
     nvrhi::BindingLayoutHandle m_compositeLayout;

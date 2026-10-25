@@ -1,5 +1,5 @@
 // render-kernel (gRenderKernel): load explosion.vbx and render it with the user
-// raycast kernel of RenderCustom.cu (ptx/RenderCustom.ptx) through
+// raycast kernel of RenderCustom.slang (shaders/gvdb/RenderCustom.nvsc) through
 // VolRenderer::renderCustom; writes out_rendkernel.png. Console sample.
 #include <sample-utils/HeadlessContext.h>
 #include <sample-utils/GVDBApp.h>
@@ -64,31 +64,23 @@ int main(int argc, const char **argv) {
     ctx.sceneGraph->Refresh(0);
 
     // ---- user kernel ----
-    printf("Loading module: RenderCustom.ptx\n");
-    nvrhi::AutoPtr<gp::IModule> module;
-    nvrhi::AutoPtr<gp::IKernel> kernel;
-    {
-        nvrhi::AutoPtr<nvrhi::IDataBlob> ptx;
-        if (NVRHI_FAILED(ctx.vfs->readFile("ptx/RenderCustom.ptx", &ptx)) || !ptx) {
-            printf("Cannot read ptx/RenderCustom.ptx\n");
-            return 1;
-        }
-        size_t len = ptx->GetSize();
-        ptx->Resize(len + 1);
-        static_cast<char *>(ptx->GetDataPtr())[len] = 0;
-        UT_V_GP(ctx.gpDevice->createModule({}, ptx->GetDataPtr(), len + 1, &module));
-        UT_V_GP(module->getKernel("raycast_kernel", &kernel));
+    printf("Loading module: RenderCustom.nvsc\n");
+    gvdb::IComputeKernel *kernel = ctx.compute->getKernel("shaders/gvdb/RenderCustom.nvsc", "raycast_kernel");
+    if (!kernel) {
+        printf("Cannot load raycast_kernel from shaders/gvdb/RenderCustom.nvsc\n");
+        return 1;
     }
 
     // ---- render ----
     printf("Creating screen buffer. %d x %d\n", w, h);
-    nvrhi::AutoPtr<gp::IBuffer> renderBuffer;
+    nvrhi::BufferHandle renderBuffer;
     {
-        gp::BufferDesc desc;
+        nvrhi::BufferDesc desc;
         desc.byteSize = size_t(w) * h * 4;
-        UT_V_GP(ctx.gpDevice->createBuffer(desc, &renderBuffer));
+        desc.debugName = "render buffer";
+        UT_CHECK(ctx.cudaDevice->createBuffer(desc, &renderBuffer));
     }
-    VolRenderer renderer(ctx.gpDevice, ctx.gpQueue, ctx.vfs);
+    VolRenderer renderer(ctx.compute);
     RenderView view = makeRenderView(ctx.camera, ctx.light, w, h);
 
     printf("Render custom kernel.\n");
@@ -100,7 +92,7 @@ int main(int argc, const char **argv) {
 
     std::filesystem::path outPath = "out_rendkernel.png";
     printf("Writing %s\n", outPath.string().c_str());
-    if (!saveRenderBufferPNG(outPath, ctx.gpDevice, ctx.gpQueue, renderBuffer, w, h)) return 1;
+    if (!saveRenderBufferPNG(outPath, ctx.compute, renderBuffer, w, h)) return 1;
 
     printf("Done.\n");
     return 0;

@@ -59,12 +59,12 @@ int main(int argc, const char **argv) {
     attrs.extinct = {-1.0f, 1.5f, 0.0f};       // volume extinction
     attrs.threshold = {0.1f, 0.0f, 0.1f};      // volume value range
     attrs.cutoff = {0.005f, 0.01f, 0.0f};
-    attrs.transferFunction = MAKE_RC_OBJ_PTR(gvdb::VolumeTransferFunction, ctx.gpDevice.Get());
+    attrs.transferFunction = MAKE_RC_OBJ_PTR(gvdb::VolumeTransferFunction, ctx.compute.Get());
     attrs.transferFunction->setLinear(0.00f, 0.25f, {0.f, 0.f, 0.f, 0.f}, {1.f, 1.f, 0.f, 0.1f});
     attrs.transferFunction->setLinear(0.25f, 0.50f, {1.f, 1.f, 0.f, 0.4f}, {1.f, 0.f, 0.f, 0.3f});
     attrs.transferFunction->setLinear(0.50f, 0.75f, {1.f, 0.f, 0.f, 0.3f}, {0.2f, 0.2f, 0.2f, 0.1f});
     attrs.transferFunction->setLinear(0.75f, 1.00f, {0.2f, 0.2f, 0.2f, 0.1f}, {0.f, 0.f, 0.f, 0.f});
-    attrs.transferFunction->commit(ctx.gpQueue);
+    attrs.transferFunction->commit();
 
     // ---- camera and light (the reference setOrbit values; its FOV is horizontal) ----
     ctx.camera->verticalFov = verticalFovFromHorizontal(dm::radians(50.f), float(w) / float(h));
@@ -78,14 +78,15 @@ int main(int argc, const char **argv) {
 
     // ---- render ----
     printf("Creating screen buffer. %d x %d\n", w, h);
-    nvrhi::AutoPtr<gp::IBuffer> renderBuffer;
+    nvrhi::BufferHandle renderBuffer;
     {
-        gp::BufferDesc desc;
+        nvrhi::BufferDesc desc;
         desc.byteSize = size_t(w) * h * 4;
-        UT_V_GP(ctx.gpDevice->createBuffer(desc, &renderBuffer));
-        UT_V_GP(ctx.gpQueue->clearBufferUint(renderBuffer, 0xFF808080u));   // grey: visible when a kernel does not write
+        desc.debugName = "render buffer";
+        UT_CHECK(ctx.cudaDevice->createBuffer(desc, &renderBuffer));
+        ctx.compute->getCommandList()->clearBufferUInt(renderBuffer, 0xFF808080u);   // grey: visible when a kernel does not write
     }
-    VolRenderer renderer(ctx.gpDevice, ctx.gpQueue, ctx.vfs);
+    VolRenderer renderer(ctx.compute);
     renderer.getViewParams().backgroundColor = {0.1f, 0.2f, 0.4f, 1.0f};
     RenderView view = makeRenderView(ctx.camera, ctx.light, w, h);
 
@@ -97,7 +98,7 @@ int main(int argc, const char **argv) {
 
     std::filesystem::path outPath = "out_rendtofile.png";
     printf("Writing %s\n", outPath.string().c_str());
-    if (!saveRenderBufferPNG(outPath, ctx.gpDevice, ctx.gpQueue, renderBuffer, w, h)) return 1;
+    if (!saveRenderBufferPNG(outPath, ctx.compute, renderBuffer, w, h)) return 1;
 
     printf("Done.\n");
     return 0;

@@ -1,11 +1,9 @@
 // CUDA render buffers -> shared nvrhi textures -> swap chain.
 //
-// Synchronisation follows the previous port (DepthMapPass): one timeline per
-// graphics queue inside IGPAndNVRHIInteropDevice; the gp queue waits for the
-// last graphics signal before touching the shared textures and signals when it
-// is done, and the graphics queue does the same in the other direction. On
-// D3D11 the shared textures additionally carry keyed mutexes (acquired with an
-// alternating key); on D3D12 / Vulkan the keyed-mutex calls are no-ops.
+// Synchronisation: the interop device orders the queues with shared timeline
+// fences. Before the compute context writes the shared textures, the CUDA queue
+// waits for the graphics work executed so far (the blits of the previous frame);
+// after the copies are submitted, the next graphics submission waits for them.
 #include "ScreenPresenter.h"
 #include "SampleTypes.h"
 #include <donut/core/log.h>
@@ -16,20 +14,27 @@ namespace SampleUtils {
 
 using namespace donut;
 
+namespace {
+// The CUDA device's queue the compute context submits to, and the graphics queue that presents.
+constexpr nvrhi::CommandQueue c_computeQueue = nvrhi::CommandQueue::Graphics;
+constexpr nvrhi::CommandQueue c_graphicsQueue = nvrhi::CommandQueue::Graphics;
+}  // namespace
+
 struct ScreenPresenter::Target {
     uint32_t width = 0;
     uint32_t height = 0;
-    nvrhi::AutoPtr<gp::IBuffer> renderBuffer;
-    nvrhi::TextureHandle texture;
-    nvrhi::AutoPtr<gp::ITexture> textureGP;
+    nvrhi::BufferHandle renderBuffer;       // CUDA device
+    nvrhi::TextureHandle texture;           // graphics device, shared
+    nvrhi::TextureHandle textureCuda;       // the same memory on the CUDA device
+    uint64_t surface = 0;                   // surface handle of textureCuda
     nvrhi::BindingSetHandle bindingSet;
-    uint32_t mutexKey = 0;
 };
 
-ScreenPresenter::ScreenPresenter(nvrhi::IDevice *device, IGPAndNVRHIInteropDevice *interop, gp::IDevice *gpDevice,
-                                 gp::IDeviceQueue *gpQueue, engine::ShaderFactory *shaderFactory,
-                                 const nvrhi::FramebufferInfoEx &fbInfo)
-    : m_device(device), m_interop(interop), m_gpDevice(gpDevice), m_gpQueue(gpQueue) {
+ScreenPresenter::ScreenPresenter(nvrhi::IDevice *device, nvrhi::IInteropDevice *interop, gvdb::IComputeContext *compute,
+                                 engine::ShaderFactory *shaderFactory, const nvrhi::FramebufferInfoEx &fbInfo)
+    : m_device(device), m_interop(interop), m_compute(compute) {
+    m_copyKernel = m_compute->getKernel(GVDB_SHADERS_RAYCAST, "gvdbCopyToSurface");
+
     auto vs = shaderFactory->CreateShader("FullScreen.hlsl", "VSMain", nullptr, nvrhi::ShaderType::Vertex);
     std::vector<engine::ShaderMacro> defines = {{"HAS_TEXTURE_2", "0"}};
     auto ps = shaderFactory->CreateShader("FullScreen.hlsl", "PSMain", &defines, nvrhi::ShaderType::Pixel);
@@ -60,7 +65,9 @@ ScreenPresenter::ScreenPresenter(nvrhi::IDevice *device, IGPAndNVRHIInteropDevic
     m_device->createGraphicsPipeline1(psoDesc, fbInfo.getInfo(), &m_pipeline);
 }
 
-ScreenPresenter::~ScreenPresenter() {}
+ScreenPresenter::~ScreenPresenter() {
+    if (m_compute) m_compute->finish();
+}
 
 int ScreenPresenter::createTarget(uint32_t width, uint32_t height) {
     m_targets.push_back(std::make_unique<Target>());
@@ -76,21 +83,23 @@ void ScreenPresenter::resizeTarget(int id, uint32_t width, uint32_t height) {
     height = std::max(height, 1u);
     if (t.width == width && t.height == height && t.texture) return;
 
-    // Make sure neither queue still uses the old resources.
-    syncQueue(m_gpDevice, m_gpQueue);
+    // Make sure neither device still uses the old resources.
+    m_compute->finish();
     m_device->waitForIdle();
 
     t.width = width;
     t.height = height;
     t.bindingSet = nullptr;
-    t.textureGP = nullptr;
+    t.textureCuda = nullptr;
     t.texture = nullptr;
     t.renderBuffer = nullptr;
+    t.surface = 0;
 
-    gp::BufferDesc bufDesc;
+    nvrhi::BufferDesc bufDesc;
     bufDesc.byteSize = size_t(width) * height * 4;
-    UT_V_GP(m_gpDevice->createBuffer(bufDesc, &t.renderBuffer));
-    UT_V_GP(m_gpQueue->clearBufferUint(t.renderBuffer, 0u));
+    bufDesc.debugName = "ScreenPresenter render buffer";
+    UT_CHECK(m_compute->getDevice()->createBuffer(bufDesc, &t.renderBuffer));
+    if (t.renderBuffer) m_compute->getCommandList()->clearBufferUInt(t.renderBuffer, 0u);
 
     nvrhi::TextureDesc texDesc;
     texDesc.dimension = nvrhi::TextureDimension::Texture2D;
@@ -98,17 +107,18 @@ void ScreenPresenter::resizeTarget(int id, uint32_t width, uint32_t height) {
     texDesc.height = height;
     texDesc.format = nvrhi::Format::RGBA8_UNORM;
     texDesc.isShaderResource = true;
+    texDesc.isUAV = true;   // CUDA writes the imported texture through a surface
     texDesc.initialState = nvrhi::ResourceStates::ShaderResource;
     texDesc.keepInitialState = true;
     texDesc.debugName = "ScreenPresenter target";
-    texDesc.sharedResourceFlags = interopSharedFlags(m_device);
+    texDesc.sharedResourceFlags = interopSharedFlags();
     m_device->createTexture(texDesc, &t.texture);
     if (!t.texture) {
         log::error("ScreenPresenter: cannot create the shared texture %ux%u", width, height);
         return;
     }
-    UT_V_GP(m_interop->createGPTexture(t.texture, &t.textureGP));
-    t.mutexKey = 0;
+    UT_CHECK(m_interop->importTexture(t.texture, &t.textureCuda));
+    if (t.textureCuda) t.surface = m_compute->getDevice()->getSurfaceHandle(t.textureCuda, 0);
 
     nvrhi::BindingSetDesc setDesc;
     setDesc.bindings = {nvrhi::BindingSetItem::PushConstants(0, sizeof(dm::float4)),
@@ -122,62 +132,30 @@ uint32_t ScreenPresenter::getWidth(int id) const {
 uint32_t ScreenPresenter::getHeight(int id) const {
     return (id >= 0 && id < int(m_targets.size())) ? m_targets[id]->height : 0;
 }
-gp::IBuffer *ScreenPresenter::getRenderBuffer(int id) const {
+nvrhi::IBuffer *ScreenPresenter::getRenderBuffer(int id) const {
     return (id >= 0 && id < int(m_targets.size())) ? m_targets[id]->renderBuffer.Get() : nullptr;
 }
 nvrhi::ITexture *ScreenPresenter::getTexture(int id) const {
     return (id >= 0 && id < int(m_targets.size())) ? m_targets[id]->texture.Get() : nullptr;
 }
 
-void ScreenPresenter::beginGPFrame() {
-    // The gp queue waits until the graphics queue has finished reading the
-    // textures of the previous frame.
-    UT_V_GP(m_interop->commitGPQueueWait(m_gpQueue, nvrhi::CommandQueue::Graphics));
+void ScreenPresenter::beginComputeFrame() {
+    // The CUDA queue waits until the graphics queue has finished reading the textures of the previous frame.
+    UT_CHECK(m_interop->computeQueueWaitForGraphicsQueue(c_computeQueue, c_graphicsQueue));
 }
 
-void ScreenPresenter::endGPFrame() {
-    std::vector<gp::GraphicsInteropKeyedMutexWaitParams> waits;
-    std::vector<gp::GraphicsInteropKeyedMutexSignalParams> signals;
+void ScreenPresenter::endComputeFrame() {
+    nvrhi::ICommandList *commandList = m_compute->getCommandList();
     for (auto &tp : m_targets) {
         Target &t = *tp;
-        if (!t.textureGP) continue;
-        waits.push_back({t.textureGP.Get(), t.mutexKey, ~0u});
-        signals.push_back({t.textureGP.Get(), t.mutexKey + 1});
+        if (!t.surface || !t.renderBuffer) continue;
+        const dm::uint2 size(t.width, t.height);
+        gvdb::launchKernel(commandList, m_copyKernel, gvdb::groupsFor(m_copyKernel, dm::uint3(t.width, t.height, 1u)),
+                           gvdb::deviceAddress(t.renderBuffer), size, t.surface);
     }
-    if (!waits.empty()) UT_V_GP(m_interop->acquireGPResourceKeyedMutexes(m_gpQueue, waits.data(), uint32_t(waits.size())));
-
-    for (auto &tp : m_targets) {
-        Target &t = *tp;
-        if (!t.textureGP || !t.renderBuffer) continue;
-        gp::TextureCopyLocation src = {};
-        src.type = gp::TextureCopyType::PlacedFootprint;
-        src.resource = t.renderBuffer;
-        src.placeFootprint.offset = 0;
-        src.placeFootprint.format = gp::Format::RGBA8_UNORM;
-        src.placeFootprint.width = t.width;
-        src.placeFootprint.height = t.height;
-        src.placeFootprint.depth = 1;
-        src.placeFootprint.rowPitch = t.width * 4;
-        gp::TextureCopyLocation dst = {};
-        dst.type = gp::TextureCopyType::SubresourceIndex;
-        dst.resource = t.textureGP;
-        dst.subresourceIndex = 0;
-        UT_V_GP(m_gpQueue->copyTextureRegion(dst, 0, 0, 0, src, nullptr));
-    }
-
-    if (!signals.empty())
-        UT_V_GP(m_interop->releaseGPResourceKeyedMutexes(m_gpQueue, signals.data(), uint32_t(signals.size())));
-    for (auto &tp : m_targets) tp->mutexKey += 1;   // graphics acquires with the released key
-
-    UT_V_GP(m_interop->commitGPQueueSignal(m_gpQueue, nvrhi::CommandQueue::Graphics));
-}
-
-void ScreenPresenter::beginGraphics(nvrhi::ICommandList *commandList) {
-    UT_V_GP(m_interop->commitNVRHIQueueWait(nvrhi::CommandQueue::Graphics));
-    for (auto &tp : m_targets) {
-        if (!tp->texture) continue;
-        UT_V_GP(m_interop->acquireNVRHITextureKeyedMutex(tp->texture, tp->mutexKey, ~0u));
-    }
+    m_compute->flush();
+    // The next graphics submission waits for the copies.
+    UT_CHECK(m_interop->graphicsQueueWaitForComputeQueue(c_graphicsQueue, c_computeQueue));
 }
 
 void ScreenPresenter::blit(nvrhi::ICommandList *commandList, nvrhi::IFramebuffer *framebuffer, int id,
@@ -203,18 +181,6 @@ void ScreenPresenter::blit(nvrhi::ICommandList *commandList, nvrhi::IFramebuffer
     nvrhi::DrawArguments args;
     args.vertexCount = 4;
     commandList->draw(args);
-}
-
-void ScreenPresenter::endGraphics(nvrhi::ICommandList *commandList) {
-    for (auto &tp : m_targets) {
-        if (!tp->texture) continue;
-        UT_V_GP(m_interop->releaseNVRHITextureKeyedMutex(tp->texture, tp->mutexKey + 1));
-        tp->mutexKey += 1;   // the gp queue acquires with this key next frame
-    }
-}
-
-void ScreenPresenter::endGraphicsFrame() {
-    UT_V_GP(m_interop->commitNVRHIQueueSignal(nvrhi::CommandQueue::Graphics));
 }
 
 }  // namespace SampleUtils
