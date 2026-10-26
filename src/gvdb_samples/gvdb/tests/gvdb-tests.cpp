@@ -41,14 +41,14 @@ struct Context {
     nvrhi::AutoPtr<gvdb::IComputeContext> compute;
 
     Context() {
-        nvrhi::GraphicsFactoryDesc factoryDesc;
+        nvrhi::cuda::GraphicsFactoryDesc factoryDesc;
         factoryDesc.messageCallback = messages;
-        nvrhi::GraphicsFactoryHandle factory = nvrhi::createGraphicsFactory(factoryDesc);
-        check(factory != nullptr, "create the graphics factory");
+        nvrhi::cuda::GraphicsFactoryHandle factory = nvrhi::cuda::createGraphicsFactory(factoryDesc);
+        check(factory != nullptr, "create the CUDA graphics factory");
         nvrhi::cuda::DeviceDesc desc;
         desc.messageCallback = messages;
         desc.enableOptix = false;
-        check(NVRHI_SUCCEEDED(factory->createCudaDevice(desc, &device)) && device, "create the CUDA device");
+        check(NVRHI_SUCCEEDED(factory->createDevice(desc, &device)) && device, "create the CUDA device");
 
         auto root = MAKE_RC_OBJ_PTR(vfs::RootFileSystem);
         root->mount("shaders/gvdb", app::GetDirectoryWithExecutable() / "shaders" / "gvdb");

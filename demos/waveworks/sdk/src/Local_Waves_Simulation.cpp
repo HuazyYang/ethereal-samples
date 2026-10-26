@@ -20,8 +20,6 @@
 #include <nvrhi/vulkan.h>
 #include <nvrhi/factory.h>
 
-bool InitializeWaveWorksVulkanDispatch(VkInstance instance, VkDevice device);
-
 #include "ShaderBytecode.h"
 
 void handle_ww_error(const wchar_t* filename, uint32_t line);
@@ -866,7 +864,7 @@ WWRESULT Local_Waves_Simulation::init11(
         nvrhi::d3d11::DeviceDesc deviceDesc;
         deviceDesc.messageCallback = m_messageCallback;
         deviceDesc.context = reinterpret_cast<ID3D11DeviceContext*>(deviceContext);
-        nvrhi::createGraphicsFactory(nvrhi::GraphicsFactoryDesc())->createD3D11Device(deviceDesc, &m_device);
+        nvrhi::d3d11::createGraphicsFactory(nvrhi::d3d11::GraphicsFactoryDesc())->createDevice(deviceDesc, &m_device);
         if (!m_device) return WWE_FAIL;
 
         nvrhi::CommandListParameters commandListParams;
@@ -909,7 +907,7 @@ WWRESULT Local_Waves_Simulation::init12(
     deviceDesc.pDevice = reinterpret_cast<ID3D12Device*>(device);
     deviceDesc.pGraphicsCommandQueue = reinterpret_cast<ID3D12CommandQueue*>(queue);
     nvrhi::d3d12::DeviceHandle d3d12Device;
-    nvrhi::createGraphicsFactory(nvrhi::GraphicsFactoryDesc())->createD3D12Device(deviceDesc, &d3d12Device);
+    nvrhi::d3d12::createGraphicsFactory(nvrhi::d3d12::GraphicsFactoryDesc())->createDevice(deviceDesc, &d3d12Device);
     m_device = d3d12Device.Get();
     if (!m_device) return WWE_FAIL;
 
@@ -973,10 +971,12 @@ WWRESULT Local_Waves_Simulation::initVK(
     deviceDesc.numInstanceExtensions = numInstanceExtensions;
     deviceDesc.deviceExtensions = deviceExtensions;
     deviceDesc.numDeviceExtensions = numDeviceExtensions;
-    if (!InitializeWaveWorksVulkanDispatch(deviceDesc.instance, deviceDesc.device))
-        return WWE_FAIL;
     nvrhi::vulkan::DeviceHandle vulkanDevice;
-    nvrhi::createGraphicsFactory(nvrhi::GraphicsFactoryDesc())->createVulkanDevice(deviceDesc, &vulkanDevice);
+    // A headless factory wraps the host's native objects (nvrhi ADR 0014); its own instance goes with it. nvrhi
+    // initializes the Vulkan-Hpp dispatcher of this module for the host's instance and device.
+    nvrhi::vulkan::GraphicsFactoryDesc factoryDesc;
+    factoryDesc.headless = true;
+    nvrhi::vulkan::createGraphicsFactory(factoryDesc)->createDevice(deviceDesc, &vulkanDevice);
     m_device = vulkanDevice.Get();
     if (!m_device) return WWE_FAIL;
 

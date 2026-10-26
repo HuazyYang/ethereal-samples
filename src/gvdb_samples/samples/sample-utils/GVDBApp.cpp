@@ -138,12 +138,15 @@ bool GVDBApp::Init(bool wantOptix) {
 
     // ---- devices: the CUDA device on the adapter of the graphics device ----
     {
+        // A CUDA graphics factory of its own (nvrhi ADR 0014): the device manager's factory is the graphics API's.
+        nvrhi::cuda::GraphicsFactoryDesc factoryDesc;
+        factoryDesc.messageCallback = app::DefaultMessageCallback::GetInstance();
+        nvrhi::cuda::GraphicsFactoryHandle cudaFactory = nvrhi::cuda::createGraphicsFactory(factoryDesc);
         nvrhi::cuda::DeviceDesc desc;
         desc.messageCallback = app::DefaultMessageCallback::GetInstance();
         desc.graphicsDevice = GetDevice();
         desc.enableOptix = wantOptix;
-        if (NVRHI_FAILED(GetDeviceManager()->GetGraphicsFactory()->createCudaDevice(desc, &m_cudaDevice)) ||
-            !m_cudaDevice) {
+        if (!cudaFactory || NVRHI_FAILED(cudaFactory->createDevice(desc, &m_cudaDevice)) || !m_cudaDevice) {
             log::error("GVDBApp: cannot create the CUDA device");
             return false;
         }

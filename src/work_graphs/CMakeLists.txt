@@ -37,6 +37,8 @@ ethereal_compile_shaders(
 add_executable(${project} WIN32 ${sources})
 target_include_directories(${project} PRIVATE "${DONUT_D3D_AGILITY_SDK_PATH}/build/native/include")
 target_link_libraries(${project} donut_app donut_engine)
+# Work graphs need the Agility SDK runtime: nvrhi's D3D12 graphics factory loads it (nvrhi ADR 0014).
+ethereal_use_agility_sdk(${project})
 add_dependencies(${project} ${project}_shaders)
 set_target_properties(${project} PROPERTIES FOLDER ${folder})
 

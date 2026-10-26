@@ -36,13 +36,13 @@ bool createHeadlessContext(HeadlessContext &ctx, bool wantOptix) {
     ctx.vfs->mount("assets", std::filesystem::path(GVDB_SAMPLES_ASSETS_DIR));
     ctx.vfs->mount("shaders/gvdb", exeDir / "shaders" / "gvdb");
 
-    nvrhi::GraphicsFactoryDesc factoryDesc;
+    nvrhi::cuda::GraphicsFactoryDesc factoryDesc;
     factoryDesc.messageCallback = app::DefaultMessageCallback::GetInstance();
-    ctx.factory = nvrhi::createGraphicsFactory(factoryDesc);
+    ctx.factory = nvrhi::cuda::createGraphicsFactory(factoryDesc);
     nvrhi::cuda::DeviceDesc desc;
     desc.messageCallback = app::DefaultMessageCallback::GetInstance();
     desc.enableOptix = wantOptix;
-    if (!ctx.factory || NVRHI_FAILED(ctx.factory->createCudaDevice(desc, &ctx.cudaDevice)) || !ctx.cudaDevice) {
+    if (!ctx.factory || NVRHI_FAILED(ctx.factory->createDevice(desc, &ctx.cudaDevice)) || !ctx.cudaDevice) {
         log::error("Cannot create the CUDA device");
         return false;
     }

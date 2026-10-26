@@ -16,7 +16,7 @@ namespace SampleUtils {
 
 struct HeadlessContext {
     nvrhi::AutoPtr<donut::vfs::RootFileSystem> vfs;
-    nvrhi::GraphicsFactoryHandle factory;
+    nvrhi::cuda::GraphicsFactoryHandle factory;
     nvrhi::cuda::DeviceHandle cudaDevice;            // OptiX enabled with wantOptix (isOptixAvailable())
     nvrhi::AutoPtr<gvdb::IComputeContext> compute;
     nvrhi::AutoPtr<gvdb::GVDBSceneGraph> sceneGraph;

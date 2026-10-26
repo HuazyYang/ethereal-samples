@@ -938,10 +938,6 @@ protected:
 };
 
 
-// AgilitySDK version used with this sample. Incorrect values here will prevent use of experimental features.
-extern "C" { __declspec(dllexport) extern const uint32_t D3D12SDKVersion = D3D12_SDK_VERSION; }
-extern "C" { __declspec(dllexport) extern const char* D3D12SDKPath = u8".\\D3D12\\"; }
-
 #ifdef WIN32
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
 #else

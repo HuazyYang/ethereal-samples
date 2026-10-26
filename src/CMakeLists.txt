@@ -20,21 +20,22 @@ if (NVRHI_WITH_DX12)
 		DESTINATION "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/D3D12/")
 endif()
 
-# Makes <target> load the Agility SDK D3D12 runtime from <exe dir>/D3D12/. Needed by every executable
-# that creates ray tracing acceleration structures: nvrhi flags their buffers with a resource flag that
-# older system D3D12 runtimes reject. (work_graphs exports the same symbols itself.)
+# Makes the D3D12 device managers of <target> load the Agility SDK D3D12 runtime from <exe dir>/D3D12/ (through nvrhi's
+# D3D12 graphics factory; the executable exports nothing). Needed by every executable that creates ray tracing
+# acceleration structures: nvrhi flags their buffers with a resource flag that older system D3D12 runtimes reject.
 function(ethereal_use_agility_sdk target)
 	if (NVRHI_WITH_DX12 AND DONUT_D3D_AGILITY_SDK_VERSION)
-		target_sources(${target} PRIVATE "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/AgilitySDKExports.cpp")
+		target_sources(${target} PRIVATE "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/AgilitySDK.cpp")
 		target_compile_definitions(${target} PRIVATE ETHEREAL_D3D12_SDK_VERSION=${DONUT_D3D_AGILITY_SDK_VERSION})
 	endif()
 endfunction()
 
 # nvrhi's own test executables create ray tracing acceleration structures too (nvrhi is a standalone project and
-# does not know about the Agility SDK, so the aggregate opts them in).
-foreach (_nvrhi_test nvrhi_memory_queries nvrhi_qi_device)
-	if (TARGET ${_nvrhi_test})
-		ethereal_use_agility_sdk(${_nvrhi_test})
+# does not know about the Agility SDK, so the aggregate opts them in): their D3D12 graphics factory loads the SDK
+# version given here (ADR 0014 of nvrhi).
+foreach (_nvrhi_test nvrhi_memory_queries nvrhi_qi_device nvrhi_factory_tests)
+	if (TARGET ${_nvrhi_test} AND NVRHI_WITH_DX12 AND DONUT_D3D_AGILITY_SDK_VERSION)
+		target_compile_definitions(${_nvrhi_test} PRIVATE NVRHI_TEST_D3D12_SDK_VERSION=${DONUT_D3D_AGILITY_SDK_VERSION})
 	endif()
 endforeach()
 
