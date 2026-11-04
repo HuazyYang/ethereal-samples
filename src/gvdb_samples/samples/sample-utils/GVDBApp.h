@@ -19,7 +19,7 @@
 // A sample derives from GVDBApp, implements the hooks and calls runGVDBApp().
 #include <donut/app/DeviceManager.h>
 #include <donut/app/ApplicationBase.h>
-#include <donut/app/ImGuiRenderPass.h>
+#include <donut/app/ImGuiLayer.h>
 #include <donut/core/vfs/VFS.h>
 #include <donut/engine/ShaderFactory.h>
 #include <donut/engine/SceneGraph.h>
@@ -55,7 +55,7 @@ struct OrbitController {
     void apply(donut::engine::SceneGraphNode *node) const;
 };
 
-class GVDBApp : public donut::app::IRenderPass {
+class GVDBApp : public donut::app::IAppLayer {
     NVRHI_INHERIT_INTERFACE_TABLE()
  public:
     explicit GVDBApp(donut::app::DeviceManager *deviceManager);
@@ -123,7 +123,7 @@ class GVDBApp : public donut::app::IRenderPass {
     }
     bool isScreenshotRun() const { return !m_screenshotPath.empty(); }
 
-    // ---- IRenderPass ----
+    // ---- IAppLayer ----
     void Render(nvrhi::IFramebuffer *framebuffer) override;
     // Donut renders only while the window has the focus. A screenshot run keeps rendering without it: a window
     // started from a script need not get the focus, and would stop after its first frame.

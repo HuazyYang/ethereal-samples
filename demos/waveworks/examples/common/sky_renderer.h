@@ -21,11 +21,11 @@
 #define SKYDOME_TEXTURE_SIZE 2048
 #define SKYDOME_TEXTURE_MIPMAPCOUNT 12
 
-class SkyRenderer: public donut::app::IRenderPass
+class SkyRenderer: public donut::app::IAppLayer
 {
     NVRHI_INHERIT_INTERFACE_TABLE()
 public:
-	// IRenderPass interface
+	// IAppLayer interface
 	virtual bool KeyboardUpdate(int key, int scancode, int action, int mods) override;
 	virtual bool MousePosUpdate(double xpos, double ypos) override;
 	virtual bool MouseButtonUpdate(int button, int action, int mods) override;
@@ -37,7 +37,7 @@ public:
 	virtual void BackBufferResized(const uint32_t width, const uint32_t height, const uint32_t sampleCount) override;
 
 	SkyRenderer(donut::app::DeviceManager *devManager, MainState *pMainState)
-        : donut::app::IRenderPass(devManager)
+        : donut::app::IAppLayer(devManager)
 	{ 
 		m_pState = pMainState;
 		m_pDevice = devManager->GetDevice();

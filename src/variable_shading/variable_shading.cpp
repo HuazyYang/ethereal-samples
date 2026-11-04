@@ -555,9 +555,9 @@ int main(int __argc, const char** __argv)
         VariableRateShading example(deviceManager);
         if (example.Init(rawD3D12))
         {
-            deviceManager->AddRenderPassToBack(&example);
+            deviceManager->AddLayerToBack(&example);
             deviceManager->RunMessageLoop();
-            deviceManager->RemoveRenderPass(&example);
+            deviceManager->RemoveLayer(&example);
         }
     }
 

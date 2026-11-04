@@ -1,7 +1,7 @@
 #include "UIPass.h"
 
 bool UIPass::Init(donut::engine::ShaderFactory* shaderFactory, Config* config) {
-    if (!ImGuiRenderPass::Init(shaderFactory)) return false;
+    if (!ImGuiLayer::Init(shaderFactory)) return false;
 
     ImGui::StyleColorsDark();
     SetupStyle();

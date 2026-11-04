@@ -31,7 +31,7 @@ using namespace donut;
 
 static const char* g_WindowTitle = "Donut Example: Vulkan Shader Specializations";
 
-class ShaderSpecializations : public app::IRenderPass
+class ShaderSpecializations : public app::IAppLayer
 {
     NVRHI_INHERIT_INTERFACE_TABLE()
 private:
@@ -41,7 +41,7 @@ private:
     nvrhi::CommandListHandle m_CommandList;
 
 public:
-    using IRenderPass::IRenderPass;
+    using IAppLayer::IAppLayer;
 
     bool Init()
     {
@@ -168,9 +168,9 @@ int main(int __argc, const char** __argv)
         ShaderSpecializations example(deviceManager);
         if (example.Init())
         {
-            deviceManager->AddRenderPassToBack(&example);
+            deviceManager->AddLayerToBack(&example);
             deviceManager->RunMessageLoop();
-            deviceManager->RemoveRenderPass(&example);
+            deviceManager->RemoveLayer(&example);
         }
     }
     

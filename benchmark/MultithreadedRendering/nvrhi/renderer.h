@@ -33,7 +33,7 @@ struct RendererDesc
     std::filesystem::path screenshot;
 };
 
-class MtRenderer final : public donut::app::IRenderPass
+class MtRenderer final : public donut::app::IAppLayer
 {
     NVRHI_INHERIT_INTERFACE_TABLE()
 public:
@@ -52,7 +52,7 @@ public:
     uint64_t LastFrameIndices() const { return m_LastIndices; }
     uint32_t TextureCount() const { return uint32_t(m_Textures.size()); }
 
-    // IRenderPass
+    // IAppLayer
     bool ShouldAnimateUnfocused() override { return true; }
     bool ShouldRenderUnfocused() override { return true; }
     bool SupportsDepthBuffer() override { return true; } // Donut's swap chain depth buffer (D24S8)

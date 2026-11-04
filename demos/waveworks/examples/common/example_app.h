@@ -9,10 +9,10 @@ class SkyRenderer;
 class UIRenderer;
 struct MainState;
 
-class IExampleScenePipeline : public donut::app::IRenderPass
+class IExampleScenePipeline : public donut::app::IAppLayer
 {
 public:
-    using IRenderPass::IRenderPass;
+    using IAppLayer::IAppLayer;
     ~IExampleScenePipeline() override = default;
     virtual bool Init(uint32_t width, uint32_t height, uint32_t sampleCount) = 0;
     virtual void Shutdown() = 0;

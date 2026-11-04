@@ -58,7 +58,7 @@ struct RendererDesc
     CbPageSplit cbPageSplit = CbPageSplit::Natural; // -cb_page_split_avoid | -cb_page_split_force (D3D12 only)
 };
 
-class AsteroidsRenderer final : public donut::app::IRenderPass
+class AsteroidsRenderer final : public donut::app::IAppLayer
 {
     NVRHI_INHERIT_INTERFACE_TABLE()
 public:
@@ -78,7 +78,7 @@ public:
 
     void FillRunInfo(Benchmark::RunInfo& info) const;
 
-    // IRenderPass
+    // IAppLayer
     bool ShouldAnimateUnfocused() override { return true; }
     bool ShouldRenderUnfocused() override { return true; }
     bool SupportsDepthBuffer() override { return false; } // the pass owns its depth buffer (reverse Z, clear value 0)

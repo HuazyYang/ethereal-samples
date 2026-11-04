@@ -7,11 +7,11 @@
 // Only BuildUI is overridden; every other virtual is the base class's.
 //
 // deviation: donut main's ImGui_Renderer carried a font registry (RegisteredFont,
-// CreateFontFromFile, rescaling on DPI change). ImGuiRenderPass has none, so the three
+// CreateFontFromFile, rescaling on DPI change). ImGuiLayer has none, so the three
 // demo fonts are registered against the ImGui atlas here. ImGui 1.92 rasterizes a font
 // per requested size, which is what the rescaling used to do by hand.
 
-#include <donut/app/ImGuiRenderPass.h>
+#include <donut/app/ImGuiLayer.h>
 #include <donut/core/math/math.h>
 #include <nvrhi/core/autoptr.h>
 #include <nvrhi/core/datablob.h>
@@ -30,7 +30,7 @@ namespace donut::vfs
     class IFileSystem;
 }
 
-class UIRenderer : public donut::app::ImGuiRenderPass
+class UIRenderer : public donut::app::ImGuiLayer
 {
     // Adds no interface and no class ID of its own.
     NVRHI_INHERIT_INTERFACE_TABLE()

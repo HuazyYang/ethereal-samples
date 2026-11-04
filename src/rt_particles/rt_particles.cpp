@@ -22,7 +22,7 @@
 
 #include <donut/app/ApplicationBase.h>
 #include <donut/app/Camera.h>
-#include <donut/app/ImGuiRenderPass.h>
+#include <donut/app/ImGuiLayer.h>
 #include <donut/engine/ShaderFactory.h>
 #include <donut/engine/CommonRenderPasses.h>
 #include <donut/engine/TextureCache.h>
@@ -772,7 +772,7 @@ public:
     }
 };
 
-class UserInterface : public app::ImGuiRenderPass
+class UserInterface : public app::ImGuiLayer
 {
     NVRHI_INHERIT_INTERFACE_TABLE()
 private:
@@ -780,14 +780,14 @@ private:
 
 public:
     UserInterface(app::DeviceManager* deviceManager, UIData* ui)
-        : ImGuiRenderPass(deviceManager)
+        : ImGuiLayer(deviceManager)
         , m_ui(ui)
     { }
 
-    // The ImGui context is created by ImGuiRenderPass::Init(), so ImGui::GetIO() is only valid after it.
+    // The ImGui context is created by ImGuiLayer::Init(), so ImGui::GetIO() is only valid after it.
     bool Init(engine::ShaderFactory* shaderFactory)
     {
-        if (!ImGuiRenderPass::Init(shaderFactory))
+        if (!ImGuiLayer::Init(shaderFactory))
             return false;
 
         ImGui::GetIO().IniFilename = nullptr;
@@ -899,11 +899,11 @@ int main(int __argc, const char** __argv)
 
         if (example.Init() && gui.Init(example.GetShaderFactory()))
         {
-            deviceManager->AddRenderPassToBack(&example);
-            deviceManager->AddRenderPassToBack(&gui);
+            deviceManager->AddLayerToBack(&example);
+            deviceManager->AddLayerToBack(&gui);
             deviceManager->RunMessageLoop();
-            deviceManager->RemoveRenderPass(&gui);
-            deviceManager->RemoveRenderPass(&example);
+            deviceManager->RemoveLayer(&gui);
+            deviceManager->RemoveLayer(&example);
         }
     }
     

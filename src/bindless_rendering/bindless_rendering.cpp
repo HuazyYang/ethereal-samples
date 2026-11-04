@@ -268,9 +268,9 @@ int main(int __argc, const char** __argv)
         BindlessRendering example(deviceManager);
         if (example.Init())
         {
-            deviceManager->AddRenderPassToBack(&example);
+            deviceManager->AddLayerToBack(&example);
             deviceManager->RunMessageLoop();
-            deviceManager->RemoveRenderPass(&example);
+            deviceManager->RemoveLayer(&example);
         }
     }
     

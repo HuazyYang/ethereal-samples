@@ -1,13 +1,13 @@
 #ifndef UIPASS_H
 #define UIPASS_H
-#include <donut/app/ImGuiRenderPass.h>
+#include <donut/app/ImGuiLayer.h>
 
 struct Config;
 
-class UIPass : public donut::app::ImGuiRenderPass {
+class UIPass : public donut::app::ImGuiLayer {
     NVRHI_INHERIT_INTERFACE_TABLE()
  public:
-    using ImGuiRenderPass::ImGuiRenderPass;
+    using ImGuiLayer::ImGuiLayer;
 
     bool Init(donut::engine::ShaderFactory *shaderFactory, Config *config);
 

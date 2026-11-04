@@ -31,7 +31,7 @@ using namespace donut;
 
 static const char* g_WindowTitle = "Donut Example: Basic Triangle";
 
-class BasicTriangle : public app::IRenderPass
+class BasicTriangle : public app::IAppLayer
 {
     NVRHI_INHERIT_INTERFACE_TABLE()
 private:
@@ -41,7 +41,7 @@ private:
     nvrhi::CommandListHandle m_CommandList;
 
 public:
-    using IRenderPass::IRenderPass;
+    using IAppLayer::IAppLayer;
 
     bool Init()
     {
@@ -132,9 +132,9 @@ int main(int __argc, const char** __argv)
         BasicTriangle example(deviceManager);
         if (example.Init())
         {
-            deviceManager->AddRenderPassToBack(&example);
+            deviceManager->AddLayerToBack(&example);
             deviceManager->RunMessageLoop();
-            deviceManager->RemoveRenderPass(&example);
+            deviceManager->RemoveLayer(&example);
         }
     }
     

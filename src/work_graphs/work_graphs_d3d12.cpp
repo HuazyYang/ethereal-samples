@@ -25,7 +25,7 @@
 #include <donut/engine/FramebufferFactory.h>
 #include <donut/engine/ShaderFactory.h>
 #include <donut/app/DeviceManager.h>
-#include <donut/app/ImGuiRenderPass.h>
+#include <donut/app/ImGuiLayer.h>
 #include <donut/core/log.h>
 #include <donut/core/vfs/VFS.h>
 #include <donut/core/math/math.h>
@@ -126,7 +126,7 @@ struct RenderTargets
 };
 
 
-class WorkGraphs : public app::IRenderPass
+class WorkGraphs : public app::IAppLayer
 {
     NVRHI_INHERIT_INTERFACE_TABLE()
 private:
@@ -253,10 +253,10 @@ private:
     }
 
 public:
-    using IRenderPass::IRenderPass;
+    using IAppLayer::IAppLayer;
 
     WorkGraphs(DeviceManager* deviceManager, UIData& ui) :
-        IRenderPass(deviceManager),
+        IAppLayer(deviceManager),
         m_UI(ui)
     {}
 
@@ -890,7 +890,7 @@ public:
     }
 };
 
-class UIRenderer : public ImGuiRenderPass
+class UIRenderer : public ImGuiLayer
 {
     NVRHI_INHERIT_INTERFACE_TABLE()
 private:
@@ -900,7 +900,7 @@ private:
 	UIData& m_UI;
 
 public:
-    UIRenderer(DeviceManager* deviceManager, UIData& ui) : ImGuiRenderPass(deviceManager), m_UI(ui) {}
+    UIRenderer(DeviceManager* deviceManager, UIData& ui) : ImGuiLayer(deviceManager), m_UI(ui) {}
 
     bool Init()
     {
@@ -911,7 +911,7 @@ public:
         m_RootFs->mount("/shaders/donut", frameworkShaderPath);
 
         m_ShaderFactory = MAKE_RC_OBJ_PTR(ShaderFactory, GetDevice(), m_RootFs, "/shaders");
-        return ImGuiRenderPass::Init(m_ShaderFactory);
+        return ImGuiLayer::Init(m_ShaderFactory);
     }
 
 protected:
@@ -973,11 +973,11 @@ int main(int __argc, const char** __argv)
         UIRenderer ui(deviceManager, uiData);
         if (example.Init() && ui.Init())
         {
-            deviceManager->AddRenderPassToBack(&example);
-            deviceManager->AddRenderPassToBack(&ui);
+            deviceManager->AddLayerToBack(&example);
+            deviceManager->AddLayerToBack(&ui);
             deviceManager->RunMessageLoop();
-            deviceManager->RemoveRenderPass(&ui);
-            deviceManager->RemoveRenderPass(&example);
+            deviceManager->RemoveLayer(&ui);
+            deviceManager->RemoveLayer(&example);
         }
     }
     

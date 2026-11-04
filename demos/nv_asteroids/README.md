@@ -101,7 +101,7 @@ base path points.
   World-to-clip, winding and the 2018 rasterizer states are therefore unchanged. Code reading the
   projection's focal terms as sizes takes their magnitudes; HBAO+ gets the reflection on its
   world-to-view matrix instead.
-- **Fonts**: `app::ImGuiRenderPass` has no font registry (donut main's `ImGui_Renderer` did), so
+- **Fonts**: `app::ImGuiLayer` has no font registry (donut main's `ImGui_Renderer` did), so
   `UIRenderer` registers the three demo fonts against the ImGui atlas itself.
 - Shaders are compiled from the reconstructed HLSL with current DXC. Non-mesh stages stay at SM 6.0,
   so `min16float` behaves as in 2018.

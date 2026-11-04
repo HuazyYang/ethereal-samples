@@ -228,7 +228,7 @@ private:
     }
 };
 
-class DeferredShading : public app::IRenderPass
+class DeferredShading : public app::IAppLayer
 {
     NVRHI_INHERIT_INTERFACE_TABLE()
 private:
@@ -249,7 +249,7 @@ private:
     float m_Rotation = 0.f;
 
 public:
-    using IRenderPass::IRenderPass;
+    using IAppLayer::IAppLayer;
 
     void SetupView()
     {
@@ -396,9 +396,9 @@ int main(int __argc, const char** __argv)
         DeferredShading example(deviceManager);
         if (example.Init())
         {
-            deviceManager->AddRenderPassToBack(&example);
+            deviceManager->AddLayerToBack(&example);
             deviceManager->RunMessageLoop();
-            deviceManager->RemoveRenderPass(&example);
+            deviceManager->RemoveLayer(&example);
         }
     }
 

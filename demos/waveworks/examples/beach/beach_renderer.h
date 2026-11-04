@@ -8,7 +8,7 @@
 #include "beach_shallow_water.h"
 #include "main_state.h"
 
-class BeachRenderer : public donut::app::IRenderPass {
+class BeachRenderer : public donut::app::IAppLayer {
     NVRHI_INHERIT_INTERFACE_TABLE()
  public:
     BeachRenderer(donut::app::DeviceManager* manager, MainState* state);

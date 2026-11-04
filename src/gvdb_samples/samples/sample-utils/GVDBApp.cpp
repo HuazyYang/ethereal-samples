@@ -80,10 +80,10 @@ void OrbitController::apply(engine::SceneGraphNode *node) const {
 // ImGui pass: one "Inspector" window built by the app
 // ----------------------------------------------------------------------------
 
-class GVDBAppGuiPass : public app::ImGuiRenderPass {
+class GVDBAppGuiPass : public app::ImGuiLayer {
     NVRHI_INHERIT_INTERFACE_TABLE()
  public:
-    GVDBAppGuiPass(app::DeviceManager *deviceManager, GVDBApp *app) : ImGuiRenderPass(deviceManager), m_app(app) {}
+    GVDBAppGuiPass(app::DeviceManager *deviceManager, GVDBApp *app) : ImGuiLayer(deviceManager), m_app(app) {}
 
  protected:
     void BuildUI() override {
@@ -103,7 +103,7 @@ class GVDBAppGuiPass : public app::ImGuiRenderPass {
 // GVDBApp
 // ----------------------------------------------------------------------------
 
-GVDBApp::GVDBApp(app::DeviceManager *deviceManager) : IRenderPass(deviceManager) {}
+GVDBApp::GVDBApp(app::DeviceManager *deviceManager) : IAppLayer(deviceManager) {}
 
 GVDBApp::~GVDBApp() {
     syncCompute(m_compute);
@@ -431,11 +431,11 @@ int runGVDBApp(int argc, const char *const *argv, const GVDBAppOptions &options,
         } else {
             auto gui = MAKE_RC_OBJ_PTR(GVDBAppGuiPass, deviceManager.Get(), appPass.Get());
             gui->Init(appPass->getShaderFactory());
-            deviceManager->AddRenderPassToBack(appPass);
-            deviceManager->AddRenderPassToBack(gui);
+            deviceManager->AddLayerToBack(appPass);
+            deviceManager->AddLayerToBack(gui);
             deviceManager->RunMessageLoop();
-            deviceManager->RemoveRenderPass(gui);
-            deviceManager->RemoveRenderPass(appPass);
+            deviceManager->RemoveLayer(gui);
+            deviceManager->RemoveLayer(appPass);
             deviceManager->GetDevice()->waitForIdle();
         }
     }

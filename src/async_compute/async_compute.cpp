@@ -68,7 +68,7 @@ public:
 
 };
 
-class AsyncCompute : public app::IRenderPass
+class AsyncCompute : public app::IAppLayer
 {
     NVRHI_INHERIT_INTERFACE_TABLE()
 private:
@@ -101,7 +101,7 @@ private:
     uint64_t m_LastRenderTextureUse = 0;
 
 public:
-    using IRenderPass::IRenderPass;
+    using IAppLayer::IAppLayer;
 
     ~AsyncCompute() override
     {
@@ -326,9 +326,9 @@ int main(int __argc, const char** __argv)
         AsyncCompute example(deviceManager);
         if (example.Init())
         {
-            deviceManager->AddRenderPassToBack(&example);
+            deviceManager->AddLayerToBack(&example);
             deviceManager->RunMessageLoop();
-            deviceManager->RemoveRenderPass(&example);
+            deviceManager->RemoveLayer(&example);
         }
     }
     

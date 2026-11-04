@@ -89,7 +89,7 @@ static const math::float3 g_RotationAxes[c_NumViews] = {
     math::float3(1.f, 1.f, 1.f),
 };
 
-class VertexBuffer : public app::IRenderPass
+class VertexBuffer : public app::IAppLayer
 {
     NVRHI_INHERIT_INTERFACE_TABLE()
 private:
@@ -107,7 +107,7 @@ private:
     float m_Rotation = 0.f;
 
 public:
-    using IRenderPass::IRenderPass;
+    using IAppLayer::IAppLayer;
 
     // This example uses a single large constant buffer with multiple views to draw multiple versions of the same model.
     // The alignment and size of partially bound constant buffers must be a multiple of 256 bytes,
@@ -334,9 +334,9 @@ int main(int __argc, const char** __argv)
         VertexBuffer example(deviceManager);
         if (example.Init())
         {
-            deviceManager->AddRenderPassToBack(&example);
+            deviceManager->AddLayerToBack(&example);
             deviceManager->RunMessageLoop();
-            deviceManager->RemoveRenderPass(&example);
+            deviceManager->RemoveLayer(&example);
         }
     }
 

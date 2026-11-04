@@ -197,12 +197,12 @@ void Cleanup()
     if (g_DeviceManager)
     {
         if (g_ScenePipeline)
-            g_DeviceManager->RemoveRenderPass(g_ScenePipeline);
+            g_DeviceManager->RemoveLayer(g_ScenePipeline);
         else
         {
-            if (g_UIRenderer) g_DeviceManager->RemoveRenderPass(g_UIRenderer);
-            if (g_SkyRenderer) g_DeviceManager->RemoveRenderPass(g_SkyRenderer);
-            if (g_OceanRenderer) g_DeviceManager->RemoveRenderPass(g_OceanRenderer);
+            if (g_UIRenderer) g_DeviceManager->RemoveLayer(g_UIRenderer);
+            if (g_SkyRenderer) g_DeviceManager->RemoveLayer(g_SkyRenderer);
+            if (g_OceanRenderer) g_DeviceManager->RemoveLayer(g_OceanRenderer);
         }
     }
     if (g_ScenePipeline) g_ScenePipeline->Shutdown();
@@ -371,11 +371,11 @@ int RunExample(int argc, char **argv, const ExampleSceneDefinition& scene)
     // Beach registers one orchestrator so frame order and frame-resource
     // ownership cannot depend on DeviceManager front/back insertion semantics.
     if (g_ScenePipeline)
-        g_DeviceManager->AddRenderPassToBack(g_ScenePipeline);
+        g_DeviceManager->AddLayerToBack(g_ScenePipeline);
     else {
-        g_DeviceManager->AddRenderPassToFront(g_OceanRenderer);
-        g_DeviceManager->AddRenderPassToBack(g_SkyRenderer);
-        g_DeviceManager->AddRenderPassToBack(g_UIRenderer);
+        g_DeviceManager->AddLayerToFront(g_OceanRenderer);
+        g_DeviceManager->AddLayerToBack(g_SkyRenderer);
+        g_DeviceManager->AddLayerToBack(g_UIRenderer);
     }
     const bool passesInitialized = g_ScenePipeline
         ? g_ScenePipeline->Init(deviceParams.backBufferWidth,

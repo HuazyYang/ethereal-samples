@@ -123,7 +123,7 @@ public:
     FeatureDemo(donut::app::DeviceManager* deviceManager, UIData* uiData, bool asyncLoad);
     ~FeatureDemo() override;
 
-    // IRenderPass (2018 slots 1, 4, 6..10)
+    // IAppLayer (2018 slots 1, 4, 6..10)
     void Animate(float elapsedTimeSeconds) override;                                    // 0x14002A4B0
     // deviation: donut pauses unfocused windows; the 2018 DeviceManager never checked focus, so keep rendering.
     bool ShouldAnimateUnfocused() override { return true; }
@@ -202,7 +202,7 @@ private:
     void SaveScreenshotIfRequested(nvrhi::IFramebuffer* framebuffer);
 
     // ---- 2018 members ---------------------------------------------------------------------------
-    // +8 DeviceManager* (IRenderPass), +16 scene-loaded flag, +24 m_TextureCache, +40 loading thread,
+    // +8 DeviceManager* (IAppLayer), +16 scene-loaded flag, +24 m_TextureCache, +40 loading thread,
     // +48 m_CommonPasses, +64 m_IsAsyncLoad: inherited from ApplicationBase.
     bool m_PreviousViewsValid = false;                                          // +96
     float m_CurrentTime = 0.f;                                                  // +100 demo time (stops when paused)

@@ -220,7 +220,7 @@ int main(int argc, char** argv)
     if (!renderer->Init(*shaderFactory, mesh))
         Benchmark::Fail("renderer initialization failed");
 
-    deviceManager->AddRenderPassToBack(renderer);
+    deviceManager->AddLayerToBack(renderer);
     if (config.enabled)
         renderer->InstallFrameCallbacks();
 
@@ -242,7 +242,7 @@ int main(int argc, char** argv)
 
     deviceManager->m_callbacks = {};
     renderer->Shutdown();
-    deviceManager->RemoveRenderPass(renderer);
+    deviceManager->RemoveLayer(renderer);
     renderer = nullptr;
     shaderFactory = nullptr;
     rootFS = nullptr;

@@ -111,7 +111,7 @@ namespace
 }
 
 UIRenderer::UIRenderer(app::DeviceManager* deviceManager, nvrhi::AutoPtr<FeatureDemo> demo, UIData& ui)
-    : ImGuiRenderPass(deviceManager)
+    : ImGuiLayer(deviceManager)
     , m_Demo(std::move(demo))
     , m_UI(ui)
 {

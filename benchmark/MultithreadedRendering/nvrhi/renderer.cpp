@@ -67,7 +67,7 @@ constexpr uint32_t kConstantBufferVersions = 64; // writes per command list per 
 } // namespace
 
 MtRenderer::MtRenderer(donut::app::DeviceManager* deviceManager, const RendererDesc& desc, Scene* scene)
-    : IRenderPass(deviceManager)
+    : IAppLayer(deviceManager)
     , m_Desc(desc)
     , m_Mode(desc.mode)
     , m_Threads(std::clamp(desc.threads, 1u, kMaxThreads))
@@ -497,7 +497,7 @@ void MtRenderer::CreatePipelines(nvrhi::IFramebuffer* framebuffer)
 }
 
 // ---------------------------------------------------------------------------------------------
-// IRenderPass
+// IAppLayer
 // ---------------------------------------------------------------------------------------------
 
 void MtRenderer::Animate(float elapsedTimeSeconds)

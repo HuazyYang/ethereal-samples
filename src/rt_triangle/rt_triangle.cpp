@@ -36,7 +36,7 @@ using namespace donut::math;
 
 static const char* g_WindowTitle = "Donut Example: Ray Traced Triangle";
 
-class RayTracedTriangle : public app::IRenderPass
+class RayTracedTriangle : public app::IAppLayer
 {
     NVRHI_INHERIT_INTERFACE_TABLE()
 private:
@@ -53,7 +53,7 @@ private:
     std::unique_ptr<engine::BindingCache> m_BindingCache;
 
 public:
-    using IRenderPass::IRenderPass;
+    using IAppLayer::IAppLayer;
 
     bool Init()
     {
@@ -265,9 +265,9 @@ int main(int __argc, const char** __argv)
         RayTracedTriangle example(deviceManager);
         if (example.Init())
         {
-            deviceManager->AddRenderPassToBack(&example);
+            deviceManager->AddLayerToBack(&example);
             deviceManager->RunMessageLoop();
-            deviceManager->RemoveRenderPass(&example);
+            deviceManager->RemoveLayer(&example);
         }
     }
     

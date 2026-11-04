@@ -455,7 +455,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
         donut::vfs::IFileSystem& fs = *demoPass->GetRootFileSystem();
         const std::filesystem::path& mediaPath = demoPass->GetMediaPath();
-        // Init before the fonts: ImGuiRenderPass creates the ImGui context there, whereas
+        // Init before the fonts: ImGuiLayer creates the ImGui context there, whereas
         // donut main's ImGui_Renderer created it in its constructor. The load order of the
         // three fonts is what the demo indexes them by, so it is kept.
         uiPass->Init(demoPass->GetShaderFactory());
@@ -463,8 +463,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         uiPass->LoadFont(fs, mediaPath / "GeForceFont/geforce-light.ttf", 51.f);
         uiPass->LoadFont(fs, mediaPath / "GeForceFont/geforce-bold.ttf", 51.f);
 
-        deviceManager->AddRenderPassToBack(demoPass.Get());
-        deviceManager->AddRenderPassToBack(uiPass.Get());
+        deviceManager->AddLayerToBack(demoPass.Get());
+        deviceManager->AddLayerToBack(uiPass.Get());
 
         deviceManager->RunMessageLoop();
 
@@ -474,8 +474,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
         // deviation: the binary released the passes after DeviceManager::Shutdown; donut expects the
         // resources to be gone before the device is destroyed.
-        deviceManager->RemoveRenderPass(uiPass.Get());
-        deviceManager->RemoveRenderPass(demoPass.Get());
+        deviceManager->RemoveLayer(uiPass.Get());
+        deviceManager->RemoveLayer(demoPass.Get());
     }
 
     deviceManager->Shutdown();

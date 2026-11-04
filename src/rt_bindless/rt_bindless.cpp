@@ -553,9 +553,9 @@ int main(int __argc, const char** __argv)
         BindlessRayTracing example(deviceManager);
         if (example.Init(useRayQuery))
         {
-            deviceManager->AddRenderPassToBack(&example);
+            deviceManager->AddLayerToBack(&example);
             deviceManager->RunMessageLoop();
-            deviceManager->RemoveRenderPass(&example);
+            deviceManager->RemoveLayer(&example);
         }
     }
     

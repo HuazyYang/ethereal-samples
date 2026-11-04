@@ -84,7 +84,7 @@ static_assert(sizeof(BeachVegetationVertex) == 40, "Vegetation input stride");
 }  // namespace
 
 BeachRenderer::BeachRenderer(donut::app::DeviceManager* manager, MainState* state)
-    : donut::app::IRenderPass(manager),
+    : donut::app::IAppLayer(manager),
       m_device(manager->GetDevice()),
       m_state(state),
       m_backend(manager->GetGraphicsAPI()),

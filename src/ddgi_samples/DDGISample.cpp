@@ -409,8 +409,8 @@ int main(int __argc, const char **__argv)
         auto uiPass = MAKE_RC_OBJ_PTR(UIPass, deviceManager);
         auto example = MAKE_RC_OBJ_PTR(DDGISample, deviceManager);
         if (example->Init(configPath, uiPass)) {
-            deviceManager->AddRenderPassToBack(example);
-            deviceManager->AddRenderPassToBack(uiPass);
+            deviceManager->AddLayerToBack(example);
+            deviceManager->AddLayerToBack(uiPass);
             deviceManager->RunMessageLoop();
         }
     }

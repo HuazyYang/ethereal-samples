@@ -309,7 +309,7 @@ int main(int argc, char** argv)
     if (!renderer->Init(*shaderFactory, exeDirectory / "media"))
         Benchmark::Fail("renderer initialization failed");
 
-    deviceManager->AddRenderPassToBack(renderer);
+    deviceManager->AddLayerToBack(renderer);
     renderer->InstallFrameCallbacks();
 
     // ---- frame loop (Donut) ----
@@ -332,7 +332,7 @@ int main(int argc, char** argv)
     // ---- shutdown ----
     deviceManager->m_callbacks = {};
     renderer->Shutdown();
-    deviceManager->RemoveRenderPass(renderer);
+    deviceManager->RemoveLayer(renderer);
     renderer      = nullptr;
     shaderFactory = nullptr;
     rootFS        = nullptr;

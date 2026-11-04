@@ -104,7 +104,7 @@ nvrhi::BufferHandle CreateStaticBuffer(nvrhi::IDevice* device, nvrhi::ICommandLi
 
 AsteroidsRenderer::AsteroidsRenderer(donut::app::DeviceManager* deviceManager, const RendererDesc& desc,
                                      AsteroidsSimulation* simulation, OrbitCamera* camera, const Settings* settings)
-    : IRenderPass(deviceManager)
+    : IAppLayer(deviceManager)
     , m_Desc(desc)
     , m_Device(deviceManager->GetDevice())
     , m_Api(deviceManager->GetDevice()->getGraphicsAPI())

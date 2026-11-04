@@ -214,7 +214,7 @@ public:
 
 } // namespace
 
-class HelloDXR : public app::IRenderPass
+class HelloDXR : public app::IAppLayer
 {
     NVRHI_INHERIT_INTERFACE_TABLE()
 private:
@@ -249,7 +249,7 @@ private:
     float m_LightAngle = 0.f;
 
 public:
-    using IRenderPass::IRenderPass;
+    using IAppLayer::IAppLayer;
 
     bool Init()
     {
@@ -634,9 +634,9 @@ int main(int __argc, const char** __argv)
         HelloDXR example(deviceManager);
         if (example.Init())
         {
-            deviceManager->AddRenderPassToBack(&example);
+            deviceManager->AddLayerToBack(&example);
             deviceManager->RunMessageLoop();
-            deviceManager->RemoveRenderPass(&example);
+            deviceManager->RemoveLayer(&example);
         }
     }
 

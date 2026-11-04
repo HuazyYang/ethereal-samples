@@ -25,7 +25,7 @@
 #include <donut/app/DeviceManager.h>
 #include <donut/core/log.h>
 #include <donut/core/vfs/VFS.h>
-#include <donut/app/ImGuiRenderPass.h>
+#include <donut/app/ImGuiLayer.h>
 #include <nvrhi/utils.h>
 
 #define VULKAN_HPP_DISPATCH_LOADER_DYNAMIC 1
@@ -47,7 +47,7 @@ enum class CrashType
     PAGEFAULT = 2
 };
 
-class AftermathSample : public app::IRenderPass
+class AftermathSample : public app::IAppLayer
 {
     NVRHI_INHERIT_INTERFACE_TABLE()
 private:
@@ -63,7 +63,7 @@ private:
     CrashType m_CrashType;
 
 public:
-    using IRenderPass::IRenderPass;
+    using IAppLayer::IAppLayer;
 
     void SetCrashType(CrashType c)
     {
@@ -205,7 +205,7 @@ public:
 
 };
 
-class UIRenderer : public app::ImGuiRenderPass
+class UIRenderer : public app::ImGuiLayer
 {
     NVRHI_INHERIT_INTERFACE_TABLE()
 private:
@@ -213,7 +213,7 @@ private:
 
 public:
     UIRenderer(app::DeviceManager* deviceManager, AftermathSample& app)
-        : ImGuiRenderPass(deviceManager)
+        : ImGuiLayer(deviceManager)
         , m_app(app)
     {
     }
@@ -267,10 +267,10 @@ int main(int __argc, const char** __argv)
         UIRenderer gui(deviceManager, example);
         if (example.Init() && gui.Init(example.GetShaderFactory()))
         {
-            deviceManager->AddRenderPassToBack(&example);
-            deviceManager->AddRenderPassToBack(&gui);
+            deviceManager->AddLayerToBack(&example);
+            deviceManager->AddLayerToBack(&gui);
             deviceManager->RunMessageLoop();
-            deviceManager->RemoveRenderPass(&example);
+            deviceManager->RemoveLayer(&example);
         }
     }
     

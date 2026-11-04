@@ -10,7 +10,7 @@
 #include <donut/app/DeviceManager.h>
 #include <donut/app/ApplicationBase.h>
 #include <donut/app/Camera.h>
-#include <donut/app/ImGuiRenderPass.h>
+#include <donut/app/ImGuiLayer.h>
 #include "VXGITypes.h"
 #include "VoxelShadingPass.h"
 #include <nvrhi/utils.h>
@@ -485,14 +485,14 @@ class VXGISample : public donut::app::ApplicationBase {
     nvrhi::TextureHandle m_DummyShadowMapTexture;
 };
 
-class UIPass : public donut::app::ImGuiRenderPass {
+class UIPass : public donut::app::ImGuiLayer {
     NVRHI_INHERIT_INTERFACE_TABLE()
 public:
     UIPass(VXGISample *sample, donut::app::DeviceManager *deviceManager)
-    : ImGuiRenderPass(deviceManager), m_Config(&sample->m_Config) {}
+    : ImGuiLayer(deviceManager), m_Config(&sample->m_Config) {}
 
     bool Init(donut::engine::ShaderFactory *pShaderFactory) {
-        if(!ImGuiRenderPass::Init(pShaderFactory))
+        if(!ImGuiLayer::Init(pShaderFactory))
             return false;
         return true;
     }
@@ -718,11 +718,11 @@ int main(int __argc, const char **__argv)
         VXGISample sample(&config, deviceManager);
         UIPass uiPass(&sample, deviceManager);
         if(sample.Init() && uiPass.Init(sample.GetShaderFactory())) {
-            deviceManager->AddRenderPassToBack(&sample);
-            deviceManager->AddRenderPassToBack(&uiPass);
+            deviceManager->AddLayerToBack(&sample);
+            deviceManager->AddLayerToBack(&uiPass);
             deviceManager->RunMessageLoop();
-            deviceManager->RemoveRenderPass(&uiPass);
-            deviceManager->RemoveRenderPass(&sample);
+            deviceManager->RemoveLayer(&uiPass);
+            deviceManager->RemoveLayer(&sample);
         }
     }
 

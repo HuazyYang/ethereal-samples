@@ -17,11 +17,11 @@
 
 #include "./main_state.h"
 
-class UIRenderer : public donut::app::IRenderPass
+class UIRenderer : public donut::app::IAppLayer
 {
     NVRHI_INHERIT_INTERFACE_TABLE()
 public:
-	// IRenderPass interface
+	// IAppLayer interface
     virtual bool KeyboardUpdate(int key, int scancode, int action, int mods) override;
     bool KeyboardCharInput(unsigned int character, int mods) override;
     virtual bool MousePosUpdate(double xpos, double ypos) override;
@@ -35,7 +35,7 @@ public:
 	virtual void BackBufferResized(const uint32_t width, const uint32_t height, const uint32_t sampleCount) override;
 
 	UIRenderer(donut::app::DeviceManager *devManager, MainState *pMainState)
-        : donut::app::IRenderPass(devManager)
+        : donut::app::IAppLayer(devManager)
 	{
 		IMGUI_CHECKVERSION();
 		ImGui::CreateContext();
