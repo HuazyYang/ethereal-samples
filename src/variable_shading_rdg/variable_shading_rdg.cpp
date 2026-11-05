@@ -55,6 +55,7 @@ using namespace donut::math;
 
 #include "../variable_shading/lighting_cb.h"
 #include "../sample_harness/SampleHarness.h"
+#include "../sample_harness/GraphRecording.h"
 
 static const char* g_WindowTitle = "Donut Example: Variable Rate Shading (render graph)";
 
@@ -69,7 +70,8 @@ static const char* g_WindowTitle = "Donut Example: Variable Rate Shading (render
 // resources. The surface and the resolved colour are transients; TAA's feedback is its history pair.
 //
 // Beside the harness's options: -graphstats F, -nocache, -notimers and -emptybodies (as deferred_shading_rdg; with
-// empty bodies, TAA and the blit are lambda passes with their accesses).
+// empty bodies, TAA and the blit are lambda passes with their accesses), and -parallel N, -granularity G (parallel
+// recording, sample_harness/GraphRecording.h, step P2.4).
 
 class VariableShadingGraph;
 
@@ -119,8 +121,10 @@ private:
     uint32_t m_Frame = 0;
     std::vector<double> m_FrameCostMs;
     std::vector<double> m_ExecuteMs;
+    std::vector<double> m_RecordMs;
     std::vector<uint32_t> m_Barriers;
     render::RunStatistics m_LastRun;
+    sample_harness::GraphRecording m_Recording;
 
     static double Median(std::vector<double> samples)
     {
@@ -211,6 +215,7 @@ public:
                 m_EmptyBodies = true;
         }
         m_Graph->GetExecuteDesc().timers = timers;
+        m_Recording.Configure(argc, argv, m_Graph);
 
         GetDevice()->waitForIdle();
         return true;
@@ -276,6 +281,7 @@ public:
         {
             m_FrameCostMs.push_back(cost);
             m_ExecuteMs.push_back(double(m_LastRun.recordMilliseconds) + double(m_LastRun.submitMilliseconds));
+            m_RecordMs.push_back(double(m_LastRun.recordMilliseconds));
             m_Barriers.push_back(m_LastRun.barriers);
         }
 
@@ -449,12 +455,14 @@ public:
         render::RegistryStatistics registry;
         m_Graph->GetRegistry()->GetRegistryStatistics(registry);
         std::fprintf(file, "{\n  \"frames\": %u,\n  \"warmup\": %u,\n  \"cache\": %s,\n  \"timers\": %s,\n  \"empty_bodies\": %s,\n"
-            "  \"median_layer_frame_ms\": %.4f,\n  \"median_execute_ms\": %.4f,\n  \"barriers_min\": %u,\n  \"barriers_max\": %u,\n"
-            "  \"passes\": %u,\n  \"segments\": %u,\n  \"plan_hits\": %llu,\n  \"plan_misses\": %llu\n}\n",
+            "  \"median_layer_frame_ms\": %.4f,\n  \"median_execute_ms\": %.4f,\n  \"median_record_ms\": %.4f,\n"
+            "  \"barriers_min\": %u,\n  \"barriers_max\": %u,\n  \"passes\": %u,\n  \"segments\": %u,\n  \"threads\": %u,\n"
+            "  \"record_tasks\": %u,\n  \"plan_hits\": %llu,\n  \"plan_misses\": %llu\n}\n",
             m_Frame, m_Warmup, m_Graph->GetCompileOptions().maxCachedPlans ? "true" : "false",
             m_Graph->GetExecuteDesc().timers ? "true" : "false", m_EmptyBodies ? "true" : "false",
-            Median(m_FrameCostMs), Median(m_ExecuteMs), m_Barriers.empty() ? 0u : barriersMin, barriersMax,
-            m_LastRun.passes, m_LastRun.segments, (unsigned long long)registry.planHits, (unsigned long long)registry.planMisses);
+            Median(m_FrameCostMs), Median(m_ExecuteMs), Median(m_RecordMs), m_Barriers.empty() ? 0u : barriersMin, barriersMax,
+            m_LastRun.passes, m_LastRun.segments, m_Recording.GetThreadCount(), m_LastRun.recordTasks,
+            (unsigned long long)registry.planHits, (unsigned long long)registry.planMisses);
         std::fclose(file);
     }
 };

@@ -61,6 +61,7 @@ using namespace donut;
 using namespace donut::math;
 
 #include "../sample_harness/SampleHarness.h"
+#include "../sample_harness/GraphRecording.h"
 
 static const char* g_WindowTitle = "Donut Example: Async Compute (render graph)";
 
@@ -69,7 +70,8 @@ static const char* g_WindowTitle = "Donut Example: Async Compute (render graph)"
 //   1. GBufferFill: the G-buffer and depth, transients;
 //   2. SSAO from depth and normals, PassFlags::AsyncCompute (-sync: the graphics queue);
 //   3. ShadowDepth: the sun's four cascades into the CascadedShadowMap's texture, an import. It needs nothing SSAO
-//      writes, so it overlaps SSAO;
+//      writes, so it overlaps SSAO. Each cascade has its own DepthPass, pass context and draw strategy, so that a
+//      parallel recorder can record the cascades on separate threads (a pass object's uses share one task, 10.1);
 //   4. DeferredLighting, with the ambient occlusion and the shadow map; 5. Sky;
 //   6. TAA: motion vectors from depth, then the resolve against its history pair;
 //   7. Bloom on the resolved colour; 8. ToneMapping, with its histogram and exposure; 9. a blit to the back buffer.
@@ -90,12 +92,14 @@ static const char* g_WindowTitle = "Donut Example: Async Compute (render graph)"
 //     -passtimes F     per stage, the median GPU time of the frames after the warm-up, as JSON: the graph's per-pass
 //                      timers (not with -notimers), or timer queries around the immediate frame's stages
 //     -size WxH        the back buffer's size (default 1280x720)
+//     -parallel N, -granularity G   parallel recording (sample_harness/GraphRecording.h, step P2.4)
 
 // The stages of -passtimes: a graph pass counts towards the stage its name starts with, up to a '/'.
 static const char* const c_Stages[] = { "GBufferFill", "SSAO", "ShadowDepth", "DeferredLighting", "Sky", "MotionVectors",
                                         "TemporalAA", "Bloom", "ToneMapping", "Blit" };
 constexpr uint32_t c_StageCount = uint32_t(std::size(c_Stages));
 constexpr uint32_t c_TimedFrames = 4;   // immediate timer queries in flight
+constexpr uint32_t c_Cascades = 4;
 
 class AsyncComputeGraph;
 
@@ -155,17 +159,17 @@ private:
     nvrhi::AutoPtr<engine::DirectionalLight> m_SunLight;
     nvrhi::AutoPtr<render::CascadedShadowMap> m_ShadowMap;
     nvrhi::AutoPtr<render::InstancedOpaqueDrawStrategy> m_GBufferStrategy;
-    nvrhi::AutoPtr<render::InstancedOpaqueDrawStrategy> m_ShadowStrategy;
+    nvrhi::AutoPtr<render::InstancedOpaqueDrawStrategy> m_ShadowStrategies[c_Cascades];
     nvrhi::Format m_DepthFormat = nvrhi::Format::UNKNOWN;
     float m_FrameTime = 0.f;
 
     // The passes. The geometry and lighting passes serve both modes; the others have an immediate construction,
     // bound to the immediate frame's targets, and a graph construction.
     nvrhi::AutoPtr<render::GBufferFillPass> m_GBufferPass;
-    nvrhi::AutoPtr<render::DepthPass> m_ShadowDepthPass;
+    nvrhi::AutoPtr<render::DepthPass> m_ShadowDepthPasses[c_Cascades];   // one per cascade; the immediate frame uses the first
     nvrhi::AutoPtr<render::DeferredLightingPass> m_LightingPass;
     render::GBufferFillPass::Context m_GBufferContext;
-    render::DepthPass::Context m_ShadowContext;
+    render::DepthPass::Context m_ShadowContexts[c_Cascades];
     nvrhi::AutoPtr<render::SsaoPass> m_SsaoPass;
     nvrhi::AutoPtr<render::SkyPass> m_SkyPass;
     nvrhi::AutoPtr<render::TemporalAntiAliasingPass> m_TemporalPass;
@@ -192,8 +196,10 @@ private:
     uint32_t m_Frame = 0;
     std::vector<double> m_FrameCostMs;
     std::vector<double> m_ExecuteMs;
+    std::vector<double> m_RecordMs;
     std::vector<uint32_t> m_Barriers;
     render::RunStatistics m_LastRun;
+    sample_harness::GraphRecording m_Recording;
     uint64_t m_ObjectsAtWarmup = 0;    // RegistryStatistics::objectsCreated when the warm-up ends
     bool m_PassTimes = false;
     std::vector<double> m_StageMs[c_StageCount + 1];   // the last: the frame's sum
@@ -259,6 +265,7 @@ public:
                 m_PassTimes = true;
         }
         m_Graph->GetExecuteDesc().timers = timers;
+        m_Recording.Configure(argc, argv, m_Graph);
 
         std::filesystem::path sceneFileName = app::GetDirectoryWithExecutable().parent_path() / "media/glTF-Sample-Assets/Models/Sponza/glTF/Sponza.gltf";
         std::filesystem::path frameworkShaderPath = app::GetDirectoryWithExecutable() / "shaders/framework" / app::GetShaderTypeName(GetDevice()->getGraphicsAPI());
@@ -285,14 +292,15 @@ public:
         m_SunLight->irradiance = 2.f;
         m_Scene->FinishedLoading(GetFrameIndex());
 
-        m_ShadowMap = MAKE_RC_OBJ_PTR(render::CascadedShadowMap, GetDevice(), 2048, 4, 0, nvrhi::Format::D24S8);
+        m_ShadowMap = MAKE_RC_OBJ_PTR(render::CascadedShadowMap, GetDevice(), 2048, int(c_Cascades), 0, nvrhi::Format::D24S8);
         m_SunLight->shadowMap = m_ShadowMap;
 
         m_Camera.LookAt(float3(-8.f, 1.8f, 0.f), float3(1.f, 2.5f, 0.f));
         m_Camera.SetMoveSpeed(3.f);
 
         m_GBufferStrategy = MAKE_RC_OBJ_PTR(render::InstancedOpaqueDrawStrategy);
-        m_ShadowStrategy = MAKE_RC_OBJ_PTR(render::InstancedOpaqueDrawStrategy);
+        for (nvrhi::AutoPtr<render::InstancedOpaqueDrawStrategy>& strategy : m_ShadowStrategies)
+            strategy = MAKE_RC_OBJ_PTR(render::InstancedOpaqueDrawStrategy);
 
         // The depth format GBufferRenderTargets chooses.
         const nvrhi::Format depthFormats[] = { nvrhi::Format::D24S8, nvrhi::Format::D32S8, nvrhi::Format::D32, nvrhi::Format::D16 };
@@ -304,11 +312,14 @@ public:
         render::GBufferFillPass::CreateParameters gbufferParams;
         gbufferParams.enableMotionVectors = false;
         m_GBufferPass->Init(*m_ShaderFactory, gbufferParams);
-        m_ShadowDepthPass = MAKE_RC_OBJ_PTR(render::DepthPass, GetDevice(), m_CommonPasses);
         render::DepthPass::CreateParameters shadowParams;
         shadowParams.depthBias = 100;
         shadowParams.slopeScaledDepthBias = 4.f;
-        m_ShadowDepthPass->Init(*m_ShaderFactory, shadowParams);
+        for (nvrhi::AutoPtr<render::DepthPass>& pass : m_ShadowDepthPasses)
+        {
+            pass = MAKE_RC_OBJ_PTR(render::DepthPass, GetDevice(), m_CommonPasses);
+            pass->Init(*m_ShaderFactory, shadowParams);
+        }
         m_LightingPass = MAKE_RC_OBJ_PTR(render::DeferredLightingPass, GetDevice(), m_CommonPasses);
         m_LightingPass->Init(m_ShaderFactory);
 
@@ -430,6 +441,7 @@ public:
         {
             m_FrameCostMs.push_back(cost);
             m_ExecuteMs.push_back(double(m_LastRun.recordMilliseconds) + double(m_LastRun.submitMilliseconds));
+            m_RecordMs.push_back(double(m_LastRun.recordMilliseconds));
             m_Barriers.push_back(m_LastRun.barriers);
         }
         EndFrame();
@@ -558,17 +570,20 @@ public:
 
         // 3. The shadow cascades, into the shadow map's texture: it keeps its initial state, so it is host-kept and
         // ends the frame in that state.
-        const render::ResourceId shadowTexture = graph->ImportHostKeptTexture(m_ShadowMap->GetTexture());
-        render::GeometryGraphInputs shadow;
-        shadow.name = "ShadowDepth";
-        shadow.view = &m_ShadowMap->GetView();
-        shadow.rootNode = root;
-        shadow.drawStrategy = m_ShadowStrategy;
-        shadow.passContext = &m_ShadowContext;
-        shadow.depth = shadowTexture;
-        shadow.clearTargets = true;
-        shadow.depthClear.depth = 1.f;    // CascadedShadowMap::Clear
-        const render::ResourceId shadowMap = m_ShadowDepthPass->AddToGraph(graph, shadow).depth;
+        render::ResourceId shadowMap = graph->ImportHostKeptTexture(m_ShadowMap->GetTexture());
+        for (uint32_t cascade = 0; cascade < c_Cascades; ++cascade)
+        {
+            render::GeometryGraphInputs shadow;
+            shadow.name = "ShadowDepth";
+            shadow.view = m_ShadowMap->GetCascadeView(cascade);
+            shadow.rootNode = root;
+            shadow.drawStrategy = m_ShadowStrategies[cascade];
+            shadow.passContext = &m_ShadowContexts[cascade];
+            shadow.depth = shadowMap;
+            shadow.clearTargets = true;   // the cascade's slice, as CascadedShadowMap::Clear
+            shadow.depthClear.depth = 1.f;
+            shadowMap = m_ShadowDepthPasses[cascade]->AddToGraph(graph, shadow).depth;
+        }
 
         // 4. Lighting; 5. the sky where the depth is clear.
         render::DeferredLightingGraphInputs lighting;
@@ -655,7 +670,7 @@ public:
         BeginStage(commandList, 2);
         m_ShadowMap->Clear(commandList);
         render::RenderCompositeView(commandList, &m_ShadowMap->GetView(), nullptr, frame.shadowFramebuffer, root,
-                                    *m_ShadowStrategy, *m_ShadowDepthPass, m_ShadowContext, "ShadowDepth");
+                                    *m_ShadowStrategies[0], *m_ShadowDepthPasses[0], m_ShadowContexts[0], "ShadowDepth");
         EndStage(commandList, 2);
 
         render::DeferredLightingPass::Inputs lighting;
@@ -795,7 +810,8 @@ public:
         const uint64_t peak = plan.placedPeakBytes + plan.unplacedTransientBytes;
         std::fprintf(file, "{\n  \"frames\": %u,\n  \"warmup\": %u,\n  \"cache\": %s,\n  \"timers\": %s,\n"
             "  \"async_ssao\": %s,\n  \"split_barriers\": %s,\n  \"placed\": %s,\n  \"queue_ownership_transfer\": %s,\n"
-            "  \"median_layer_frame_ms\": %.4f,\n  \"median_execute_ms\": %.4f,\n  \"barriers_min\": %u,\n  \"barriers_max\": %u,\n"
+            "  \"median_layer_frame_ms\": %.4f,\n  \"median_execute_ms\": %.4f,\n  \"median_record_ms\": %.4f,\n"
+            "  \"barriers_min\": %u,\n  \"barriers_max\": %u,\n  \"threads\": %u,\n  \"record_tasks\": %u,\n"
             "  \"passes\": %u,\n  \"segments\": %u,\n  \"compute_queue_passes\": %u,\n  \"plan_barriers\": %u,\n"
             "  \"plan_transitions\": %u,\n  \"plan_split_barriers\": %u,\n  \"plan_aliasing_barriers\": %u,\n"
             "  \"plan_queue_transfers\": %u,\n  \"plan_fence_waits\": %u,\n  \"heaps\": %u,\n"
@@ -806,8 +822,8 @@ public:
             m_Graph->GetExecuteDesc().timers ? "true" : "false", m_AsyncSsao ? "true" : "false",
             profile.splitBarriers ? "true" : "false", m_Graph->GetCompileOptions().placedResources ? "true" : "false",
             profile.queueOwnershipTransfer ? "true" : "false",
-            Median(m_FrameCostMs), Median(m_ExecuteMs), m_Barriers.empty() ? 0u : barriersMin, barriersMax,
-            m_LastRun.passes, m_LastRun.segments, computePasses, plan.barriers, plan.transitions, plan.splitBarriers,
+            Median(m_FrameCostMs), Median(m_ExecuteMs), Median(m_RecordMs), m_Barriers.empty() ? 0u : barriersMin, barriersMax,
+            m_Recording.GetThreadCount(), m_LastRun.recordTasks, m_LastRun.passes, m_LastRun.segments, computePasses, plan.barriers, plan.transitions, plan.splitBarriers,
             plan.aliasingBarriers, plan.queueTransfers, plan.fenceWaits, plan.heaps,
             (unsigned long long)plan.poolableTransientBytes, (unsigned long long)plan.placedPeakBytes,
             (unsigned long long)plan.unplacedTransientBytes,

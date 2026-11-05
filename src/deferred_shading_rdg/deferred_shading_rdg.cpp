@@ -54,6 +54,7 @@ using namespace donut::render;
 
 #include "../deferred_shading/CubeGeometry.h"
 #include "../sample_harness/SampleHarness.h"
+#include "../sample_harness/GraphRecording.h"
 
 static const char* g_WindowTitle = "Donut Example: Deferred Shading (render graph)";
 
@@ -222,6 +223,7 @@ private:
 //     -nocache         CompileOptions::maxCachedPlans = 0: every frame compiles (7.7)
 //     -emptybodies     the same graph with empty pass bodies: what is left is the executor's overhead (10.3)
 //     -notimers        no per-pass GPU timers (ExecuteDesc::timers), which the original has no counterpart of
+//     -parallel N, -granularity G   parallel recording (sample_harness/GraphRecording.h, step P2.4)
 class DeferredShadingGraph : public app::RenderGraphLayer
 {
     NVRHI_INHERIT_INTERFACE_TABLE()
@@ -250,8 +252,10 @@ private:
     uint32_t m_Frame = 0;
     std::vector<double> m_FrameCostMs;
     std::vector<double> m_ExecuteMs;
+    std::vector<double> m_RecordMs;
     std::vector<uint32_t> m_Barriers;
     render::RunStatistics m_LastRun;
+    sample_harness::GraphRecording m_Recording;
 
     static double Median(std::vector<double> samples)
     {
@@ -276,6 +280,7 @@ public:
             else if (!std::strcmp(argv[i], "-notimers"))
                 m_NoTimers = true;
         }
+        m_Recording.Configure(argc, argv, this);
     }
 
     void Render(nvrhi::IFramebuffer* framebuffer) override
@@ -288,6 +293,7 @@ public:
         {
             m_FrameCostMs.push_back(cost);
             m_ExecuteMs.push_back(double(m_LastRun.recordMilliseconds) + double(m_LastRun.submitMilliseconds));
+            m_RecordMs.push_back(double(m_LastRun.recordMilliseconds));
             m_Barriers.push_back(m_LastRun.barriers);
         }
     }
@@ -306,12 +312,14 @@ public:
         render::RegistryStatistics registry;
         GetRegistry()->GetRegistryStatistics(registry);
         std::fprintf(file, "{\n  \"frames\": %u,\n  \"warmup\": %u,\n  \"cache\": %s,\n  \"empty_bodies\": %s,\n  \"timers\": %s,\n"
-            "  \"median_layer_frame_ms\": %.4f,\n  \"median_execute_ms\": %.4f,\n  \"barriers_min\": %u,\n  \"barriers_max\": %u,\n"
-            "  \"passes\": %u,\n  \"segments\": %u,\n  \"plan_hits\": %llu,\n  \"plan_misses\": %llu\n}\n",
+            "  \"median_layer_frame_ms\": %.4f,\n  \"median_execute_ms\": %.4f,\n  \"median_record_ms\": %.4f,\n"
+            "  \"barriers_min\": %u,\n  \"barriers_max\": %u,\n  \"passes\": %u,\n  \"segments\": %u,\n  \"threads\": %u,\n"
+            "  \"record_tasks\": %u,\n  \"plan_hits\": %llu,\n  \"plan_misses\": %llu\n}\n",
             m_Frame, m_Warmup, GetCompileOptions().maxCachedPlans ? "true" : "false", m_EmptyBodies ? "true" : "false",
             GetExecuteDesc().timers ? "true" : "false",
-            Median(m_FrameCostMs), Median(m_ExecuteMs), m_Barriers.empty() ? 0u : barriersMin, barriersMax,
-            m_LastRun.passes, m_LastRun.segments, (unsigned long long)registry.planHits, (unsigned long long)registry.planMisses);
+            Median(m_FrameCostMs), Median(m_ExecuteMs), Median(m_RecordMs), m_Barriers.empty() ? 0u : barriersMin, barriersMax,
+            m_LastRun.passes, m_LastRun.segments, m_Recording.GetThreadCount(), m_LastRun.recordTasks,
+            (unsigned long long)registry.planHits, (unsigned long long)registry.planMisses);
         std::fclose(file);
     }
 
