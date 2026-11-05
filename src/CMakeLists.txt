@@ -50,6 +50,7 @@ endif()
 add_subdirectory(basic_triangle)
 add_subdirectory(vertex_buffer)
 add_subdirectory(deferred_shading)
+add_subdirectory(deferred_shading_rdg)
 add_subdirectory(headless)
 
 if (NVRHI_WITH_VULKAN OR NVRHI_WITH_DX12)
