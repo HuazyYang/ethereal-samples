@@ -43,6 +43,7 @@ using namespace donut;
 using namespace donut::math;
 
 #include "lighting_cb.h"
+#include "../sample_harness/SampleHarness.h"
 
 static const char* g_WindowTitle = "Donut Example: Variable Rate Shading";
 
@@ -287,6 +288,7 @@ public:
 
     void Animate(float fElapsedTimeSeconds) override
     {
+        fElapsedTimeSeconds = sample_harness::Step(fElapsedTimeSeconds);
         m_Camera.Animate(fElapsedTimeSeconds);
         GetDeviceManager()->SetInformativeWindowTitle(g_WindowTitle);
     }
@@ -552,11 +554,14 @@ int main(int __argc, const char** __argv)
     }
 
     {
+        sample_harness::Harness harness(deviceManager, sample_harness::ParseOptions(__argc, __argv));
         VariableRateShading example(deviceManager);
         if (example.Init(rawD3D12))
         {
             deviceManager->AddLayerToBack(&example);
+            harness.Attach();
             deviceManager->RunMessageLoop();
+            harness.Detach();
             deviceManager->RemoveLayer(&example);
         }
     }

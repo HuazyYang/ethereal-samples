@@ -43,6 +43,7 @@ using namespace donut::render;
 #include <donut/shaders/bindless.h>
 
 #include "CubeGeometry.h"
+#include "../sample_harness/SampleHarness.h"
 
 static const char* g_WindowTitle = "Donut Example: Deferred Shading";
 
@@ -290,6 +291,7 @@ public:
 
     void Animate(float seconds) override
     {
+        seconds = sample_harness::Step(seconds);
         m_Rotation += seconds * 1.1f;
         GetDeviceManager()->SetInformativeWindowTitle(g_WindowTitle);
     }
@@ -393,11 +395,14 @@ int main(int __argc, const char** __argv)
     }
 
     {
+        sample_harness::Harness harness(deviceManager, sample_harness::ParseOptions(__argc, __argv));
         DeferredShading example(deviceManager);
         if (example.Init())
         {
             deviceManager->AddLayerToBack(&example);
+            harness.Attach();
             deviceManager->RunMessageLoop();
+            harness.Detach();
             deviceManager->RemoveLayer(&example);
         }
     }
