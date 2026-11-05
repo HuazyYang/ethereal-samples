@@ -491,6 +491,9 @@ public:
         {
             render::TemporalAntiAliasingParameters params = {};
             m_temporalPass->TemporalResolve(m_CommandList, params, m_PreviousViewsValid, m_View, m_View);
+            // The next frame reads this frame's feedback: without this the resolve read feedback1 every frame, which
+            // only the other binding set writes.
+            m_temporalPass->AdvanceFrame();
             // PlanarView is a reference-counted object and cannot be copy-assigned: copy its state.
             m_ViewPrevious.SetViewport(m_View.GetViewport());
             m_ViewPrevious.SetVariableRateShadingState(m_View.GetVariableRateShadingState());
